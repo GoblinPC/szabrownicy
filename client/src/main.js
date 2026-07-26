@@ -127,21 +127,37 @@ class RaidScene extends Phaser.Scene {
     this.load.image("res-gold", "assets/resources/gold.png");
     this.load.image("res-rare", "assets/resources/rare.png");
     this.load.image("ground", "assets/terrain/grass_tile.png");
+    this.load.spritesheet("deco-bush1", "assets/decorations/bush1.png", { frameWidth: 128, frameHeight: 128 });
+    this.load.spritesheet("deco-bush2", "assets/decorations/bush2.png", { frameWidth: 128, frameHeight: 128 });
+    this.load.image("deco-rock1", "assets/decorations/rock1.png");
+    this.load.image("deco-rock2", "assets/decorations/rock2.png");
   }
 
   create() {
     const size = this.raidData.world.size;
     this.add.tileSprite(0, 0, size, size, "ground").setOrigin(0, 0);
+
+    const decoKeys = ["deco-bush1", "deco-bush2", "deco-rock1", "deco-rock2"];
+    for (let i = 0; i < 140; i++) {
+      const key = decoKeys[Math.floor(Math.random() * decoKeys.length)];
+      const x = Math.random() * size;
+      const y = Math.random() * size;
+      this.add.sprite(x, y, key, 0).setScale(0.4 + Math.random() * 0.25).setAlpha(0.9);
+    }
+
     this.physics.world.setBounds(0, 0, size, size);
     this.cameras.main.setBounds(0, 0, size, size);
+    this.cameras.main.setZoom(2);
 
     if (!this.anims.exists("idle")) {
-      this.anims.create({ key: "idle", frames: this.anims.generateFrameNumbers("player-idle", { start: 0, end: 7 }), frameRate: 6, repeat: -1 });
-      this.anims.create({ key: "run", frames: this.anims.generateFrameNumbers("player-run", { start: 0, end: 5 }), frameRate: 10, repeat: -1 });
+      this.anims.create({ key: "idle", frames: this.anims.generateFrameNumbers("player-idle", { start: 0, end: 7 }), frameRate: 8, repeat: -1 });
+      this.anims.create({ key: "run", frames: this.anims.generateFrameNumbers("player-run", { start: 0, end: 5 }), frameRate: 14, repeat: -1 });
       this.anims.create({ key: "attack", frames: this.anims.generateFrameNumbers("player-attack", { start: 0, end: 3 }), frameRate: 14, repeat: 0 });
     }
 
     this.player = this.add.sprite(0, 0, "player-idle").setScale(0.45).play("idle");
+    this.player.targetX = 0;
+    this.player.targetY = 0;
     this.cameras.main.startFollow(this.player, true, 0.15, 0.15);
 
     this.extractGraphics = this.add.graphics();
@@ -193,6 +209,19 @@ class RaidScene extends Phaser.Scene {
     if (payload !== this.lastSentInput) {
       ws.send(payload);
       this.lastSentInput = payload;
+    }
+
+    const lerp = 0.35;
+    this.player.x += (this.player.targetX - this.player.x) * lerp;
+    this.player.y += (this.player.targetY - this.player.y) * lerp;
+    if (this.channelBarBg.visible) {
+      this.channelBarBg.setPosition(this.player.x, this.player.y - 60);
+      this.channelBarFg.setPosition(this.player.x - 30, this.player.y - 60);
+    }
+    for (const entry of this.otherSprites.values()) {
+      entry.sprite.x += (entry.targetX - entry.sprite.x) * lerp;
+      entry.sprite.y += (entry.targetY - entry.sprite.y) * lerp;
+      entry.label.setPosition(entry.sprite.x, entry.sprite.y - 70);
     }
 
     this.drawExtractPoints();
@@ -254,12 +283,13 @@ class RaidScene extends Phaser.Scene {
     const seenPlayers = new Set();
     for (const p of msg.players) {
       if (p.id === myId) {
-        this.player.setPosition(p.x, p.y);
+        this.player.targetX = p.x;
+        this.player.targetY = p.y;
         this.player.setAlpha(p.invulnerable ? 0.5 : 1);
         this.carriedNow = p.carried;
         if (p.channel) {
-          this.channelBarBg.setVisible(true).setPosition(p.x, p.y - 60);
-          this.channelBarFg.setVisible(true).setPosition(p.x - 30, p.y - 60);
+          this.channelBarBg.setVisible(true);
+          this.channelBarFg.setVisible(true);
           this.channelBarFg.width = 60 * Math.min(1, p.channel.progress);
         } else {
           this.channelBarBg.setVisible(false);
@@ -273,16 +303,15 @@ class RaidScene extends Phaser.Scene {
         const sprite = this.add.sprite(p.x, p.y, "player-idle").setScale(0.45).play("idle");
         sprite.setTint(p.tint);
         const label = this.add.text(p.x, p.y - 70, p.name || "", { fontSize: "14px", color: "#ffffff" }).setOrigin(0.5);
-        entry = { sprite, label, lastX: p.x };
+        entry = { sprite, label, targetX: p.x, targetY: p.y };
         this.otherSprites.set(p.id, entry);
       }
-      const dxMove = p.x - entry.lastX;
+      const dxMove = p.x - entry.targetX;
       if (Math.abs(dxMove) > 0.5) entry.sprite.setFlipX(dxMove < 0);
       entry.sprite.play(p.moving ? "run" : "idle", true);
-      entry.sprite.setPosition(p.x, p.y);
       entry.sprite.setAlpha(p.invulnerable ? 0.5 : 1);
-      entry.label.setPosition(p.x, p.y - 70);
-      entry.lastX = p.x;
+      entry.targetX = p.x;
+      entry.targetY = p.y;
     }
     for (const [id, entry] of this.otherSprites) {
       if (!seenPlayers.has(id)) {
