@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Szabrownicy</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #1b1611; color: #f1e6d0; font-family: "Segoe UI", sans-serif; height: 100%; overflow: hidden; }
+  #home { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; }
+  #home h1 { font-size: 2.4em; margin: 0; color: #ffd43b; text-shadow: 2px 2px 0 #000; }
+  #home .panel { background: rgba(0,0,0,0.35); border: 2px solid #6b5335; border-radius: 10px; padding: 20px 28px; min-width: 280px; text-align: center; }
+  #home .stash-row { display: flex; justify-content: space-between; gap: 14px; margin: 6px 0; font-size: 1.1em; }
+  #home input { font-size: 1em; padding: 6px 10px; border-radius: 6px; border: 1px solid #6b5335; background: #2a2118; color: #f1e6d0; margin-bottom: 10px; }
+  #home button { font-size: 1.2em; padding: 10px 26px; border-radius: 8px; border: none; background: #c0392b; color: white; cursor: pointer; font-weight: bold; }
+  #home button:hover { background: #e74c3c; }
+  #leaderboard { list-style: none; padding: 0; margin: 0; }
+  #leaderboard li { padding: 2px 0; }
+  #raid-container { position: absolute; inset: 0; display: none; }
+  #hud { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.5); padding: 8px 14px; border-radius: 8px; font-size: 0.95em; pointer-events: none; }
+  #toast { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.7); padding: 10px 20px; border-radius: 8px; font-size: 1.2em; display: none; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<div id="home">
+  <h1>Szabrownicy</h1>
+  <div class="panel">
+    <div>Twoje imię:</div>
+    <input id="name-input" maxlength="20" />
+    <div id="stash">
+      <div class="stash-row"><span>Drewno</span><span id="s-wood">0</span></div>
+      <div class="stash-row"><span>Złoto</span><span id="s-gold">0</span></div>
+      <div class="stash-row"><span>Mięso</span><span id="s-meat">0</span></div>
+      <div class="stash-row"><span>Rzadkie</span><span id="s-rare">0</span></div>
+    </div>
+    <br />
+    <button id="go-btn">Idź na wyprawę</button>
+  </div>
+  <div class="panel">
+    <h3>Tablica Szabrowników</h3>
+    <ol id="leaderboard"></ol>
+  </div>
+</div>
+
+<div id="raid-container">
+  <div id="hud"></div>
+  <div id="toast"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
