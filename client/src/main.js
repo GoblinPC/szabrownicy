@@ -122,15 +122,16 @@ class RaidScene extends Phaser.Scene {
     this.load.spritesheet("player-idle", "assets/units/Warrior_Idle.png", { frameWidth: 192, frameHeight: 192 });
     this.load.spritesheet("player-run", "assets/units/Warrior_Run.png", { frameWidth: 192, frameHeight: 192 });
     this.load.spritesheet("player-attack", "assets/units/Warrior_Attack1.png", { frameWidth: 192, frameHeight: 192 });
-    this.load.spritesheet("res-tree", "assets/resources/tree.png", { frameWidth: 256, frameHeight: 256 });
+    this.load.spritesheet("res-tree", "assets/resources/tree.png", { frameWidth: 192, frameHeight: 256 });
     this.load.spritesheet("res-meat", "assets/resources/meat.png", { frameWidth: 128, frameHeight: 128 });
     this.load.image("res-gold", "assets/resources/gold.png");
     this.load.image("res-rare", "assets/resources/rare.png");
+    this.load.image("ground", "assets/terrain/grass_tile.png");
   }
 
   create() {
-    this.cameras.main.setBackgroundColor("#3a6b35");
     const size = this.raidData.world.size;
+    this.add.tileSprite(0, 0, size, size, "ground").setOrigin(0, 0);
     this.physics.world.setBounds(0, 0, size, size);
     this.cameras.main.setBounds(0, 0, size, size);
 
@@ -160,6 +161,8 @@ class RaidScene extends Phaser.Scene {
     this.input.on("pointerdown", () => this.tryAttack());
     this.lastSentInput = null;
     this.attacking = false;
+
+    raidScene = this; // rejestrujemy się dopiero gdy scena naprawdę jest gotowa
   }
 
   tryAttack() {
