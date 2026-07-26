@@ -22,7 +22,6 @@ nameInput.addEventListener("change", () => {
 
 const homeEl = document.getElementById("home");
 const raidContainerEl = document.getElementById("raid-container");
-const hudEl = document.getElementById("hud");
 const toastEl = document.getElementById("toast");
 const goBtn = document.getElementById("go-btn");
 const leaderboardEl = document.getElementById("leaderboard");
@@ -32,12 +31,22 @@ let currentStash = { wood: 0, gold: 0, meat: 0, rare: 0 };
 let phaserGame = null;
 let raidScene = null;
 
+const RESOURCE_TYPES = ["wood", "gold", "meat", "rare"];
+
+function setSlotCount(prefix, type, count) {
+  const span = document.getElementById(`${prefix}-${type}`);
+  if (!span) return;
+  span.textContent = count > 0 ? count : "";
+  span.closest(".slot").classList.toggle("empty", count <= 0);
+}
+
 function updateStashDisplay(stash) {
   currentStash = stash;
-  document.getElementById("s-wood").textContent = stash.wood;
-  document.getElementById("s-gold").textContent = stash.gold;
-  document.getElementById("s-meat").textContent = stash.meat;
-  document.getElementById("s-rare").textContent = stash.rare;
+  for (const type of RESOURCE_TYPES) setSlotCount("s", type, stash[type] || 0);
+}
+
+function updateBackpackDisplay(carried) {
+  for (const type of RESOURCE_TYPES) setSlotCount("c", type, carried[type] || 0);
 }
 
 function updateLeaderboard(list) {
@@ -225,7 +234,7 @@ class RaidScene extends Phaser.Scene {
     }
 
     this.drawExtractPoints();
-    this.updateHud();
+    updateBackpackDisplay(this.carriedNow || { wood: 0, gold: 0, meat: 0, rare: 0 });
   }
 
   drawExtractPoints() {
@@ -238,13 +247,6 @@ class RaidScene extends Phaser.Scene {
         this.extractGraphics.fillCircle(ep.x, ep.y, this.extractRadius);
       }
     }
-  }
-
-  updateHud() {
-    const total = currentStash.wood + currentStash.gold + currentStash.meat + currentStash.rare;
-    void total;
-    const c = this.carriedNow || { wood: 0, gold: 0, meat: 0, rare: 0 };
-    hudEl.innerHTML = `Niesiesz: Drewno ${c.wood} · Złoto ${c.gold} · Mięso ${c.meat} · Rzadkie ${c.rare}<br/>WASD/strzałki = ruch, SPACJA/klik = atak`;
   }
 
   onServerMessage(msg) {
