@@ -155,16 +155,36 @@ class RaidScene extends Phaser.Scene {
 
     this.add.tileSprite(0, 0, size, size, "ground").setOrigin(0, 0);
 
+    // barwne "poszycie" terenu per strefa - żeby kazda strefa realnie wygladala inaczej,
+    // nie tylko miala inne obiekty stojace na tej samej trawie
+    const zoneTint = (zone, color) => {
+      this.add.circle(zone.x, zone.y, zone.radius * 1.25, color, 0.16);
+      this.add.circle(zone.x, zone.y, zone.radius * 0.75, color, 0.16);
+    };
+    zoneTint(ZONES.wood, 0x1f5c33); // Zagajnik - ciemniejsza, gestsza zielen
+    zoneTint(ZONES.meat, 0xdcd98a); // Pastwisko - jasna, sucha trawa
+    zoneTint(ZONES.gold, 0x7a6a52); // Kamieniolom - szaro-brazowy, kamienisty
+
+    // szutrowe drogi laczace strefy ze skarbcem na srodku
+    const path = this.add.graphics();
+    path.lineStyle(46, 0x8a7048, 0.35);
+    for (const zone of [ZONES.wood, ZONES.meat, ZONES.gold]) {
+      path.beginPath();
+      path.moveTo(zone.x, zone.y);
+      path.lineTo(ZONES.rare.x, ZONES.rare.y);
+      path.strokePath();
+    }
+
     // jeziorko - wizualny landmark przy pastwisku
     const pond = this.add.ellipse(1350, 380, 260, 170, 0x47aba9, 1);
     pond.setStrokeStyle(6, 0x2d7d7a, 1);
 
     // formacja skalna - landmark przy kamieniolomie
-    this.add.image(2050, 1980, "landmark-cliff").setScale(1.1).setDepth(-1);
+    this.add.image(2050, 1980, "landmark-cliff").setScale(1.1);
 
-    // przygaszony okrąg wokół skarbca na środku - sygnalizuje "cenne, ale otwarte miejsce"
-    const treasureRing = this.add.circle(ZONES.rare.x, ZONES.rare.y, ZONES.rare.radius, 0xffd43b, 0.06);
-    treasureRing.setStrokeStyle(3, 0xffd43b, 0.3);
+    // podswietlony okrag wokol skarbca na srodku - "tu jest cos cennego"
+    const treasureRing = this.add.circle(ZONES.rare.x, ZONES.rare.y, ZONES.rare.radius, 0xffd43b, 0.1);
+    treasureRing.setStrokeStyle(3, 0xffd43b, 0.4);
 
     const scatterInZone = (zone, keys, count, scaleMin, scaleMax) => {
       for (let i = 0; i < count; i++) {
