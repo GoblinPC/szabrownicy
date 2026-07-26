@@ -140,18 +140,49 @@ class RaidScene extends Phaser.Scene {
     this.load.spritesheet("deco-bush2", "assets/decorations/bush2.png", { frameWidth: 128, frameHeight: 128 });
     this.load.image("deco-rock1", "assets/decorations/rock1.png");
     this.load.image("deco-rock2", "assets/decorations/rock2.png");
+    this.load.image("landmark-cliff", "assets/terrain/cliff_formation.png");
   }
 
   create() {
     const size = this.raidData.world.size;
+    // te same strefy co po stronie serwera (server/src/index.js: ZONES) - czysto wizualne, do rozmieszczenia dekoracji
+    const ZONES = {
+      wood: { x: 750, y: 750, radius: 420 },
+      meat: { x: 1650, y: 750, radius: 420 },
+      gold: { x: 1650, y: 1650, radius: 420 },
+      rare: { x: 1200, y: 1200, radius: 200 },
+    };
+
     this.add.tileSprite(0, 0, size, size, "ground").setOrigin(0, 0);
 
-    const decoKeys = ["deco-bush1", "deco-bush2", "deco-rock1", "deco-rock2"];
-    for (let i = 0; i < 140; i++) {
-      const key = decoKeys[Math.floor(Math.random() * decoKeys.length)];
-      const x = Math.random() * size;
-      const y = Math.random() * size;
-      this.add.sprite(x, y, key, 0).setScale(0.4 + Math.random() * 0.25).setAlpha(0.9);
+    // jeziorko - wizualny landmark przy pastwisku
+    const pond = this.add.ellipse(1350, 380, 260, 170, 0x47aba9, 1);
+    pond.setStrokeStyle(6, 0x2d7d7a, 1);
+
+    // formacja skalna - landmark przy kamieniolomie
+    this.add.image(2050, 1980, "landmark-cliff").setScale(1.1).setDepth(-1);
+
+    // przygaszony okrąg wokół skarbca na środku - sygnalizuje "cenne, ale otwarte miejsce"
+    const treasureRing = this.add.circle(ZONES.rare.x, ZONES.rare.y, ZONES.rare.radius, 0xffd43b, 0.06);
+    treasureRing.setStrokeStyle(3, 0xffd43b, 0.3);
+
+    const scatterInZone = (zone, keys, count, scaleMin, scaleMax) => {
+      for (let i = 0; i < count; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const r = Math.sqrt(Math.random()) * zone.radius;
+        const x = zone.x + Math.cos(angle) * r;
+        const y = zone.y + Math.sin(angle) * r;
+        const key = keys[Math.floor(Math.random() * keys.length)];
+        this.add.sprite(x, y, key, 0).setScale(scaleMin + Math.random() * (scaleMax - scaleMin)).setAlpha(0.9);
+      }
+    };
+    scatterInZone(ZONES.wood, ["deco-bush1", "deco-bush2"], 45, 0.4, 0.65);
+    scatterInZone(ZONES.gold, ["deco-rock1", "deco-rock2"], 35, 0.5, 0.8);
+    scatterInZone(ZONES.meat, ["deco-bush1", "deco-bush2"], 20, 0.35, 0.5);
+    for (let i = 0; i < 60; i++) {
+      const keys = ["deco-bush1", "deco-bush2", "deco-rock1", "deco-rock2"];
+      const key = keys[Math.floor(Math.random() * keys.length)];
+      this.add.sprite(Math.random() * size, Math.random() * size, key, 0).setScale(0.35 + Math.random() * 0.2).setAlpha(0.7);
     }
 
     this.physics.world.setBounds(0, 0, size, size);

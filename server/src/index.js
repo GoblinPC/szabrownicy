@@ -24,6 +24,13 @@ const CARRY_CAP = 20;
 const LOOT_DESPAWN_MS = 30000;
 const TICK_MS = 50; // 20Hz
 
+// Strefy - zasoby grupują się tematycznie zamiast losowo po całej mapie
+const ZONES = {
+  wood: { x: 750, y: 750, radius: 420 }, // Zagajnik
+  meat: { x: 1650, y: 750, radius: 420 }, // Pastwisko
+  gold: { x: 1650, y: 1650, radius: 420 }, // Kamieniołom
+  rare: { x: 1200, y: 1200, radius: 200 }, // Skarbiec (środek mapy)
+};
 const RESOURCE_DEFS = [
   { type: "wood", count: 20 },
   { type: "gold", count: 12 },
@@ -32,6 +39,15 @@ const RESOURCE_DEFS = [
 ];
 const RESOURCE_VALUE = { wood: 1, gold: 3, meat: 2, rare: 10 };
 const RESOURCE_RESPAWN_MS = { wood: [10000, 20000], gold: [15000, 30000], meat: [15000, 25000], rare: [40000, 70000] };
+
+function randomPointInZone(zone) {
+  const angle = Math.random() * Math.PI * 2;
+  const r = Math.sqrt(Math.random()) * zone.radius;
+  return {
+    x: Math.max(PLAYER_RADIUS, Math.min(WORLD_SIZE - PLAYER_RADIUS, zone.x + Math.cos(angle) * r)),
+    y: Math.max(PLAYER_RADIUS, Math.min(WORLD_SIZE - PLAYER_RADIUS, zone.y + Math.sin(angle) * r)),
+  };
+}
 
 // --- Punkty wyjścia (rotujące) ---
 const EXTRACT_RADIUS = 70;
@@ -96,7 +112,7 @@ let nextEntityId = 1;
 const resourceNodes = [];
 for (const def of RESOURCE_DEFS) {
   for (let i = 0; i < def.count; i++) {
-    const { x, y } = randomSpawnPoint();
+    const { x, y } = randomPointInZone(ZONES[def.type]);
     resourceNodes.push({ id: nextEntityId++, type: def.type, x, y, active: true, respawnAt: null });
   }
 }
