@@ -1,15 +1,11 @@
 // Kuźnia — jedyna na razie strefa świata.
 
-import { buildWorld, isWalkable, surfaceAt, TILE, WORLD_W, WORLD_H, SPAWN, INTERIOR_PX } from '../world/forge.js';
+import { buildWorld, surfaceAt, TILE, WORLD_W, WORLD_H, SPAWN, INTERIOR_PX } from '../world/forge.js';
+import { poseOf, KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_RUN } from '../world/movement.js';
 import { Lighting } from '../render/lighting.js';
 import { ShadowCaster } from '../render/shadows.js';
 import { audio } from '../audio/audio.js';
-
-const WALK_SPEED = 74;
-const RUN_SPEED = 112;
-const ACCELERATION = 14;   // im wyżej, tym ostrzejszy start i zatrzymanie
-const FOOT_HALF_W = 5;     // prostokąt stóp, na nim liczona jest kolizja
-const FOOT_H = 6;
+import { Net } from '../net.js';
 
 export class ForgeScene extends Phaser.Scene {
   constructor() {
@@ -102,8 +98,6 @@ export class ForgeScene extends Phaser.Scene {
     this.variant = Number(localStorage.getItem('szab_variant') ?? 0) % this.variants.length;
     this.px = SPAWN.x;
     this.py = SPAWN.y;
-    this.vx = 0;
-    this.vy = 0;
     this.facing = 'down';
 
     this.playerShadow = this.shadows.add(this.px, this.py, 'goblins', `g${this.variant}_down_idle0`, {
@@ -114,6 +108,14 @@ export class ForgeScene extends Phaser.Scene {
       .setOrigin(0.5, 1)
       .setDepth(this.py);
     this.player.play(`g${this.variant}_down_idle`);
+
+    // Pozycję własnej postaci prowadzi teraz warstwa sieciowa: przewiduje ruch
+    // natychmiast, a co migawkę zestawia go z prawdą z serwera.
+    this.net = new Net(this.world);
+    this.net.onStatus((status) => this.scene.get('Hud')?.setNet(status));
+    this.net.connect(SPAWN, this.variant);
+
+    this.others = new Map();
   }
 
   spawnParticles() {
@@ -193,6 +195,7 @@ export class ForgeScene extends Phaser.Scene {
       event.preventDefault();
       this.variant = (this.variant + 1) % this.variants.length;
       localStorage.setItem('szab_variant', String(this.variant));
+      this.net.setVariant(this.variant);
       this.scene.get('Hud')?.setHint(`Goblin: ${this.variants[this.variant].name}   (TAB — zmień)`);
     });
   }
@@ -201,8 +204,9 @@ export class ForgeScene extends Phaser.Scene {
 
   update(time, delta) {
     const dt = Math.min(delta, 50) / 1000;
-    this.movePlayer(dt);
+    this.movePlayer(delta, time);
     this.animatePlayer(time);
+    this.updateOthers(time);
     this.lighting.update(time);
     this.updateAmbience(dt);
     this.reportZone();
@@ -237,58 +241,34 @@ export class ForgeScene extends Phaser.Scene {
     return this.py < INTERIOR_PX.y + INTERIOR_PX.h + 8;
   }
 
-  movePlayer(dt) {
-    let ax = 0;
-    let ay = 0;
-    if (this.keys.left.isDown || this.cursors.left.isDown) ax -= 1;
-    if (this.keys.right.isDown || this.cursors.right.isDown) ax += 1;
-    if (this.keys.up.isDown || this.cursors.up.isDown) ay -= 1;
-    if (this.keys.down.isDown || this.cursors.down.isDown) ay += 1;
+  /**
+   * Klawisze idą do warstwy sieciowej jako maska bitowa. Fizyka liczy się
+   * w `world/movement.js` — tym samym kodem, którego używa serwer.
+   */
+  movePlayer(delta, time) {
+    let keys = 0;
+    if (this.keys.left.isDown || this.cursors.left.isDown) keys |= KEY_LEFT;
+    if (this.keys.right.isDown || this.cursors.right.isDown) keys |= KEY_RIGHT;
+    if (this.keys.up.isDown || this.cursors.up.isDown) keys |= KEY_UP;
+    if (this.keys.down.isDown || this.cursors.down.isDown) keys |= KEY_DOWN;
+    if (this.keys.shift.isDown) keys |= KEY_RUN;
 
-    const length = Math.hypot(ax, ay);
-    if (length > 0) { ax /= length; ay /= length; }
-
-    const speed = (this.keys.shift.isDown ? RUN_SPEED : WALK_SPEED);
-    const blend = Math.min(1, ACCELERATION * dt);
-    this.vx += (ax * speed - this.vx) * blend;
-    this.vy += (ay * speed - this.vy) * blend;
-
-    this.step(this.vx * dt, 0);
-    this.step(0, this.vy * dt);
-  }
-
-  /** Ruch osobno w poziomie i pionie — dzięki temu postać ślizga się po ścianach. */
-  step(dx, dy) {
-    if (dx === 0 && dy === 0) return;
-    const nx = this.px + dx;
-    const ny = this.py + dy;
-    const fits = isWalkable(
-      this.world,
-      nx - FOOT_HALF_W, ny - FOOT_H,
-      nx + FOOT_HALF_W, ny - 0.5
-    );
-    if (fits) {
-      this.px = nx;
-      this.py = ny;
-    } else if (dx !== 0) {
-      this.vx = 0;
-    } else {
-      this.vy = 0;
-    }
+    const body = this.net.update(keys, delta, time);
+    if (!body) return;
+    this.px = body.x;
+    this.py = body.y;
+    this.vx = body.vx;
+    this.vy = body.vy;
   }
 
   animatePlayer(time) {
-    const speed = Math.hypot(this.vx, this.vy);
-    const moving = speed > 6;
-
-    if (moving) {
-      if (Math.abs(this.vx) > Math.abs(this.vy) + 4) this.facing = 'side';
-      else this.facing = this.vy < 0 ? 'up' : 'down';
-    }
+    const pose = poseOf({ vx: this.vx, vy: this.vy }, this.facing);
+    const moving = pose.moving;
+    this.facing = pose.facing;
 
     const key = `g${this.variant}_${this.facing}_${moving ? 'run' : 'idle'}`;
     if (this.player.anims.currentAnim?.key !== key) this.player.play(key);
-    if (this.facing === 'side') this.player.setFlipX(this.vx < 0);
+    if (this.facing === 'side') this.player.setFlipX(pose.flip);
 
     this.player.setPosition(Math.round(this.px), Math.round(this.py));
     this.player.setDepth(this.py);
@@ -305,6 +285,63 @@ export class ForgeScene extends Phaser.Scene {
       }
       this.lastStepFrame = index;
     }
+  }
+
+  /**
+   * Inni gracze. Pozycje bierzemy sprzed 100 ms i interpolowane, więc ruch jest
+   * gładki mimo dwudziestu migawek na sekundę.
+   */
+  updateOthers(time) {
+    const samples = this.net.sampleRemotes(time);
+    const seen = new Set();
+
+    for (const sample of samples) {
+      seen.add(sample.id);
+      let other = this.others.get(sample.id);
+
+      if (!other) {
+        const sprite = this.add.sprite(sample.x, sample.y, 'goblins')
+          .setOrigin(0.5, 1)
+          .setDepth(sample.y);
+        other = {
+          sprite,
+          shadow: this.shadows.add(sample.x, sample.y, 'goblins', `g${sample.variant}_down_idle0`, {
+            squash: 0.45,
+            width: 18,
+          }),
+          variant: sample.variant,
+        };
+        this.others.set(sample.id, other);
+      }
+
+      const key = `g${sample.variant}_${sample.f}_${sample.m ? 'run' : 'idle'}`;
+      if (other.sprite.anims.currentAnim?.key !== key) other.sprite.play(key);
+      if (sample.f === 'side') other.sprite.setFlipX(Boolean(sample.l));
+
+      other.sprite.setPosition(Math.round(sample.x), Math.round(sample.y));
+      other.sprite.setDepth(sample.y);
+      this.shadows.setFrame(other.shadow, other.sprite.frame.name, other.sprite.flipX);
+      this.shadows.refresh(other.shadow, sample.x, sample.y);
+    }
+
+    for (const [id, other] of this.others) {
+      if (seen.has(id)) continue;
+      other.sprite.destroy();
+      this.shadows.remove(other.shadow);
+      this.others.delete(id);
+    }
+
+    // Plakietki rysuje HUD, bo jego kamera nie jest powiększana — dzięki temu
+    // nick zostaje mały i ostry niezależnie od zoomu świata.
+    const camera = this.cameras.main;
+    this.scene.get('Hud')?.setNameplates(samples.map((sample) => ({
+      id: sample.id,
+      name: sample.name,
+      x: (sample.x - camera.scrollX) * camera.zoom,
+      // 31 pikseli nad stopami to czubek grzebienia hełmu z zapasem — liczone
+      // w świecie i dopiero potem przeliczane, więc trzyma się przy każdym zoomie.
+      y: (sample.y - 31 - camera.scrollY) * camera.zoom,
+    })));
   }
 
   reportZone() {

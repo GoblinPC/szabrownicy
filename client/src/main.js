@@ -4,11 +4,12 @@
 import { BootScene } from './scenes/Boot.js';
 import { ForgeScene } from './scenes/Forge.js';
 import { HudScene } from './scenes/Hud.js';
-import { connectLiveReload } from './util/livereload.js';
 import { armAudioUnlock } from './audio/audio.js';
 import { createMixer } from './ui/mixer.js';
 
-connectLiveReload();
+// Przeładowywanie po zapisie pliku obsługuje teraz warstwa sieciowa gry — jedno
+// gniazdo zamiast dwóch. Osobne połączenie było odrzucane przez serwer, bo nie
+// przedstawiało się komunikatem "join".
 armAudioUnlock();
 createMixer();
 

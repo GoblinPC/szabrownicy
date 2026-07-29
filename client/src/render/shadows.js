@@ -99,4 +99,10 @@ export class ShadowCaster {
     shadow.cast.setFrame(frameName);
     shadow.cast.setFlipX(flipX);
   }
+
+  /** Potrzebne przy graczach — kiedy ktoś wyjdzie, jego cień ma zniknąć razem z nim. */
+  remove(shadow) {
+    shadow.contact.destroy();
+    shadow.cast.destroy();
+  }
 }

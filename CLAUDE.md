@@ -163,8 +163,27 @@ ambient i kroki, suwaki głośności, serwer deweloperski z przeładowywaniem na
 4. **Multiplayer** — strefy po stronie serwera, interpolacja, plakietki z nickami.
 5. **Czat z dymkami** nad głowami.
 6. **Ekran startowy** z nickiem i wyborem goblina.
-7. Wdrożenie na VPS `51.83.134.101` (Node + PM2/systemd + Caddy, subdomena do
-   ustalenia). Bez kroku eksportu, w odróżnieniu od Nibylandii.
+7. Wdrożenie na VPS — szczegóły niżej. Bez kroku eksportu, w odróżnieniu od Nibylandii.
+
+## Wdrożenie
+
+Ten sam VPS, na którym stoją Goblin i Nibylandia. Sprawdzone połączeniem 2026-07-29.
+
+- **VPS:** OVH `51.83.134.101`, user `ubuntu`, host `vps-547a20e1`.
+- **SSH:** `ssh -i ~/.ssh/id_ed25519 ubuntu@51.83.134.101`. (W notatkach Nibylandii
+  klucz nazywa się `goblin_vps` — to nazwa z Windowsa, na Macu leży jako `id_ed25519`.)
+- **Port:** `9002`. Zajęte: 9000 Goblin, 9001 Nibylandia.
+- **Subdomena:** `mp.szabrownicy.goblinpc.pl`. Rekord A dodaje ręcznie użytkownik
+  w LightHosting (strefa `goblinpc.pl` jest tam, nie w Vercelu): nazwa
+  `mp.szabrownicy`, wartość `51.83.134.101`, TTL 3600.
+- **Caddy:** dopisać nowy blok, nie ruszać istniejących. Reverse proxy do
+  `localhost:9002` **musi** mieć `transport http { versions 1.1 }` — bez tego nie
+  przechodzi uścisk dłoni WebSocket (wycierpiane na Goblinie i Nibylandii).
+- **systemd:** usługa `szabrownicy-server`, `Restart=always`, wzorzec z
+  `/etc/systemd/system/nibylandia-server.service`.
+- **Node na VPS jeszcze nie ma** — Goblin i Nibylandia to eksporty Godota. Trzeba
+  doinstalować przy pierwszym wdrożeniu.
+- Wdrożenie to `git pull` + restart usługi. Żadnego budowania ani eksportu.
 
 **Znane słabe punkty:** aktywny portal wygląda jak słupek fryzjerski, studnia
 jest mętna, kilka drobnych obiektów to poziom wypełniacza.
