@@ -76,11 +76,18 @@ function pickTile(x, y, rng) {
 
   // Wnętrze hali.
   if (inBuildingSpan && y > BUILDING.y0 + 1 && y < BUILDING.y1) {
-    // Deski w kącie warsztatowym, sadza wokół paleniska.
-    if (x >= 32 && x <= 40 && y >= 4 && y <= 9) return `floor_wood_${rng.int(2)}`;
-    const nearHearth = Math.hypot(x - 11, y - 8) < 5;
-    if (nearHearth) return rng.chance(0.6) ? 'floor_stone_soot' : 'floor_stone_soot2';
-    return `floor_stone_${rng.int(4)}`;
+    // Kamień tylko na przedpiecku, gdzie ma sens ogniowy — na desce pod kuźnią
+    // nikt by ognia nie rozpalał. Reszta hali to deski.
+    //
+    // Przedpiecek jest PROSTOKĄTNY. Wersja liczona po promieniu dawała wielką
+    // szarą plamę na trzeciej części hali, z poszarpaną schodkową krawędzią.
+    const onApron = x >= 8 && x <= 15 && y >= 6 && y <= 11;
+    if (onApron) {
+      const core = x >= 9 && x <= 14 && y >= 7 && y <= 10;
+      if (core) return rng.chance(0.6) ? 'floor_stone_soot' : 'floor_stone_soot2';
+      return `floor_stone_${rng.int(4)}`;
+    }
+    return `floor_wood_${(x + y) % 3}`;
   }
 
   // Trawa w szczelinach między budynkiem a skałą.
@@ -89,7 +96,7 @@ function pickTile(x, y, rng) {
   // Kamienny próg po zewnętrznej stronie bramy. Bez niego wyjście z hali
   // rozmywało się wprost w ubitej ziemi i nie było widać, gdzie kończy się
   // budynek, a zaczyna dwór.
-  if (x >= GATE.x0 - 1 && x <= GATE.x1 + 1 && y > BUILDING.y1 && y <= BUILDING.y1 + 2) {
+  if (x >= GATE.x0 - 1 && x <= GATE.x1 + 1 && y === BUILDING.y1 + 1) {
     return `floor_stone_${rng.int(4)}`;
   }
 
@@ -269,12 +276,28 @@ export const ROOF = {
   y1: BUILDING.y1 - 2,
 };
 
-/** Prostokąt dachu w pikselach — po nim poznajemy, czy gracz jest pod dachem. */
+/** Prostokąt samego rysunku dachu — używany wyłącznie do jego narysowania. */
 export const ROOF_PX = {
   x: ROOF.x0 * TILE,
   y: ROOF.y0 * TILE,
   w: (ROOF.x1 - ROOF.x0 + 1) * TILE,
   h: (ROOF.y1 - ROOF.y0 + 1) * TILE,
+};
+
+/**
+ * Obrys całego budynku razem z murami. **To po nim poznajemy, czy gracz jest
+ * w środku** — i to jest osobna rzecz niż `ROOF_PX`.
+ *
+ * Pomylenie tych dwóch kosztowało błąd: gdy dach skrócono o dwa kafle, żeby nie
+ * wystawał nad mur, test wejścia skrócił się razem z nim i trzeba było wejść
+ * dwa kafle w głąb hali, zanim widoczność się przełączyła. Próg jest przy
+ * bramie, a nie tam, gdzie akurat kończy się rysunek dachu.
+ */
+export const BUILDING_PX = {
+  x: BUILDING.x0 * TILE,
+  y: BUILDING.y0 * TILE,
+  w: (BUILDING.x1 - BUILDING.x0 + 1) * TILE,
+  h: (BUILDING.y1 - BUILDING.y0 + 1) * TILE,
 };
 
 /**

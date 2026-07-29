@@ -1,6 +1,6 @@
 // Kuźnia — jedyna na razie strefa świata.
 
-import { buildWorld, surfaceAt, TILE, WORLD_W, WORLD_H, SPAWN, INTERIOR_PX, ROOF_PX } from '../world/forge.js';
+import { buildWorld, surfaceAt, TILE, WORLD_W, WORLD_H, SPAWN, INTERIOR_PX, ROOF_PX, BUILDING_PX } from '../world/forge.js';
 import { poseOf, KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_RUN } from '../world/movement.js';
 import { Lighting } from '../render/lighting.js';
 import { ShadowCaster } from '../render/shadows.js';
@@ -25,7 +25,7 @@ export class ForgeScene extends Phaser.Scene {
     this.spawnParticles();
     this.drawRoof();
 
-    this.lighting = new Lighting(this, this.world, INTERIOR_PX, ROOF_PX);
+    this.lighting = new Lighting(this, this.world, INTERIOR_PX, BUILDING_PX);
 
     this.setupCamera();
     this.setupInput();
@@ -82,14 +82,18 @@ export class ForgeScene extends Phaser.Scene {
     this.roofAlpha = 1;
   }
 
-  /** Czy stopy gracza są pod obrysem dachu. */
-  isUnderRoof(x, y) {
-    return x >= ROOF_PX.x && x <= ROOF_PX.x + ROOF_PX.w
-      && y >= ROOF_PX.y && y <= ROOF_PX.y + ROOF_PX.h;
+  /**
+   * Czy stopy gracza są wewnątrz budynku. Liczone po obrysie MURÓW, nie po
+   * rysunku dachu — próg jest przy bramie, a dach kończy się dwa kafle wyżej,
+   * żeby nie wystawał nad mur.
+   */
+  isInsideBuilding(x, y) {
+    return x >= BUILDING_PX.x && x <= BUILDING_PX.x + BUILDING_PX.w
+      && y >= BUILDING_PX.y && y <= BUILDING_PX.y + BUILDING_PX.h;
   }
 
   updateRoof(dt) {
-    const target = this.isUnderRoof(this.px, this.py) ? 0.12 : 1;
+    const target = this.isInsideBuilding(this.px, this.py) ? 0.12 : 1;
     // Przejście płynne, bo skok przezroczystości przy przekraczaniu bramy
     // czyta się jak błąd wyświetlania.
     this.roofAlpha += (target - this.roofAlpha) * Math.min(1, dt * 6);
@@ -237,7 +241,7 @@ export class ForgeScene extends Phaser.Scene {
     this.animatePlayer(time);
     this.updateOthers();
     this.updateRoof(dt);
-    this.lighting.update(time, this.isUnderRoof(this.px, this.py));
+    this.lighting.update(time, this.isInsideBuilding(this.px, this.py));
     this.updateAmbience(dt);
     this.reportZone();
   }
@@ -268,7 +272,7 @@ export class ForgeScene extends Phaser.Scene {
   }
 
   isInside() {
-    return this.py < INTERIOR_PX.y + INTERIOR_PX.h + 8;
+    return this.isInsideBuilding(this.px, this.py);
   }
 
   /**

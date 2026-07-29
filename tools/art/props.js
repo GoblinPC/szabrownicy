@@ -416,38 +416,65 @@ function campfire() {
  * Brama w murze — przejście z kuźni na plac. Prześwit ma 32 piksele, czyli
  * dokładnie dwa kafle, żeby dziura w murze pokrywała się z rysunkiem.
  */
+/**
+ * Wrota karczmy: drewniana odrzwia z belek, w środku otwarte przejście.
+ *
+ * Poprzednia wersja była kamiennym łukiem z czarnym prześwitem i czytała się
+ * jak wejście do jaskini, a nie jak drzwi do budynku z drewna. Prześwit musi
+ * mieć dokładnie 32 px, bo tyle wynosi dziura w kaflach muru.
+ */
 function gateArch() {
   const rng = rngFor('gate');
   const t = new Canvas(48, 32);
-  t.rect(0, 4, 48, 28, c('stone', 1));
-  t.hline(0, 47, 4, c('stone', 3)); // korona muru
-  for (let row = 1; row < 5; row++) {
-    const y = 4 + row * 6;
-    t.hline(0, 47, y, c('stone', 0));
-    t.hline(0, 47, y + 1, c('stone', 2));
-  }
-  t.speckle(rng, c('stone', 0), 0.06, { x: 0, y: 4, w: 48, h: 28 });
 
-  // Prześwit: prostokąt 32 px domknięty od góry łukiem.
-  t.rect(8, 12, 32, 20, c('soot', 0));
-  for (let x = 8; x < 40; x++) {
-    const dx = (x - 23.5) / 16;
-    const top = 12 - Math.round(Math.sqrt(Math.max(0, 1 - dx * dx)) * 7);
-    t.vline(x, top, 12, c('soot', 0));
+  // Ościeżnica: dwa grube słupy i nadproże z ciosanego drewna.
+  const post = (x) => {
+    t.rect(x, 6, 8, 26, c('wood', 2));
+    t.vline(x, 6, 31, c('wood', 3));          // światło na lewej krawędzi słupa
+    t.vline(x + 7, 6, 31, c('wood', 0));      // cień na prawej
+    t.speckle(rng, c('wood', 1), 0.16, { x, y: 6, w: 8, h: 26 });   // słoje
+    // Okucia.
+    for (const y of [12, 24]) {
+      t.hline(x, x + 7, y, c('iron', 2));
+      t.px(x + 2, y, c('iron', 4));
+      t.px(x + 5, y, c('iron', 4));
+    }
+  };
+  post(0);
+  post(40);
+
+  // Nadproże — gruba belka na całej szerokości.
+  t.rect(0, 0, 48, 7, c('wood', 2));
+  t.hline(0, 47, 0, c('wood', 4));
+  t.hline(0, 47, 6, c('soot', 0));
+  t.speckle(rng, c('wood', 1), 0.18, { x: 0, y: 1, w: 48, h: 5 });
+  // Zastrzały pod nadprożem — bez nich belka wisi w powietrzu.
+  for (const [x, dir] of [[8, 1], [39, -1]]) {
+    for (let i = 0; i < 4; i++) t.px(x + i * dir, 7 + i, c('wood', 3));
+    for (let i = 0; i < 4; i++) t.px(x + i * dir, 8 + i, c('wood', 1));
   }
-  for (let x = 7; x < 41; x++) { // kamienne klińce łuku
-    const dx = (x - 23.5) / 17;
-    const top = 12 - Math.round(Math.sqrt(Math.max(0, 1 - dx * dx)) * 8);
-    t.px(x, top - 1, c('stone', 3));
-    t.px(x, top, c('stone', 2));
-    if (x % 4 === 0) t.px(x, top + 1, c('stone', 0));
-  }
-  t.rect(6, 10, 2, 22, c('stone', 3)); // węgary
-  t.rect(40, 10, 2, 22, c('stone', 3));
-  // Chorągiew klanu nad przejściem.
-  t.rect(22, 5, 4, 6, c('blood'));
-  t.hline(22, 25, 5, c('iron', 3));
-  t.px(23, 10, c('blood'));
+
+  // Przejście: ciemne, ale nie czarne — widać, że za nim jest wnętrze, nie dziura.
+  t.rect(8, 7, 32, 25, c('soot', 1));
+  t.rect(8, 7, 32, 3, c('soot', 0));         // cień pod nadprożem
+  t.hline(8, 39, 31, c('wood', 1));          // próg
+
+  // Wrota odchylone do wewnątrz, po jednym skrzydle z każdej strony.
+  const leaf = (x0, x1) => {
+    t.rect(x0, 9, x1 - x0, 22, c('wood', 1));
+    t.vline(x0, 9, 30, c('wood', 3));
+    for (let x = x0 + 2; x < x1; x += 3) t.vline(x, 10, 30, c('wood', 0)); // styk desek
+    t.hline(x0, x1 - 1, 14, c('iron', 1));   // pas okuwający
+    t.hline(x0, x1 - 1, 26, c('iron', 1));
+  };
+  leaf(8, 13);
+  leaf(35, 40);
+
+  // Szyld nad wejściem — kawałek blachy na dwóch ogniwach.
+  t.rect(21, 7, 6, 5, c('iron', 2));
+  t.hline(21, 26, 7, c('iron', 3));
+  t.px(22, 12, c('iron', 1));
+  t.px(25, 12, c('iron', 1));
   return finish(t);
 }
 
