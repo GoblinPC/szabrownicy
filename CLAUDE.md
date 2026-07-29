@@ -146,13 +146,37 @@ Sterowanie: `M` cisza, `N` sama muzyka, suwaki w prawym górnym rogu.
 
 ## Stan i co dalej
 
-**Działa:** mapa kuźni i placu, ruch z bezwładnością i kolizjami, kamera,
-oświetlenie z migotaniem, cienie od ognia, cząstki (iskry, kurz, pył), sześć
-wariantów goblina z animacjami spoczynku i biegu w trzech kierunkach, muzyka,
-ambient i kroki, suwaki głośności, serwer deweloperski z przeładowywaniem na żywo.
-**Multiplayer** — serwer autorytatywny, przewidywanie ruchu u klienta, interpolacja
-innych graczy, plakietki z nickami. **Wdrożone** na `mp.szabrownicy.goblinpc.pl`,
-wpięte w guzik GRAJ na goblinpc.pl.
+**Działa i jest wdrożone** na `mp.szabrownicy.goblinpc.pl`, wpięte w guzik GRAJ
+na goblinpc.pl (`app/gra/page.tsx` w repo `goblin-shop` — iframe na tę subdomenę):
+
+- mapa kuźni i placu, ruch z bezwładnością i kolizjami, kamera, oświetlenie
+  z migotaniem, cienie od ognia, cząstki, muzyka, ambient, kroki, suwaki głośności,
+- **multiplayer**: serwer autorytatywny, przewidywanie ruchu u klienta,
+  interpolacja innych graczy, plakietki z nickami,
+- **logowanie na nick i hasło**, konta trwałe, zastrzeżone nicki, odznaka admina,
+- **drewniana karczma**: bale, deski, wrota, gont, dach znikający po wejściu,
+- **ograniczona widoczność**: z hali nie widać placu i odwrotnie,
+- **okna z klinem widoczności** — ile widać przez okno, zależy od tego, gdzie stoisz,
+- panel diagnostyczny pod `F1` (wersja klienta, fps, ping, korekta pozycji).
+
+## Konta i logowanie
+
+Wejście to nick i hasło, bez maila. Wolny nick zakłada konto, zajęty wymaga hasła.
+
+- `server/src/accounts.js` — hasła solone i haszowane `scrypt` z wbudowanego
+  `crypto`. **Musi zostać asynchroniczne**: wersja synchroniczna blokuje pętlę
+  świata na kilkadziesiąt ms przy każdym logowaniu i wszyscy gracze przystają.
+- Ten sam komunikat dla złego hasła i nieistniejącego konta, `timingSafeEqual`,
+  zapis przez plik tymczasowy i `rename`.
+- **Zastrzeżone nicki** (`Goblin`, `GoblinPC`, `Admin`, `Obsluga`…) — porównanie
+  po formie znormalizowanej, więc `G0blin` i `g-o-b-l-i-n` też są zablokowane.
+  Konta na nich zakłada wyłącznie `server/src/admin.js` z konsoli serwera.
+- **Konto właściciela:** nick `Goblin`, odznaka admina. Hasło ustawione
+  narzędziem konsolowym — do zmiany przez `node server/src/admin.js haslo Goblin <nowe>`.
+- Odznaka admina (gwiazdka + pomarańczowa plakietka) leci **z serwera** w opisie
+  gracza. Nick da się wpisać, koloru plakietki nie — o to chodzi.
+- Dane logowania klient trzyma tylko w pamięci, żeby po zerwaniu sieci wrócić
+  bez pytania o hasło. W `localStorage` siedzi wyłącznie nick, do podpowiedzi.
 
 ## Sieć
 
@@ -182,15 +206,50 @@ kiedyś wróci, ma powstać przez rysowanie znak po znaku (`Canvas.fromAscii`),
 nie przez parametryzowanie prostokątów. I dopiero wtedy, gdy będzie po co —
 czyli przy ekwipunku widocznym na postaci.
 
+## Widoczność i okna
+
+`client/src/render/lighting.js` — przygaszanie liczone na **osobnym płótnie**:
+najpierw zaciemniamy wszystko, potem *wycinamy* to, co widać. Rysując wprost na
+maskę dawało się tylko dokładać ciemność, nie odejmować jej wybiórczo.
+
+- Rozmycie krawędzi budynku idzie **do wnętrza**. Wersja rozszerzająca prostokąt
+  na zewnątrz odsłaniała pas trawy za ścianą — pas między ścianą a skałą ma dwa
+  kafle, a rozmycie miało 30 px, więc nigdy nie gasł.
+- Test „czy jestem w środku" pyta o `BUILDING_PX` (obrys murów), **nie** o `ROOF_PX`
+  (rysunek dachu, krótszy o dwa kafle). Pomylenie ich dawało próg widoczności
+  przesunięty trzy kratki w głąb hali.
+- **Okna:** `WINDOWS` w `world/forge.js` to lista odcinków otworu w pikselach.
+  Klin widoczności liczy się od gracza przez oba końce odcinka — ta sama geometria
+  co przy rzucaniu cienia, tylko odwrócona. Otwór jest rozszerzany o 10 px na
+  stronę: uczciwy klin z okna szerokiego na kilkanaście pikseli jest bezużyteczny.
+  Opis okna to czysta geometria, więc **ten sam mechanizm obsłuży okna w domkach
+  graczy**, gdy dojdzie budowanie.
+- Klin nie zatrzymuje się na przeszkodach i liczy się od stóp, nie od oczu.
+  Świadomy skrót — do poprawy tylko jeśli będzie widać.
+
+## Narzędzia do sprawdzania (używać, nie zgadywać)
+
+Kilka błędów w układzie mapy dało się zauważyć dopiero w grze. Stąd:
+
+- `node tools/art/preview_world.js [x0 y0 x1 y1] [--bez-dachu]` — render wycinka
+  mapy do `docs/preview/swiat.png`, dokładnie tak jak widzi gracz. Stawia też
+  postać przy murze, żeby było widać, czy dach nie wchodzi jej na głowę.
+- `npm run art` produkuje arkusze kontrolne w `docs/preview/`. **Obejrzeć je
+  narzędziem Read przed powiedzeniem, że gotowe.**
+- Panel `F1` w grze: wersja klienta, fps, najdłuższa klatka, trzy źródła czasu,
+  ping, korekta pozycji. Powstał po awarii, w której „postać laguje" okazało się
+  wygładzaniem czasu w Phaserze, a nie problemem sieci.
+
 **Kolejka, w tej kolejności:**
 
-1. **Czat z dymkami** nad głowami.
-2. **Ekran startowy** z nickiem.
-4. **Wnętrze kuźni** — mur na 2–3 kafle wysokości, dach z belkami znikający po
-   wejściu pod niego. Teraz hala czyta się jak podwórko z płotkiem, nie jak wnętrze.
-5. **Ograniczona widoczność** — promienie od postaci zatrzymywane przez ściany.
-   Ten sam mechanizm obsłuży potem noc i kopalnię.
-6. Dalej: świat z chunków, ekwipunek, zbieranie, crafting, walka, bazy, PvP.
+1. **Czat z dymkami** nad głowami — protokół to przewiduje (`chat`), dochodzi pole
+   tekstowe, limity antyspamowe (1 wiadomość / 1,5 s, 120 znaków) i rysowanie dymka.
+2. **Tabela graczy pod TAB-em** — kto jest online i ilu ich jest. TAB zwolnił się
+   po usunięciu przełączania wariantów postaci.
+3. Dalej survival, w tej kolejności: chunki generowane z ziarna → ekwipunek →
+   zbieranie → crafting → walka i zwierzęta → bazy → PvP i rajdy.
+   Uzgodnione zasady: mały świat (nie otwarty — przy kilkunastu graczach nikogo
+   się nie spotyka), cykliczne wipe'y, pionowy plasterek zamiast szerokiego frontu.
 
 ## Wdrożenie
 
