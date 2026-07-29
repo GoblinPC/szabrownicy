@@ -1,0 +1,568 @@
+// Obiekty świata. Każdy ma punkt zaczepienia na dole pośrodku, żeby sortowanie
+// po osi Y odpowiadało temu, co gracz widzi: kto stoi niżej, ten jest z przodu.
+//
+// Wspólne zasady: górna płaszczyzna dostaje najjaśniejszy odcień rampy, front
+// średni, spód najciemniejszy, a całość obrys w kolorze sadzy — dzięki temu
+// sylwetka czyta się nawet w mroku, gdy warstwa świetlna przygasi wnętrze.
+
+import { Canvas } from './canvas.js';
+import { c } from './palette.js';
+import { makeRng, seedFrom } from './rng.js';
+
+const rngFor = (name) => makeRng(seedFrom(name));
+const OUTLINE = c('soot', 0);
+
+/** Domyka obiekt obrysem — wywoływane na końcu każdego generatora. */
+function finish(t) {
+  return t.outline(OUTLINE);
+}
+
+/** Deski ułożone pionowo z okuciami — beczki, skrzynie, wiadra. */
+function staves(t, x, y, w, h, ramp = 'wood') {
+  t.rect(x, y, w, h, c(ramp, 2));
+  for (let i = x + 2; i < x + w; i += 3) t.vline(i, y, y + h - 1, c(ramp, 1));
+  t.vline(x, y, y + h - 1, c(ramp, 1));
+  t.hline(x, x + w - 1, y + h - 1, c(ramp, 0));
+}
+
+// --- Kuźnia -------------------------------------------------------------------
+
+/** Palenisko z okapem — główne źródło światła we wnętrzu. */
+function hearth() {
+  const rng = rngFor('hearth');
+  const t = new Canvas(34, 40);
+
+  // Okap zwężający się ku kominowi.
+  for (let y = 0; y < 20; y++) {
+    const half = Math.round(6 + (y / 20) * 9);
+    t.hline(17 - half, 16 + half, y, c('stone', 2));
+    t.hline(17 - half, 13 - half + 4, y, c('stone', 3)); // światło na lewej połaci
+    t.px(17 - half, y, c('stone', 0));
+    t.px(16 + half, y, c('stone', 0));
+    if (y % 6 === 0) t.hline(17 - half, 16 + half, y, c('stone', 1));
+  }
+  // Osad dymu ciągnący się w górę okapu — przygaszenie, nie czarne plamy.
+  for (let y = 0; y < 20; y++) {
+    for (let x = 4; x < 30; x++) {
+      if (rng.next() < 0.4 * (1 - y / 24)) t.px(x, y, [0x14, 0x10, 0x0f, 70]);
+    }
+  }
+
+  // Kamienna podstawa.
+  t.rect(1, 20, 32, 18, c('stone', 1));
+  t.hline(1, 32, 20, c('stone', 3));
+  for (let row = 0; row < 3; row++) {
+    const y = 21 + row * 6;
+    t.hline(1, 32, y, c('stone', 0));
+    t.hline(1, 32, y + 1, c('stone', 2));
+    t.vline(row % 2 === 0 ? 9 : 16, y, y + 5, c('stone', 0));
+    t.vline(row % 2 === 0 ? 24 : 28, y, y + 5, c('stone', 0));
+  }
+  t.speckle(rng, c('stone', 0), 0.07, { x: 1, y: 20, w: 32, h: 18 });
+
+  // Czeluść paleniska: ciemne wnętrze, żar u dołu, gorące kamienie przy krawędzi.
+  t.rect(9, 22, 16, 13, c('soot', 0));
+  t.rect(9, 22, 16, 2, c('soot', 1));
+  for (let y = 28; y < 35; y++) {
+    for (let x = 9; x < 25; x++) {
+      const heat = (y - 27) / 7;
+      if (rng.next() < heat * 0.8) {
+        const shade = rng.next() < heat * 0.6 ? 3 : 1;
+        t.px(x, y, c('ember', shade));
+      }
+    }
+  }
+  for (let x = 9; x < 25; x++) {
+    if (rng.chance(0.5)) t.px(x, 34, c('ember', 4));
+    t.px(x, 35, c('ember', 0));
+  }
+  t.frame(8, 21, 18, 15, c('iron', 1)); // okucie czeluści
+  t.hline(8, 25, 21, c('iron', 2));
+  return finish(t);
+}
+
+/** Kowadło na pniaku — punkt orientacyjny środka kuźni. */
+function anvil() {
+  const t = new Canvas(16, 17);
+  // Pniak.
+  t.rect(3, 10, 10, 6, c('wood', 2));
+  t.hline(3, 12, 10, c('wood', 3));
+  t.hline(3, 12, 15, c('wood', 0));
+  t.vline(6, 11, 15, c('wood', 1));
+  t.vline(10, 11, 15, c('wood', 1));
+
+  // Korpus: płyta, przewężenie, stopa, róg po lewej.
+  t.rect(2, 1, 12, 3, c('iron', 3));
+  t.hline(2, 13, 1, c('iron', 4));
+  t.hline(2, 13, 3, c('iron', 1));
+  t.line(1, 2, 0, 3, c('iron', 2));
+  t.rect(5, 4, 6, 3, c('iron', 2));
+  t.rect(6, 5, 4, 2, c('iron', 1));
+  t.rect(3, 7, 10, 3, c('iron', 2));
+  t.hline(3, 12, 7, c('iron', 3));
+  t.hline(3, 12, 9, c('iron', 0));
+  return finish(t);
+}
+
+/** Kadź hartownicza — woda dostaje refleks, żeby łapała światło paleniska. */
+function trough() {
+  const t = new Canvas(20, 16);
+  staves(t, 0, 4, 20, 11);
+  t.rect(2, 2, 16, 4, c('night', 1)); // woda
+  t.rect(2, 2, 16, 1, c('night', 3));
+  t.hline(4, 9, 3, c('night', 4));
+  t.hline(12, 15, 4, c('night', 2));
+  t.frame(0, 2, 20, 13, c('wood', 1));
+  t.hline(0, 19, 8, c('iron', 2)); // obręcz
+  t.hline(0, 19, 13, c('iron', 2));
+  return finish(t);
+}
+
+/** Miech przy palenisku — szeroki z tyłu, zwężający się ku dyszy. */
+function bellows() {
+  const t = new Canvas(24, 15);
+  for (let x = 0; x < 19; x++) {
+    const half = Math.round(6.5 * Math.sqrt(Math.max(0, 1 - (x / 18) ** 2)));
+    if (half < 1) continue;
+    t.vline(x, 7 - half, 7 + half, c('wood', 2));
+    t.px(x, 7 - half, c('wood', 3)); // górna deska łapie światło
+    t.px(x, 7 + half, c('wood', 0)); // spód w cieniu
+  }
+  for (let x = 2; x < 17; x += 3) t.vline(x, 4, 10, c('wood', 1)); // skórzane fałdy
+  t.hline(0, 17, 7, c('wood', 4));   // szpara między deskami
+  t.rect(18, 6, 6, 3, c('iron', 2)); // dysza
+  t.hline(18, 23, 6, c('iron', 3));
+  t.hline(18, 23, 8, c('iron', 1));
+  t.rect(0, 1, 3, 4, c('wood', 3));  // rączka
+  return finish(t);
+}
+
+/** Stół roboczy z narzędziami. */
+function workbench() {
+  const t = new Canvas(30, 18);
+  t.rect(0, 2, 30, 4, c('wood', 3)); // blat
+  t.hline(0, 29, 2, c('wood', 4));
+  t.hline(0, 29, 5, c('wood', 1));
+  t.rect(1, 6, 4, 11, c('wood', 1)); // nogi
+  t.rect(25, 6, 4, 11, c('wood', 1));
+  t.rect(5, 7, 20, 3, c('soot', 1)); // cień pod blatem
+  // Narzędzia leżące na blacie.
+  t.rect(4, 0, 2, 2, c('iron', 2));
+  t.rect(3, 0, 4, 1, c('iron', 3));
+  t.vline(5, 1, 2, c('wood', 2));
+  t.rect(11, 0, 6, 2, c('iron', 1));
+  t.hline(11, 16, 0, c('iron', 3));
+  t.rect(21, 0, 3, 2, c('copper'));
+  return finish(t);
+}
+
+/** Stojak z bronią — docelowo witryna sklepu. */
+function rack() {
+  const t = new Canvas(20, 28);
+  t.rect(0, 24, 20, 3, c('wood', 1)); // podstawa
+  t.rect(1, 2, 3, 23, c('wood', 2));  // słupki
+  t.rect(16, 2, 3, 23, c('wood', 2));
+  t.rect(0, 1, 20, 3, c('wood', 3));  // belka górna
+  t.hline(0, 19, 1, c('wood', 4));
+
+  // Trzy sztuki broni oparte o stojak.
+  t.rect(6, 4, 2, 18, c('iron', 3));
+  t.rect(6, 4, 2, 2, c('iron', 4));
+  t.rect(5, 21, 4, 2, c('wood', 2));
+  t.rect(10, 6, 2, 16, c('iron', 2));
+  t.rect(9, 5, 4, 2, c('iron', 3));
+  t.rect(10, 21, 2, 3, c('copper'));
+  t.rect(13, 8, 3, 6, c('iron', 2)); // topór
+  t.rect(14, 13, 1, 10, c('wood', 2));
+  return finish(t);
+}
+
+/** Regał ze skrzyniami i słojami. */
+function shelf() {
+  const t = new Canvas(26, 24);
+  t.rect(0, 0, 26, 24, c('wood', 1));
+  for (let i = 0; i < 3; i++) {
+    const y = 1 + i * 8;
+    t.rect(1, y, 24, 6, c('soot', 1));
+    t.hline(1, 24, y + 6, c('wood', 3));
+  }
+  t.rect(3, 2, 5, 5, c('wood', 3));   // skrzynka
+  t.rect(12, 3, 4, 4, c('copper'));   // dzban
+  t.rect(4, 10, 4, 5, c('night', 2)); // słoje
+  t.rect(10, 11, 3, 4, c('ember', 1));
+  t.rect(17, 10, 5, 5, c('wood', 2));
+  t.rect(6, 18, 6, 5, c('wood', 3));
+  t.rect(16, 19, 4, 4, c('iron', 2));
+  return finish(t);
+}
+
+/**
+ * Pochodnia ścienna. Kluczowy jest wspornik u dołu: to on wbija się w mur
+ * i sprawia, że pochodnia wisi, a nie stoi oparta o ścianę. Trzonek jest krótki
+ * i pochylony, bo długi kij czytał się jak włócznia postawiona przy murze.
+ */
+function torch() {
+  const t = new Canvas(8, 12);
+  t.rect(0, 8, 3, 4, c('iron', 1)); // stopa wbita w mur
+  t.hline(0, 2, 8, c('iron', 2));
+  t.vline(0, 8, 11, c('iron', 0));
+  t.line(2, 10, 5, 6, c('iron', 2)); // ukośne ramię
+  t.line(2, 9, 5, 5, c('iron', 3));
+
+  t.rect(3, 3, 2, 6, c('wood', 2)); // trzonek
+  t.vline(3, 3, 8, c('wood', 3));
+  t.vline(4, 3, 8, c('wood', 1));
+
+  t.rect(2, 1, 4, 3, c('iron', 2)); // czasza
+  t.hline(2, 5, 1, c('iron', 3));
+  t.hline(1, 6, 3, c('iron', 1));
+  t.rect(3, 0, 2, 1, c('ember', 2)); // żar w czaszy
+  return finish(t);
+}
+
+// --- Plac ---------------------------------------------------------------------
+
+function barrel() {
+  const t = new Canvas(12, 18);
+  staves(t, 0, 3, 12, 14);
+  t.ellipse(6, 4, 6, 3, c('wood', 3)); // wieko
+  t.ellipse(6, 4, 4, 2, c('wood', 4));
+  t.hline(0, 11, 8, c('iron', 2));
+  t.hline(0, 11, 14, c('iron', 2));
+  t.hline(0, 11, 9, c('iron', 1));
+  return finish(t);
+}
+
+function crate() {
+  const t = new Canvas(15, 16);
+  t.rect(0, 3, 15, 12, c('wood', 2));
+  t.rect(0, 3, 15, 2, c('wood', 3)); // górna płaszczyzna
+  t.frame(0, 3, 15, 12, c('wood', 1));
+  t.line(1, 13, 13, 5, c('wood', 1)); // zastrzał
+  t.hline(0, 14, 14, c('wood', 0));
+  t.vline(2, 4, 14, c('wood', 1));
+  t.vline(12, 4, 14, c('wood', 1));
+  return finish(t);
+}
+
+function bucket() {
+  const t = new Canvas(10, 12);
+  staves(t, 0, 3, 10, 8);
+  t.hline(0, 9, 6, c('iron', 2));
+  t.ellipse(5, 3, 5, 2, c('night', 2)); // woda
+  t.line(0, 3, 5, 0, c('iron', 2));     // pałąk
+  t.line(5, 0, 9, 3, c('iron', 2));
+  return finish(t);
+}
+
+function well() {
+  const t = new Canvas(24, 26);
+  t.rect(2, 12, 20, 12, c('stone', 1)); // cembrowina
+  t.ellipse(12, 13, 10, 4, c('stone', 2));
+  t.ellipse(12, 13, 8, 3, c('soot', 0)); // otwór
+  for (let row = 0; row < 2; row++) {
+    const y = 16 + row * 4;
+    t.hline(2, 21, y, c('stone', 0));
+    t.hline(2, 21, y + 1, c('stone', 3));
+  }
+  t.rect(3, 2, 2, 11, c('wood', 2)); // słupki daszku
+  t.rect(19, 2, 2, 11, c('wood', 2));
+  for (let i = 0; i < 6; i++) { // daszek dwuspadowy
+    t.hline(2 + i, 21 - i, i, c('wood', i % 2 ? 2 : 3));
+  }
+  t.rect(6, 8, 12, 2, c('wood', 1)); // wał
+  t.rect(11, 9, 2, 4, c('iron', 2)); // łańcuch
+  return finish(t);
+}
+
+function cart() {
+  const t = new Canvas(30, 24);
+  t.rect(2, 6, 26, 9, c('wood', 2)); // skrzynia
+  t.rect(2, 6, 26, 2, c('wood', 3));
+  for (let x = 4; x < 28; x += 4) t.vline(x, 8, 14, c('wood', 1));
+  t.hline(2, 27, 14, c('wood', 0));
+  t.rect(0, 4, 30, 2, c('wood', 1)); // burta
+  // Koła z piastą i szprychami.
+  for (const cx of [7, 22]) {
+    t.ellipse(cx, 18, 6, 6, c('wood', 1));
+    t.ellipse(cx, 18, 4, 4, c('soot', 1));
+    t.ellipse(cx, 18, 2, 2, c('wood', 3));
+    t.hline(cx - 5, cx + 5, 18, c('wood', 2));
+    t.vline(cx, 13, 23, c('wood', 2));
+  }
+  t.rect(24, 2, 6, 2, c('foliage', 2)); // ładunek
+  t.rect(4, 2, 8, 3, c('wood', 3));
+  return finish(t);
+}
+
+function noticeBoard() {
+  const t = new Canvas(22, 26);
+  t.rect(3, 20, 3, 6, c('wood', 1)); // nogi
+  t.rect(16, 20, 3, 6, c('wood', 1));
+  t.rect(0, 2, 22, 19, c('wood', 2)); // tablica
+  t.frame(0, 2, 22, 19, c('wood', 1));
+  t.rect(2, 4, 18, 15, c('wood', 3));
+  for (let i = 0; i < 8; i++) { // słoje desek
+    t.hline(2, 19, 5 + i * 2, c('wood', 2));
+  }
+  // Przypięte kartki.
+  t.rect(4, 6, 7, 6, c('parchment'));
+  t.rect(4, 6, 7, 1, c('bone'));
+  t.rect(13, 9, 6, 7, c('parchment'));
+  t.px(7, 6, c('iron', 3));
+  t.px(16, 9, c('iron', 3));
+  for (let i = 0; i < 5; i++) t.hline(5, 9, 8 + i, i % 2 ? c('soot', 2) : c('soot', 1));
+  for (let i = 0; i < 4; i++) t.hline(14, 18, 11 + i, i % 2 ? c('soot', 2) : c('soot', 1));
+  for (let i = 0; i < 4; i++) { // daszek
+    t.hline(i, 21 - i, i, c('wood', i % 2 ? 1 : 2));
+  }
+  return finish(t);
+}
+
+function logPile() {
+  const t = new Canvas(24, 16);
+  const rng = rngFor('logs');
+  for (let row = 0; row < 3; row++) {
+    const y = 12 - row * 4;
+    const inset = row * 3;
+    for (let x = inset; x < 24 - inset; x += 5) {
+      t.ellipse(x + 2, y, 3, 2, c('wood', 2));
+      t.ellipse(x + 2, y - 1, 2, 1, c('wood', 3));
+      t.px(x + 2, y - 1, c('wood', 1));
+      if (rng.chance(0.4)) t.px(x + 3, y, c('wood', 4));
+    }
+  }
+  return finish(t);
+}
+
+function tree() {
+  const rng = rngFor('tree');
+  const t = new Canvas(34, 46);
+  // Pień z korzeniami.
+  t.rect(14, 30, 6, 15, c('wood', 1));
+  t.rect(15, 30, 3, 15, c('wood', 2));
+  t.vline(16, 32, 44, c('wood', 3));
+  t.line(14, 42, 10, 45, c('wood', 1));
+  t.line(19, 42, 23, 45, c('wood', 1));
+
+  // Korona z kilku zachodzących na siebie kęp.
+  const blobs = [[17, 14, 15, 12], [9, 20, 9, 8], [25, 20, 9, 8], [17, 24, 12, 8], [12, 10, 7, 6], [23, 11, 7, 6]];
+  for (const [cx, cy, rx, ry] of blobs) t.ellipse(cx, cy, rx, ry, c('foliage', 2));
+  // Światło pada z góry z lewej, więc tam kładziemy jaśniejsze odcienie.
+  for (const [cx, cy, rx, ry] of blobs) t.ellipse(cx - 1, cy - 2, rx - 2, ry - 2, c('foliage', 3));
+  t.ellipse(13, 12, 6, 5, c('foliage', 4));
+  t.ellipse(20, 16, 5, 4, c('foliage', 4));
+  // Spód korony ciemnieje.
+  for (const [cx, cy, rx, ry] of blobs) {
+    for (let x = cx - rx; x <= cx + rx; x++) {
+      for (let y = cy + Math.floor(ry * 0.4); y <= cy + ry; y++) {
+        if (t.alphaAt(x, y) > 0 && rng.chance(0.5)) t.px(x, y, c('foliage', 1));
+      }
+    }
+  }
+  t.speckle(rng, c('foliage', 0), 0.05, { x: 2, y: 4, w: 30, h: 28 });
+  return finish(t);
+}
+
+function boulder() {
+  const rng = rngFor('boulder');
+  const t = new Canvas(17, 14);
+  t.ellipse(8, 9, 8, 5, c('stone', 1));
+  t.ellipse(8, 8, 7, 4, c('stone', 2));
+  t.ellipse(6, 6, 4, 2, c('stone', 3));
+  t.speckle(rng, c('stone', 0), 0.12, { x: 1, y: 5, w: 15, h: 9 });
+  return finish(t);
+}
+
+function fence() {
+  const t = new Canvas(16, 18);
+  t.rect(1, 4, 3, 13, c('wood', 2));
+  t.rect(11, 4, 3, 13, c('wood', 2));
+  t.hline(1, 3, 4, c('wood', 3));
+  t.hline(11, 13, 4, c('wood', 3));
+  t.rect(0, 7, 16, 2, c('wood', 2));
+  t.rect(0, 12, 16, 2, c('wood', 2));
+  t.hline(0, 15, 7, c('wood', 3));
+  t.hline(0, 15, 12, c('wood', 3));
+  return finish(t);
+}
+
+/** Ognisko na placu — miejsce, przy którym gracze naturalnie się zbierają. */
+function campfire() {
+  const rng = rngFor('campfire');
+  const t = new Canvas(20, 16);
+  // Wieniec kamieni.
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    const x = 10 + Math.cos(a) * 8;
+    const y = 11 + Math.sin(a) * 4;
+    t.ellipse(x, y, 2.4, 1.8, c('stone', 1));
+    t.ellipse(x, y - 0.5, 1.8, 1.2, c('stone', 2));
+  }
+  // Skrzyżowane polana i żar pod nimi.
+  t.line(4, 12, 15, 7, c('wood', 1));
+  t.line(4, 11, 15, 6, c('wood', 2));
+  t.line(5, 6, 16, 12, c('wood', 1));
+  t.line(5, 7, 16, 13, c('wood', 2));
+  for (let i = 0; i < 20; i++) {
+    const x = rng.between(5, 14);
+    const y = rng.between(8, 12);
+    t.px(x, y, c('ember', rng.chance(0.4) ? 3 : 1));
+  }
+  return finish(t);
+}
+
+/**
+ * Brama w murze — przejście z kuźni na plac. Prześwit ma 32 piksele, czyli
+ * dokładnie dwa kafle, żeby dziura w murze pokrywała się z rysunkiem.
+ */
+function gateArch() {
+  const rng = rngFor('gate');
+  const t = new Canvas(48, 32);
+  t.rect(0, 4, 48, 28, c('stone', 1));
+  t.hline(0, 47, 4, c('stone', 3)); // korona muru
+  for (let row = 1; row < 5; row++) {
+    const y = 4 + row * 6;
+    t.hline(0, 47, y, c('stone', 0));
+    t.hline(0, 47, y + 1, c('stone', 2));
+  }
+  t.speckle(rng, c('stone', 0), 0.06, { x: 0, y: 4, w: 48, h: 28 });
+
+  // Prześwit: prostokąt 32 px domknięty od góry łukiem.
+  t.rect(8, 12, 32, 20, c('soot', 0));
+  for (let x = 8; x < 40; x++) {
+    const dx = (x - 23.5) / 16;
+    const top = 12 - Math.round(Math.sqrt(Math.max(0, 1 - dx * dx)) * 7);
+    t.vline(x, top, 12, c('soot', 0));
+  }
+  for (let x = 7; x < 41; x++) { // kamienne klińce łuku
+    const dx = (x - 23.5) / 17;
+    const top = 12 - Math.round(Math.sqrt(Math.max(0, 1 - dx * dx)) * 8);
+    t.px(x, top - 1, c('stone', 3));
+    t.px(x, top, c('stone', 2));
+    if (x % 4 === 0) t.px(x, top + 1, c('stone', 0));
+  }
+  t.rect(6, 10, 2, 22, c('stone', 3)); // węgary
+  t.rect(40, 10, 2, 22, c('stone', 3));
+  // Chorągiew klanu nad przejściem.
+  t.rect(22, 5, 4, 6, c('blood'));
+  t.hline(22, 25, 5, c('iron', 3));
+  t.px(23, 10, c('blood'));
+  return finish(t);
+}
+
+/** Portal do przyszłych minigierek — na razie wygaszony, z pustym łukiem. */
+function portal(active) {
+  const name = active ? 'portal_on' : 'portal_off';
+  const rng = rngFor(name);
+  const t = new Canvas(28, 40);
+  // Kamienny łuk.
+  t.rect(0, 10, 5, 29, c('stone', 1));
+  t.rect(23, 10, 5, 29, c('stone', 1));
+  t.rect(0, 10, 5, 2, c('stone', 3));
+  t.rect(23, 10, 5, 2, c('stone', 3));
+  for (let x = 0; x < 28; x++) {
+    const dx = (x - 13.5) / 14;
+    const top = 12 - Math.round(Math.sqrt(Math.max(0, 1 - dx * dx)) * 11);
+    t.vline(x, top, top + 4, c('stone', 1));
+    t.hline(x, x, top, c('stone', 3));
+  }
+  for (let row = 0; row < 5; row++) {
+    t.hline(0, 4, 14 + row * 5, c('stone', 0));
+    t.hline(23, 27, 14 + row * 5, c('stone', 0));
+  }
+
+  // Wnętrze: pustka albo wir energii.
+  for (let y = 8; y < 39; y++) {
+    for (let x = 5; x < 23; x++) {
+      const dx = (x - 14) / 9;
+      const dy = (y - 24) / 16;
+      if (dx * dx + dy * dy > 1) continue;
+      if (!active) {
+        t.px(x, y, rng.chance(0.15) ? c('soot', 1) : c('soot', 0));
+      } else {
+        const swirl = Math.sin((x * 0.7 + y * 0.4)) * 0.5 + 0.5;
+        t.px(x, y, swirl > 0.6 ? c('magic') : c('night', swirl > 0.3 ? 3 : 1));
+      }
+    }
+  }
+  t.speckle(rng, c('stone', 2), 0.06, { x: 0, y: 10, w: 28, h: 29 });
+  return finish(t);
+}
+
+// --- Ogień (klatki animacji) --------------------------------------------------
+
+/**
+ * Płomień jako 4 klatki. Kształt liczony z funkcji falującej w czasie, więc
+ * animacja zapętla się gładko i nie widać, gdzie zaczyna się pętla.
+ */
+function flame(width, height, frame, seedName) {
+  const rng = makeRng(seedFrom(`${seedName}${frame}`));
+  const t = new Canvas(width, height);
+  const phase = (frame / 4) * Math.PI * 2;
+  const cx = width / 2;
+
+  for (let y = 0; y < height; y++) {
+    const up = 1 - y / height;                       // 1 u wierzchołka, 0 przy podstawie
+    const sway = Math.sin(phase + up * 3) * up * (width * 0.12);
+    const halfWidth = (width / 2) * Math.pow(1 - up, 0.55) * (0.85 + 0.15 * Math.sin(phase * 2 + up * 5));
+    for (let x = 0; x < width; x++) {
+      const d = Math.abs(x - cx - sway) / Math.max(0.6, halfWidth);
+      if (d > 1) continue;
+      // Rdzeń jest najjaśniejszy, brzegi schodzą ku czerwieni.
+      const heat = (1 - d) * (0.45 + up * 0.75);
+      let shade;
+      if (heat > 0.85) shade = 4;
+      else if (heat > 0.6) shade = 3;
+      else if (heat > 0.35) shade = 2;
+      else shade = 1;
+      if (heat < 0.18 && rng.chance(0.5)) continue; // postrzępiony brzeg
+      t.px(x, y, c('ember', shade));
+    }
+  }
+  // Odrywające się iskry nad płomieniem.
+  for (let i = 0; i < 3; i++) {
+    const x = Math.round(cx + rng.range(-width * 0.3, width * 0.3));
+    const y = rng.int(Math.max(1, Math.floor(height * 0.35)));
+    t.px(x, y, c('ember', 4));
+  }
+  return t;
+}
+
+// --- Zestaw -------------------------------------------------------------------
+
+export function buildProps() {
+  const entries = [];
+  const add = (name, canvas) => entries.push({ name, canvas });
+
+  add('hearth', hearth());
+  add('anvil', anvil());
+  add('trough', trough());
+  add('bellows', bellows());
+  add('workbench', workbench());
+  add('rack', rack());
+  add('shelf', shelf());
+  add('torch', torch());
+  add('barrel', barrel());
+  add('crate', crate());
+  add('bucket', bucket());
+  add('well', well());
+  add('cart', cart());
+  add('board', noticeBoard());
+  add('logs', logPile());
+  add('tree', tree());
+  add('boulder', boulder());
+  add('fence', fence());
+  add('campfire', campfire());
+  add('gate', gateArch());
+  add('portal_off', portal(false));
+  add('portal_on', portal(true));
+
+  for (let f = 0; f < 4; f++) {
+    add(`flame_small_${f}`, flame(6, 9, f, 'small'));
+    add(`flame_mid_${f}`, flame(12, 15, f, 'mid'));
+    add(`flame_big_${f}`, flame(16, 18, f, 'big'));
+  }
+
+  return entries;
+}

@@ -1,0 +1,10 @@
+{
+  "name": "szabrownicy",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "art": "node tools/art/build.js",
+    "start": "npm --prefix server start"
+  }
+}

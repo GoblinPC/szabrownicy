@@ -1,84 +1,96 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="pl">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Szabrownicy</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Szabrownicy — Kuźnia</title>
 <style>
-  html, body { margin: 0; padding: 0; background: #1b1611; color: #f1e6d0; font-family: "Segoe UI", sans-serif; height: 100%; overflow: hidden; }
-  #home { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; }
-  #home h1 { font-size: 2.4em; margin: 0; color: #ffd43b; text-shadow: 2px 2px 0 #000; }
-  #home .panel { background: rgba(0,0,0,0.35); border: 2px solid #6b5335; border-radius: 10px; padding: 20px 28px; min-width: 280px; text-align: center; }
-  #home input { font-size: 1em; padding: 6px 10px; border-radius: 6px; border: 1px solid #6b5335; background: #2a2118; color: #f1e6d0; margin-bottom: 10px; }
-  #home button { font-size: 1.2em; padding: 10px 26px; border-radius: 8px; border: none; background: #c0392b; color: white; cursor: pointer; font-weight: bold; }
-  #home button:hover { background: #e74c3c; }
-  #leaderboard { list-style: none; padding: 0; margin: 0; }
-  #leaderboard li { padding: 2px 0; }
-
-  .slots { display: flex; gap: 8px; }
-  .slot {
-    position: relative;
-    width: 60px; height: 60px;
-    background: linear-gradient(#3a2c1c, #241a10);
-    border: 3px solid #7a5c37;
-    border-radius: 8px;
-    box-shadow: inset 0 0 6px rgba(0,0,0,0.6);
-    display: flex; align-items: center; justify-content: center;
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background: #0b0908;
+    overflow: hidden;
+    font-family: monospace;
+    color: #bda997;
   }
-  .slot img { max-width: 78%; max-height: 78%; object-fit: contain; image-rendering: pixelated; filter: drop-shadow(1px 1px 1px rgba(0,0,0,0.6)); transition: opacity 0.15s; }
-  .slot.empty img { opacity: 0.25; filter: grayscale(1) drop-shadow(1px 1px 1px rgba(0,0,0,0.6)); }
-  .slot .count {
-    position: absolute; right: 3px; bottom: 1px;
-    font-size: 13px; font-weight: bold; color: #fff;
-    text-shadow: 1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000;
+  #game { width: 100vw; height: 100vh; }
+  #game canvas { display: block; image-rendering: pixelated; }
+  #boot {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    place-content: center;
+    text-align: center;
+    letter-spacing: 2px;
+    pointer-events: none;
+    transition: opacity .4s;
   }
 
-  #raid-container { position: absolute; inset: 0; display: none; }
-  #hud-hint { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.5); padding: 6px 12px; border-radius: 8px; font-size: 0.85em; pointer-events: none; }
-  #backpack-bar { position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 4px; }
-  #backpack-bar .label { font-size: 0.8em; opacity: 0.8; background: rgba(0,0,0,0.4); padding: 2px 10px; border-radius: 6px; }
-  #toast { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.7); padding: 10px 20px; border-radius: 8px; font-size: 1.2em; display: none; }
-  .hidden { display: none !important; }
+  #mixer {
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    background: rgba(20, 16, 15, .82);
+    border: 1px solid #453b37;
+    border-radius: 4px;
+    font-size: 11px;
+    user-select: none;
+  }
+  .mixer-toggle {
+    display: block;
+    width: 100%;
+    background: none;
+    border: 0;
+    border-bottom: 1px solid #2e2725;
+    color: #f2700f;
+    font: inherit;
+    text-align: left;
+    padding: 5px 8px;
+    cursor: pointer;
+  }
+  .mixer-body { display: grid; gap: 5px; padding: 7px 8px 9px; }
+  .mixer-row {
+    display: grid;
+    grid-template-columns: 74px 108px 34px;
+    align-items: center;
+    gap: 6px;
+  }
+  .mixer-label { color: #a08d7e; }
+  .mixer-value { color: #5c4f49; text-align: right; }
+  .mixer-row input[type=range] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 4px;
+    background: #2e2725;
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+  }
+  .mixer-row input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 9px;
+    height: 14px;
+    background: #f2700f;
+    border: 0;
+    border-radius: 1px;
+    cursor: pointer;
+  }
+  .mixer-row input[type=range]::-moz-range-thumb {
+    width: 9px;
+    height: 14px;
+    background: #f2700f;
+    border: 0;
+    border-radius: 1px;
+    cursor: pointer;
+  }
 </style>
 </head>
 <body>
-
-<div id="home">
-  <h1>Szabrownicy</h1>
-  <div class="panel">
-    <div>Twoje imię:</div>
-    <input id="name-input" maxlength="20" />
-    <div class="label" style="margin-bottom:6px;">Twój schowek (bezpieczny)</div>
-    <div class="slots">
-      <div class="slot" data-type="wood"><img src="assets/icons/wood.png" /><span class="count" id="s-wood">0</span></div>
-      <div class="slot" data-type="gold"><img src="assets/icons/gold.png" /><span class="count" id="s-gold">0</span></div>
-      <div class="slot" data-type="meat"><img src="assets/icons/meat.png" /><span class="count" id="s-meat">0</span></div>
-      <div class="slot" data-type="rare"><img src="assets/icons/rare.png" /><span class="count" id="s-rare">0</span></div>
-    </div>
-    <br />
-    <button id="go-btn">Idź na wyprawę</button>
-  </div>
-  <div class="panel">
-    <h3>Tablica Szabrowników</h3>
-    <ol id="leaderboard"></ol>
-  </div>
-</div>
-
-<div id="raid-container">
-  <div id="hud-hint">WASD/strzałki = ruch · SPACJA/klik = atak</div>
-  <div id="backpack-bar">
-    <div class="label">Plecak (tracisz to po trafieniu!)</div>
-    <div class="slots">
-      <div class="slot empty" data-type="wood"><img src="assets/icons/wood.png" /><span class="count" id="c-wood"></span></div>
-      <div class="slot empty" data-type="gold"><img src="assets/icons/gold.png" /><span class="count" id="c-gold"></span></div>
-      <div class="slot empty" data-type="meat"><img src="assets/icons/meat.png" /><span class="count" id="c-meat"></span></div>
-      <div class="slot empty" data-type="rare"><img src="assets/icons/rare.png" /><span class="count" id="c-rare"></span></div>
-    </div>
-  </div>
-  <div id="toast"></div>
-</div>
-
-<script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
-<script type="module" src="src/main.js"></script>
+  <div id="game"></div>
+  <div id="boot">rozpalanie pieca…</div>
+  <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
+  <script type="module" src="src/main.js"></script>
 </body>
 </html>

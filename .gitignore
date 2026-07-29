@@ -1,3 +1,11 @@
 node_modules/
 server/data/
 *.log
+
+# Pobrane paczki grafiki z czasów prototypu. Nic ich już nie używa — cała
+# grafika powstaje w tools/art/ — a mają obcą licencję, więc nie trafiają do repo.
+#
+# Ukośnik z przodu jest konieczny: Git na Windowsie nie rozróżnia wielkości liter,
+# więc niezakotwiczone „Assets/" wykluczało też client/assets/ z całą wygenerowaną
+# grafiką.
+/Assets/
