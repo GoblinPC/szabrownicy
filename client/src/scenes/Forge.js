@@ -204,9 +204,9 @@ export class ForgeScene extends Phaser.Scene {
 
   update(time, delta) {
     const dt = Math.min(delta, 50) / 1000;
-    this.movePlayer(delta, time);
+    this.movePlayer(delta);
     this.animatePlayer(time);
-    this.updateOthers(time);
+    this.updateOthers();
     this.lighting.update(time);
     this.updateAmbience(dt);
     this.reportZone();
@@ -245,7 +245,7 @@ export class ForgeScene extends Phaser.Scene {
    * Klawisze idą do warstwy sieciowej jako maska bitowa. Fizyka liczy się
    * w `world/movement.js` — tym samym kodem, którego używa serwer.
    */
-  movePlayer(delta, time) {
+  movePlayer(delta) {
     let keys = 0;
     if (this.keys.left.isDown || this.cursors.left.isDown) keys |= KEY_LEFT;
     if (this.keys.right.isDown || this.cursors.right.isDown) keys |= KEY_RIGHT;
@@ -253,7 +253,7 @@ export class ForgeScene extends Phaser.Scene {
     if (this.keys.down.isDown || this.cursors.down.isDown) keys |= KEY_DOWN;
     if (this.keys.shift.isDown) keys |= KEY_RUN;
 
-    const body = this.net.update(keys, delta, time);
+    const body = this.net.update(keys, delta);
     if (!body) return;
     this.px = body.x;
     this.py = body.y;
@@ -291,8 +291,8 @@ export class ForgeScene extends Phaser.Scene {
    * Inni gracze. Pozycje bierzemy sprzed 100 ms i interpolowane, więc ruch jest
    * gładki mimo dwudziestu migawek na sekundę.
    */
-  updateOthers(time) {
-    const samples = this.net.sampleRemotes(time);
+  updateOthers() {
+    const samples = this.net.sampleRemotes();
     const seen = new Set();
 
     for (const sample of samples) {
@@ -330,6 +330,8 @@ export class ForgeScene extends Phaser.Scene {
       this.shadows.remove(other.shadow);
       this.others.delete(id);
     }
+
+    this.scene.get('Hud')?.setNetStats(this.net.rtt, this.net.error, this.others.size);
 
     // Plakietki rysuje HUD, bo jego kamera nie jest powiększana — dzięki temu
     // nick zostaje mały i ostry niezależnie od zoomu świata.

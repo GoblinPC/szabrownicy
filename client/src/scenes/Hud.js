@@ -48,7 +48,22 @@ export class HudScene extends Phaser.Scene {
   }
 
   setNet(text) {
+    this.netStatus = text;
     this.net.setText(`sieć: ${text}`);
+  }
+
+  /**
+   * Liczby zamiast wrażeń: czas odpowiedzi serwera i wielkość korekty pozycji.
+   * Korekta bliska zeru znaczy, że przewidywanie u klienta zgadza się z serwerem
+   * — jeśli rośnie, ruch będzie szarpać.
+   */
+  setNetStats(rtt, error, others) {
+    if (this.netStatus !== 'połączony') return;
+    const now = this.time.now;
+    // Odświeżanie napisu co klatkę jest niepotrzebne i tylko miga liczbami.
+    if (now - (this.lastStats ?? 0) < 250) return;
+    this.lastStats = now;
+    this.net.setText(`sieć: ${Math.round(rtt)} ms   korekta ${error.toFixed(1)} px   obok: ${others}`);
   }
 
   /**

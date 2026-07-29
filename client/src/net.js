@@ -47,6 +47,13 @@ export class Net {
     this.listeners = [];
     this.socket = null;
     this.retryIn = 500;
+
+    // Pomiary do podglądu w HUD. `error` to odległość między tym, co klient
+    // przewidział, a tym, co wyszło po zestawieniu z serwerem — przy zdrowym
+    // odtwarzaniu komend powinna być bliska zeru.
+    this.rtt = 0;
+    this.error = 0;
+    this.sentAt = new Map();
   }
 
   onStatus(callback) {
@@ -162,6 +169,18 @@ export class Net {
   reconcile(message) {
     const now = performance.now();
 
+    const sent = this.sentAt.get(message.ack);
+    if (sent !== undefined) {
+      // Wygładzone, bo pojedynczy pakiet potrafi się spóźnić i liczba skakałaby.
+      this.rtt = this.rtt ? this.rtt * 0.8 + (now - sent) * 0.2 : now - sent;
+      for (const seq of this.sentAt.keys()) {
+        if (seq <= message.ack) this.sentAt.delete(seq);
+      }
+    }
+
+    const predictedX = this.body.x;
+    const predictedY = this.body.y;
+
     this.body.x = message.you.x;
     this.body.y = message.you.y;
     this.body.vx = message.you.vx;
@@ -171,6 +190,8 @@ export class Net {
     for (const [, keys, ms] of this.pending) {
       advance(this.world, this.body, keys, ms / 1000);
     }
+
+    this.error = Math.hypot(this.body.x - predictedX, this.body.y - predictedY);
 
     for (const p of message.ps) {
       const remote = this.upsert(p);
@@ -185,9 +206,14 @@ export class Net {
    * Jedna klatka sterowania: przewiduje ruch u siebie i dokłada komendę do
    * wysyłki. Zwraca pozycję do narysowania.
    */
-  update(keys, deltaMs, now) {
+  update(keys, deltaMs) {
     if (!this.body) return null;
 
+    // Wszystkie czasy w tym pliku pochodzą z `performance.now()`. Zegar Phasera
+    // liczy od startu gry, nie od wczytania strony — mieszanie ich sprawiało, że
+    // interpolacja szukała w buforze chwili, której tam nie było, i zamiast
+    // wygładzać ruch innych graczy przyklejała się do ostatniej migawki.
+    const now = performance.now();
     const ms = Math.max(1, Math.min(MAX_COMMAND_MS, Math.round(deltaMs)));
     this.seq++;
     const command = [this.seq, keys, ms];
@@ -200,6 +226,8 @@ export class Net {
     // przy identycznym odczuciu sterowania.
     if (now - this.lastSend >= SEND_INTERVAL && this.outbox.length) {
       this.lastSend = now;
+      this.sentAt.set(this.outbox[this.outbox.length - 1][0], now);
+      if (this.sentAt.size > 120) this.sentAt.delete(this.sentAt.keys().next().value);
       this.send({ t: 'in', c: this.outbox });
       this.outbox = [];
     }
@@ -216,8 +244,8 @@ export class Net {
   }
 
   /** Pozycje innych graczy w chwili "teraz minus opóźnienie interpolacji". */
-  sampleRemotes(now) {
-    const target = now - INTERP_DELAY;
+  sampleRemotes() {
+    const target = performance.now() - INTERP_DELAY;
     const result = [];
 
     for (const remote of this.remotes.values()) {
