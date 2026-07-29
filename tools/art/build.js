@@ -200,7 +200,7 @@ function buildGoblinPreview(font, goblins) {
  * w dwóch karnacjach, w samych majtkach i ubrana, plus cykl biegu z profilu.
  */
 function buildHumanPreview(font) {
-  const COL = 96;
+  const COL = 104;
   const canvas = new Canvas(24 + STYLES.length * COL, 290);
   canvas.fill(c('soot', 1));
 
@@ -209,7 +209,6 @@ function buildHumanPreview(font) {
   STYLES.forEach((style, i) => {
     const bx = 16 + i * COL;
     drawText(canvas, font, bx, 18, `${i + 1}. ${style.name}`, c('parchment'));
-    drawText(canvas, font, bx, 28, style.opis, c('stone', 3));
 
     // Rząd 0: test sylwetki. Postać wypełniona jednym kolorem — jeśli nie czyta
     // się na czarno, żadne cieniowanie jej nie uratuje. To jest najważniejsze
