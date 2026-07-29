@@ -19,8 +19,17 @@ import { advance, poseOf } from './world/movement.js';
 const INTERP_DELAY = 100;     // ms — o tyle cofamy widok innych graczy
 const SEND_HZ = 30;
 const SEND_INTERVAL = 1000 / SEND_HZ;
-const MAX_COMMAND_MS = 50;    // ta sama granica co na serwerze
 const BUFFER_KEEP = 1000;     // ms historii pozycji trzymanej dla interpolacji
+
+// Symulacja chodzi stałym krokiem, niezależnym od rysowania.
+//
+// Wcześniej jeden krok odpowiadał jednej klatce i był obcinany do 50 ms. Kiedy
+// przeglądarka przytnie klatkę do 120 ms — a Chrome robi to w ramce <iframe>,
+// bo strona rodzica zabiera mu czas — postać dostawała ruch za 50 ms zamiast za
+// 120. Czyli szła z prędkością 0,4 zamiast 1,0, i to zmienną, bo klatki są
+// nierówne. Teraz zaległy czas odrabiamy kolejnymi pełnymi krokami.
+const STEP_MS = 16;
+const MAX_CATCHUP_STEPS = 16;   // najwyżej ~256 ms zaległości na klatkę
 
 function makeToken() {
   const existing = localStorage.getItem('szab_token');
@@ -214,13 +223,21 @@ export class Net {
     // interpolacja szukała w buforze chwili, której tam nie było, i zamiast
     // wygładzać ruch innych graczy przyklejała się do ostatniej migawki.
     const now = performance.now();
-    const ms = Math.max(1, Math.min(MAX_COMMAND_MS, Math.round(deltaMs)));
-    this.seq++;
-    const command = [this.seq, keys, ms];
 
-    advance(this.world, this.body, keys, ms / 1000);
-    this.pending.push(command);
-    this.outbox.push(command);
+    this.accumulator = (this.accumulator ?? 0) + Math.max(0, deltaMs);
+    let steps = 0;
+    while (this.accumulator >= STEP_MS && steps < MAX_CATCHUP_STEPS) {
+      this.accumulator -= STEP_MS;
+      steps++;
+      this.seq++;
+      const command = [this.seq, keys, STEP_MS];
+      advance(this.world, this.body, keys, STEP_MS / 1000);
+      this.pending.push(command);
+      this.outbox.push(command);
+    }
+    // Po bardzo długiej przerwie (przełączona karta) nie odrabiamy wszystkiego —
+    // resztę porzucamy, bo gracz i tak tego nie widział.
+    if (this.accumulator > STEP_MS * MAX_CATCHUP_STEPS) this.accumulator = 0;
 
     // Pakiety wychodzą 30 razy na sekundę, a nie co klatkę — mniej ruchu w sieci
     // przy identycznym odczuciu sterowania.

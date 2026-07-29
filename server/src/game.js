@@ -19,8 +19,12 @@ const MAX_PLAYERS = 60;
 // jest w stanie odtworzyć u siebie dokładnie ten sam wynik, co serwer, i korekta
 // nie objawia się szarpnięciem postaci.
 const MAX_COMMAND_DT = 0.05;      // pojedyncza komenda nigdy dłuższa niż 50 ms
-const MAX_QUEUED = 24;            // kolejka nie rośnie w nieskończoność
-const MAX_PER_TICK = 8;           // ile komend rozliczamy w jednym kroku
+const MAX_QUEUED = 48;            // kolejka nie rośnie w nieskończoność
+// Klient liczy krokami po 16 ms, więc na jeden tik serwera (50 ms) przypadają
+// zwykle trzy komendy. Zapas jest na nadrabianie po przyciętej klatce — gdyby
+// był za mały, zaległości odkładałyby się w kolejce i ruch zacinałby się mimo
+// poprawnego klienta.
+const MAX_PER_TICK = 20;
 // Zapas czasu: gracz może zużyć najwyżej 15% więcej czasu symulacji, niż
 // naprawdę minęło. To jest zabezpieczenie przed przyspieszaniem postaci przez
 // wysyłanie zawyżonego `dt` — bez niego przerobiony klient chodziłby dwa razy
