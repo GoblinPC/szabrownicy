@@ -15,10 +15,13 @@ const AMBIENT_FORGE = [122, 96, 84];
 const AMBIENT_YARD = [86, 100, 140];
 
 export class Lighting {
-  constructor(scene, world, interior) {
+  constructor(scene, world, interior, building = interior) {
     this.scene = scene;
     this.world = world;
     this.interior = interior;
+    // Obrys budynku razem z murami — po nim tniemy widoczność. Różni się od
+    // `interior`, który opisuje samą podłogę hali i steruje kolorem otoczenia.
+    this.building = building;
     this.key = 'lightmask';
     this.texture = null;
     this.width = 0;
@@ -41,7 +44,45 @@ export class Lighting {
     this.height = h;
   }
 
-  update(time) {
+  /**
+   * Przygasza wszystko poza budynkiem. Używane, gdy gracz stoi w hali: plac za
+   * murem ma zniknąć w mroku, tak jak w prawdziwym wnętrzu nie widać, co dzieje
+   * się na dworze.
+   *
+   * Krawędź jest rozmyta pasem gradientu. Ostry prostokąt czytał się jak błąd
+   * renderowania — to była znana wada tej warstwy jeszcze przy samym ambiencie.
+   */
+  occlude(ctx, w, h, box, strength) {
+    if (strength <= 0.01) return;
+    const feather = 30 / RESOLUTION;
+    const dark = (a) => `rgba(10,8,16,${(a * strength).toFixed(3)})`;
+    const SOLID = 0.9;
+
+    ctx.globalCompositeOperation = 'multiply';
+
+    // Pełny mrok poza pasem rozmycia, po każdej ze stron.
+    ctx.fillStyle = dark(SOLID);
+    ctx.fillRect(0, 0, w, Math.max(0, box.y0 - feather));
+    ctx.fillRect(0, Math.min(h, box.y1 + feather), w, h);
+    ctx.fillRect(0, 0, Math.max(0, box.x0 - feather), h);
+    ctx.fillRect(Math.min(w, box.x1 + feather), 0, w, h);
+
+    // Pasy przejściowe przy samych ścianach.
+    const strip = (x, y, sw, sh, gx0, gy0, gx1, gy1) => {
+      if (sw <= 0 || sh <= 0) return;
+      const g = ctx.createLinearGradient(gx0, gy0, gx1, gy1);
+      g.addColorStop(0, dark(SOLID));
+      g.addColorStop(1, dark(0));
+      ctx.fillStyle = g;
+      ctx.fillRect(x, y, sw, sh);
+    };
+    strip(0, box.y0 - feather, w, feather, 0, box.y0 - feather, 0, box.y0);
+    strip(0, box.y1, w, feather, 0, box.y1 + feather, 0, box.y1);
+    strip(box.x0 - feather, 0, feather, h, box.x0 - feather, 0, box.x0, 0);
+    strip(box.x1, 0, feather, h, box.x1 + feather, 0, box.x1, 0);
+  }
+
+  update(time, inside = false) {
     const view = this.scene.cameras.main.worldView;
     const w = Math.ceil(view.width / RESOLUTION) + 2;
     const h = Math.ceil(view.height / RESOLUTION) + 2;
@@ -82,7 +123,17 @@ export class Lighting {
       ctx.fill();
     }
 
-    // 3. Winieta — przygasza rogi kadru i zbiera uwagę na środku.
+    // 3. Ograniczona widoczność. Wygaszamy stopniowo, żeby przejście przez bramę
+    // nie było przeskokiem — mrok na placu narasta w trakcie wchodzenia.
+    this.hidden = (this.hidden ?? 0) + ((inside ? 1 : 0) - (this.hidden ?? 0)) * 0.08;
+    this.occlude(ctx, w, h, {
+      x0: toMaskX(this.building.x),
+      y0: toMaskY(this.building.y),
+      x1: toMaskX(this.building.x + this.building.w),
+      y1: toMaskY(this.building.y + this.building.h),
+    }, this.hidden);
+
+    // 4. Winieta — przygasza rogi kadru i zbiera uwagę na środku.
     ctx.globalCompositeOperation = 'source-over';
     const vignette = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.32, w / 2, h / 2, Math.max(w, h) * 0.72);
     vignette.addColorStop(0, 'rgba(0,0,0,0)');

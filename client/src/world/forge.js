@@ -245,6 +245,60 @@ function buildSoundSources() {
   ];
 }
 
+/**
+ * Dach hali. Osobna warstwa kafli rysowana NAD postaciami — z zewnątrz zasłania
+ * wnętrze, a gdy gracz wejdzie pod spód, zanika.
+ *
+ * Kryje cały obrys budynku razem z murami, bo dach wsparty na koronie muru musi
+ * ją przykrywać — inaczej widać szew między krawędzią dachu a ścianą.
+ */
+export const ROOF = {
+  x0: BUILDING.x0,
+  x1: BUILDING.x1,
+  y0: BUILDING.y0,
+  y1: BUILDING.y1,
+};
+
+/** Prostokąt dachu w pikselach — po nim poznajemy, czy gracz jest pod dachem. */
+export const ROOF_PX = {
+  x: ROOF.x0 * TILE,
+  y: ROOF.y0 * TILE,
+  w: (ROOF.x1 - ROOF.x0 + 1) * TILE,
+  h: (ROOF.y1 - ROOF.y0 + 1) * TILE,
+};
+
+/**
+ * Wnęka wejściowa: dach jest wycięty nad bramą i o kafel po bokach, więc z placu
+ * widać, że tam się wchodzi. Bez tego budynek był zamkniętą płytą i nie dało się
+ * odgadnąć, gdzie jest wejście.
+ */
+const PORCH = { x0: GATE.x0 - 1, x1: GATE.x1 + 1, y0: 17, y1: 19 };
+
+function buildRoof() {
+  const rng = makeRng(seedFrom('forge-roof'));
+  const tiles = [];
+  // Kalenica biegnie w poziomie środkiem hali — hala jest szersza niż głębsza.
+  const ridge = Math.round((ROOF.y0 + ROOF.y1) / 2);
+
+  for (let y = ROOF.y0; y <= ROOF.y1; y++) {
+    for (let x = ROOF.x0; x <= ROOF.x1; x++) {
+      const inPorch = x >= PORCH.x0 && x <= PORCH.x1 && y >= PORCH.y0 && y <= PORCH.y1;
+      if (inPorch) continue;
+
+      let key;
+      // Okap na dolnej krawędzi dachu oraz na krawędziach wnęki — to on sprawia,
+      // że dach czyta się jako coś nad budynkiem, a nie kolejna warstwa gruntu.
+      const atPorchEdge = y === PORCH.y0 - 1 && x >= PORCH.x0 - 1 && x <= PORCH.x1 + 1;
+      if (y === ROOF.y1 || atPorchEdge) key = 'roof_eave';
+      else if (y === ridge) key = 'roof_ridge';
+      else if ((x - ROOF.x0) % 7 === 3) key = 'roof_beam';   // krokwie co siedem kafli
+      else key = `roof_${rng.int(2)}`;
+      tiles.push({ key, x: x * TILE, y: y * TILE });
+    }
+  }
+  return tiles;
+}
+
 /** Rodzaj gruntu pod podanym punktem — decyduje, jak brzmi krok. */
 export function surfaceAt(world, x, y) {
   const tx = Math.floor(x / TILE);
@@ -281,6 +335,7 @@ export function buildWorld() {
   return {
     tiles,
     decals: buildDecals(tiles),
+    roof: buildRoof(),
     props,
     lights: buildLights(),
     flames: buildFlames(),

@@ -110,6 +110,79 @@ function wallTop(name) {
   return t;
 }
 
+// --- Dach ---------------------------------------------------------------------
+//
+// Dach ogląda się z góry pod skosem, więc gont układa się w poziome rzędy
+// z zakładką. Jest wyraźnie ciemniejszy od wszystkiego pod spodem — to on ma
+// czytać się jako "tu nie zaglądasz", zanim jeszcze zadziała oświetlenie.
+
+function roofShingles(name, { offset = 0 } = {}) {
+  const rng = rngFor(name);
+  const t = new Canvas(TILE, TILE);
+  // Łupek, nie deski. Rampa żelaza jest chłodna i granatowa, więc dachu nie da
+  // się pomylić z ubitą ziemią — a przy rampie drewna dokładnie tak było.
+  t.fill(c('iron', 1));
+
+  for (let row = 0; row < 4; row++) {
+    const y = row * 4;
+    t.hline(0, TILE - 1, y, c('iron', 3));       // światło na krawędzi rzędu
+    t.hline(0, TILE - 1, y + 1, c('iron', 2));
+    t.hline(0, TILE - 1, y + 3, c('iron', 0));   // cień rzucany na rząd niżej
+    // Styki płytek przesunięte co rząd — inaczej dach czyta się jak krata.
+    const shift = (row + offset) % 2 === 0 ? 4 : 11;
+    t.vline(shift, y + 1, y + 3, c('iron', 0));
+    t.vline((shift + 8) % TILE, y + 1, y + 3, c('iron', 0));
+  }
+
+  t.speckle(rng, c('iron', 0), 0.08);
+  t.speckle(rng, c('iron', 3), 0.04);
+  return t;
+}
+
+/** Krokiew — drewniana belka przez łupek. Kontrast materiału czyta konstrukcję. */
+function roofBeam(name) {
+  const rng = rngFor(name);
+  const t = new Canvas(TILE, TILE);
+  t.fill(c('iron', 1));
+  t.rect(0, 4, TILE, 8, c('wood', 2));
+  t.hline(0, TILE - 1, 4, c('wood', 4));    // światło na górnej krawędzi belki
+  t.hline(0, TILE - 1, 11, c('soot', 0));   // cień pod belką
+  t.speckle(rng, c('wood', 1), 0.14);       // słoje
+  for (let x = 3; x < TILE; x += 7) t.px(x, 8, c('iron', 4));  // ćwieki
+  return t;
+}
+
+/** Kalenica — jasny grzbiet na osi dachu. */
+function roofRidge(name) {
+  const rng = rngFor(name);
+  const t = new Canvas(TILE, TILE);
+  t.fill(c('iron', 1));
+  t.rect(0, 5, TILE, 6, c('iron', 3));
+  t.hline(0, TILE - 1, 5, c('iron', 4));
+  t.hline(0, TILE - 1, 10, c('soot', 0));
+  t.speckle(rng, c('iron', 2), 0.12);
+  return t;
+}
+
+/**
+ * Okap — dolna krawędź dachu. Wystaje poza mur i rzuca cień, dzięki czemu dach
+ * czyta się jako coś położonego NAD budynkiem, a nie jako kolejna warstwa gruntu.
+ */
+function roofEave(name) {
+  const rng = rngFor(name);
+  const t = new Canvas(TILE, TILE);
+  t.fill(c('iron', 1));
+  t.hline(0, TILE - 1, 0, c('iron', 3));
+  t.hline(0, TILE - 1, 3, c('iron', 0));
+  t.rect(0, 4, TILE, 4, c('iron', 2));
+  t.hline(0, TILE - 1, 8, c('wood', 2));     // deska okapowa
+  t.hline(0, TILE - 1, 9, c('wood', 1));
+  t.hline(0, TILE - 1, 10, c('soot', 0));    // cień rzucany na ścianę
+  t.hline(0, TILE - 1, 11, `${c('soot', 0)}88`);
+  t.speckle(rng, c('iron', 0), 0.06, { x: 0, y: 0, w: TILE, h: 8 });
+  return t;
+}
+
 // --- Plac na zewnątrz ---------------------------------------------------------
 
 /** Ubita ziemia — baza całego placu. */
@@ -267,6 +340,11 @@ export function buildTiles() {
   for (let i = 0; i < 3; i++) add(`wall_face_${i}`, wallFace(`wall_face_${i}`));
   add('wall_face_soot', wallFace('wall_face_soot', { soot: 0.5 }));
   add('wall_top', wallTop('wall_top'));
+
+  for (let i = 0; i < 2; i++) add(`roof_${i}`, roofShingles(`roof_${i}`, { offset: i }));
+  add('roof_beam', roofBeam('roof_beam'));
+  add('roof_ridge', roofRidge('roof_ridge'));
+  add('roof_eave', roofEave('roof_eave'));
 
   for (let i = 0; i < 4; i++) add(`dirt_${i}`, dirt(`dirt_${i}`));
   for (let i = 0; i < 2; i++) add(`path_${i}`, path(`path_${i}`));

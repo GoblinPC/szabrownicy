@@ -1,6 +1,6 @@
 // Kuźnia — jedyna na razie strefa świata.
 
-import { buildWorld, surfaceAt, TILE, WORLD_W, WORLD_H, SPAWN, INTERIOR_PX } from '../world/forge.js';
+import { buildWorld, surfaceAt, TILE, WORLD_W, WORLD_H, SPAWN, INTERIOR_PX, ROOF_PX } from '../world/forge.js';
 import { poseOf, KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_RUN } from '../world/movement.js';
 import { Lighting } from '../render/lighting.js';
 import { ShadowCaster } from '../render/shadows.js';
@@ -23,8 +23,9 @@ export class ForgeScene extends Phaser.Scene {
     this.spawnFlames();
     this.spawnPlayer();
     this.spawnParticles();
+    this.drawRoof();
 
-    this.lighting = new Lighting(this, this.world, INTERIOR_PX);
+    this.lighting = new Lighting(this, this.world, INTERIOR_PX, ROOF_PX);
 
     this.setupCamera();
     this.setupInput();
@@ -56,6 +57,43 @@ export class ForgeScene extends Phaser.Scene {
       ground.batchDrawFrame('tiles', this.tileIndex[decal.key], decal.x, decal.y);
     }
     ground.endDraw();
+  }
+
+  /**
+   * Dach hali — jedna tekstura rysowana nad postaciami. Z zewnątrz zasłania
+   * wnętrze, po wejściu pod spód zanika, ale nie do zera: zostaje ślad, żeby
+   * dalej było widać, że stoi się pod dachem, a nie na podwórku.
+   *
+   * Głębokość musi być poniżej warstwy świetlnej (9000), inaczej dach nie
+   * dostawałby oświetlenia i świeciłby jak wycinanka.
+   */
+  drawRoof() {
+    const roof = this.add.renderTexture(ROOF_PX.x, ROOF_PX.y, ROOF_PX.w, ROOF_PX.h)
+      .setOrigin(0, 0)
+      .setDepth(8600);
+
+    roof.beginDraw();
+    for (const tile of this.world.roof) {
+      roof.batchDrawFrame('tiles', this.tileIndex[tile.key], tile.x - ROOF_PX.x, tile.y - ROOF_PX.y);
+    }
+    roof.endDraw();
+
+    this.roof = roof;
+    this.roofAlpha = 1;
+  }
+
+  /** Czy stopy gracza są pod obrysem dachu. */
+  isUnderRoof(x, y) {
+    return x >= ROOF_PX.x && x <= ROOF_PX.x + ROOF_PX.w
+      && y >= ROOF_PX.y && y <= ROOF_PX.y + ROOF_PX.h;
+  }
+
+  updateRoof(dt) {
+    const target = this.isUnderRoof(this.px, this.py) ? 0.12 : 1;
+    // Przejście płynne, bo skok przezroczystości przy przekraczaniu bramy
+    // czyta się jak błąd wyświetlania.
+    this.roofAlpha += (target - this.roofAlpha) * Math.min(1, dt * 6);
+    this.roof.setAlpha(this.roofAlpha);
   }
 
   spawnProps() {
@@ -198,7 +236,8 @@ export class ForgeScene extends Phaser.Scene {
     this.movePlayer(delta);
     this.animatePlayer(time);
     this.updateOthers();
-    this.lighting.update(time);
+    this.updateRoof(dt);
+    this.lighting.update(time, this.isUnderRoof(this.px, this.py));
     this.updateAmbience(dt);
     this.reportZone();
   }
