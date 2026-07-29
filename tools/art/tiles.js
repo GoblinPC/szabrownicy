@@ -164,25 +164,6 @@ function roofRidge(name) {
   return t;
 }
 
-/**
- * Okap — dolna krawędź dachu. Wystaje poza mur i rzuca cień, dzięki czemu dach
- * czyta się jako coś położonego NAD budynkiem, a nie jako kolejna warstwa gruntu.
- */
-function roofEave(name) {
-  const rng = rngFor(name);
-  const t = new Canvas(TILE, TILE);
-  t.fill(c('iron', 1));
-  t.hline(0, TILE - 1, 0, c('iron', 3));
-  t.hline(0, TILE - 1, 3, c('iron', 0));
-  t.rect(0, 4, TILE, 4, c('iron', 2));
-  t.hline(0, TILE - 1, 8, c('wood', 2));     // deska okapowa
-  t.hline(0, TILE - 1, 9, c('wood', 1));
-  t.hline(0, TILE - 1, 10, c('soot', 0));    // cień rzucany na ścianę
-  t.hline(0, TILE - 1, 11, `${c('soot', 0)}88`);
-  t.speckle(rng, c('iron', 0), 0.06, { x: 0, y: 0, w: TILE, h: 8 });
-  return t;
-}
-
 // --- Plac na zewnątrz ---------------------------------------------------------
 
 /** Ubita ziemia — baza całego placu. */
@@ -344,7 +325,6 @@ export function buildTiles() {
   for (let i = 0; i < 2; i++) add(`roof_${i}`, roofShingles(`roof_${i}`, { offset: i }));
   add('roof_beam', roofBeam('roof_beam'));
   add('roof_ridge', roofRidge('roof_ridge'));
-  add('roof_eave', roofEave('roof_eave'));
 
   for (let i = 0; i < 4; i++) add(`dirt_${i}`, dirt(`dirt_${i}`));
   for (let i = 0; i < 2; i++) add(`path_${i}`, path(`path_${i}`));

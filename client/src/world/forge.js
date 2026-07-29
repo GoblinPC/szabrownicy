@@ -86,6 +86,13 @@ function pickTile(x, y, rng) {
   // Trawa w szczelinach między budynkiem a skałą.
   if (y >= 2 && y < BUILDING.y1 && !inBuildingSpan) return `grass_${rng.int(3)}`;
 
+  // Kamienny próg po zewnętrznej stronie bramy. Bez niego wyjście z hali
+  // rozmywało się wprost w ubitej ziemi i nie było widać, gdzie kończy się
+  // budynek, a zaczyna dwór.
+  if (x >= GATE.x0 - 1 && x <= GATE.x1 + 1 && y > BUILDING.y1 && y <= BUILDING.y1 + 2) {
+    return `floor_stone_${rng.int(4)}`;
+  }
+
   // Plac: wydeptana ścieżka od bramy do ogniska, reszta ubita ziemia.
   const onPath = Math.abs(x - 23.5) < 3.5 && y >= BUILDING.y1 && y < 28;
   if (onPath) return `path_${rng.int(2)}`;
@@ -252,11 +259,14 @@ function buildSoundSources() {
  * Kryje cały obrys budynku razem z murami, bo dach wsparty na koronie muru musi
  * ją przykrywać — inaczej widać szew między krawędzią dachu a ścianą.
  */
+// Dach kończy się WYŻEJ niż mur południowy. Gdy sięgał aż na koronę muru,
+// gracz podchodzący do niego od placu wchodził głową pod wystający okap i było
+// to widać jako niebieski pas nad postacią. Do muru ma się po prostu podchodzić.
 export const ROOF = {
   x0: BUILDING.x0,
   x1: BUILDING.x1,
   y0: BUILDING.y0,
-  y1: BUILDING.y1,
+  y1: BUILDING.y1 - 2,
 };
 
 /** Prostokąt dachu w pikselach — po nim poznajemy, czy gracz jest pod dachem. */
@@ -272,7 +282,7 @@ export const ROOF_PX = {
  * widać, że tam się wchodzi. Bez tego budynek był zamkniętą płytą i nie dało się
  * odgadnąć, gdzie jest wejście.
  */
-const PORCH = { x0: GATE.x0 - 1, x1: GATE.x1 + 1, y0: 17, y1: 19 };
+const PORCH = { x0: GATE.x0 - 1, x1: GATE.x1 + 1, y0: ROOF.y0, y1: ROOF.y1 };
 
 function buildRoof() {
   const rng = makeRng(seedFrom('forge-roof'));
@@ -282,16 +292,16 @@ function buildRoof() {
 
   for (let y = ROOF.y0; y <= ROOF.y1; y++) {
     for (let x = ROOF.x0; x <= ROOF.x1; x++) {
-      const inPorch = x >= PORCH.x0 && x <= PORCH.x1 && y >= PORCH.y0 && y <= PORCH.y1;
+      // Świetlik nad bramą: dach jest przecięty na wylot w osi wejścia, więc
+      // z placu widać, gdzie się wchodzi, i pas światła spadający na bramę.
+      const inPorch = x >= PORCH.x0 && x <= PORCH.x1 && y >= PORCH.y0 + 4;
       if (inPorch) continue;
 
       let key;
-      // Okap na dolnej krawędzi dachu oraz na krawędziach wnęki — to on sprawia,
-      // że dach czyta się jako coś nad budynkiem, a nie kolejna warstwa gruntu.
-      const atPorchEdge = y === PORCH.y0 - 1 && x >= PORCH.x0 - 1 && x <= PORCH.x1 + 1;
-      if (y === ROOF.y1 || atPorchEdge) key = 'roof_eave';
-      else if (y === ridge) key = 'roof_ridge';
-      else if ((x - ROOF.x0) % 7 === 3) key = 'roof_beam';   // krokwie co siedem kafli
+      if (y === ridge) key = 'roof_ridge';
+      // Krokwie przesunięte o trzy kafle w lewo — przy poprzednim rozstawie
+      // jedna z nich trafiała dokładnie w oś bramy i ucinała się na jej krawędzi.
+      else if ((x - ROOF.x0) % 7 === 0) key = 'roof_beam';
       else key = `roof_${rng.int(2)}`;
       tiles.push({ key, x: x * TILE, y: y * TILE });
     }
