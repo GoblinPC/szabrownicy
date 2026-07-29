@@ -241,7 +241,7 @@ export class ForgeScene extends Phaser.Scene {
     this.animatePlayer(time);
     this.updateOthers();
     this.updateRoof(dt);
-    this.lighting.update(time, this.isInsideBuilding(this.px, this.py));
+    this.lighting.update(time, this.isInsideBuilding(this.px, this.py), { x: this.px, y: this.py });
     this.updateAmbience(dt);
     this.reportZone();
   }

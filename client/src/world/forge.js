@@ -23,6 +23,40 @@ export const WORLD_H = MAP_H * TILE;
 const BUILDING = { x0: 5, x1: 42, y0: 2, y1: 19 };
 // Prześwit bramy ma dokładnie dwa kafle, bo tyle samo ma otwór w jej rysunku.
 const GATE = { x0: 23, x1: 24 };
+// Kamienny przedpiecek wokół paleniska — jedyne miejsce w hali bez desek.
+const APRON = { x0: 8, x1: 15, y0: 6, y1: 11 };
+
+/**
+ * Okienka w ścianach. Każde opisane jest **odcinkiem otworu** (`a` i `b`)
+ * w pikselach świata — z niego liczy się klin widoczności: co widać przez okno,
+ * zależy od tego, gdzie stoi gracz, dokładnie jak przy rzucaniu cienia.
+ *
+ * Ten sam mechanizm obsłuży potem okna w domkach graczy, więc opis okna jest
+ * czystą geometrią, bez wiedzy o tym, że chodzi o karczmę.
+ */
+const WINDOW_TILES = [
+  { x: BUILDING.x0, y: 7, side: 'left' },
+  { x: BUILDING.x0, y: 13, side: 'left' },
+  { x: BUILDING.x1, y: 7, side: 'right' },
+  { x: BUILDING.x1, y: 13, side: 'right' },
+  { x: 20, y: BUILDING.y0 + 1, side: 'top' },
+  { x: 28, y: BUILDING.y0 + 1, side: 'top' },
+  { x: 36, y: BUILDING.y0 + 1, side: 'top' },
+];
+
+const WINDOW_KEYS = new Set(WINDOW_TILES.map((w) => `${w.x},${w.y}`));
+
+export const WINDOWS = WINDOW_TILES.map((w) => {
+  // Otwór w rysunku kafla zajmuje piksele 4-11 w poziomie i 4-9 w pionie.
+  if (w.side === 'top') {
+    // Ściana biegnie w poziomie, więc otwór jest odcinkiem poziomym na jej licu.
+    const y = w.y * TILE + TILE;
+    return { a: { x: w.x * TILE + 4, y }, b: { x: w.x * TILE + 12, y } };
+  }
+  // Ściany boczne biegną w pionie — otwór jest odcinkiem pionowym.
+  const x = w.side === 'left' ? w.x * TILE : (w.x + 1) * TILE;
+  return { a: { x, y: w.y * TILE + 4 }, b: { x, y: w.y * TILE + 12 } };
+});
 
 export const INTERIOR_PX = {
   x: (BUILDING.x0 + 1) * TILE,
@@ -33,7 +67,7 @@ export const INTERIOR_PX = {
 
 export const SPAWN = { x: 384, y: 352 };
 
-const SOLID_TILES = new Set(['wall_face', 'wall_top', 'rock']);
+const SOLID_TILES = new Set(['wall_face', 'wall_window', 'wall_top', 'rock']);
 
 /** Nazwa kafla bez numeru wariantu — po niej rozpoznajemy kolizję. */
 const baseName = (name) => name.replace(/_\d+$/, '').replace(/_soot\d?$/, '');
@@ -62,6 +96,7 @@ function pickTile(x, y, rng) {
   if (inBuildingSpan) {
     if (y === BUILDING.y0) return 'wall_top';
     if (y === BUILDING.y0 + 1) {
+      if (WINDOW_KEYS.has(`${x},${y}`)) return 'wall_window';
       // Ściana nad paleniskiem jest zakopcona.
       return x >= 8 && x <= 16 ? 'wall_face_soot' : `wall_face_${rng.int(3)}`;
     }
@@ -71,6 +106,7 @@ function pickTile(x, y, rng) {
     }
   }
   if (y > BUILDING.y0 && y < BUILDING.y1 && (x === BUILDING.x0 || x === BUILDING.x1)) {
+    if (WINDOW_KEYS.has(`${x},${y}`)) return 'wall_window';
     return `wall_face_${rng.int(3)}`;
   }
 
@@ -79,14 +115,23 @@ function pickTile(x, y, rng) {
     // Kamień tylko na przedpiecku, gdzie ma sens ogniowy — na desce pod kuźnią
     // nikt by ognia nie rozpalał. Reszta hali to deski.
     //
-    // Przedpiecek jest PROSTOKĄTNY. Wersja liczona po promieniu dawała wielką
-    // szarą plamę na trzeciej części hali, z poszarpaną schodkową krawędzią.
-    const onApron = x >= 8 && x <= 15 && y >= 6 && y <= 11;
-    if (onApron) {
-      const core = x >= 9 && x <= 14 && y >= 7 && y <= 10;
+    // Krawędź przedpiecka jest NIEREGULARNA: część kafli brzegowych wypada,
+    // część wychodzi poza obrys. Równy prostokąt czytał się jak wklejona łata.
+    const inApron = x >= APRON.x0 && x <= APRON.x1 && y >= APRON.y0 && y <= APRON.y1;
+    const onEdge = inApron
+      && (x === APRON.x0 || x === APRON.x1 || y === APRON.y0 || y === APRON.y1);
+
+    if (inApron && !(onEdge && rng.chance(0.4))) {
+      const core = x >= APRON.x0 + 1 && x <= APRON.x1 - 1
+        && y >= APRON.y0 + 1 && y <= APRON.y1 - 1;
       if (core) return rng.chance(0.6) ? 'floor_stone_soot' : 'floor_stone_soot2';
       return `floor_stone_${rng.int(4)}`;
     }
+    // Pojedyncze płyty wysunięte na deski — rozmywają linię styku.
+    const besideApron = x >= APRON.x0 - 1 && x <= APRON.x1 + 1
+      && y >= APRON.y0 - 1 && y <= APRON.y1 + 1;
+    if (besideApron && rng.chance(0.3)) return `floor_stone_${rng.int(4)}`;
+
     return `floor_wood_${(x + y) % 3}`;
   }
 
@@ -124,6 +169,13 @@ function buildDecals(tiles) {
           decals.push({ key: rng.chance(0.5) ? 'decal_soot_0' : 'decal_soot_1', x: px, y: py });
         }
         if (rng.chance(0.05)) decals.push({ key: `decal_crack_${rng.int(2)}`, x: px, y: py });
+      } else if (tile.startsWith('floor_wood')) {
+        // Sadza wysypana z paleniska na deski. To ona rozmywa styk kamiennego
+        // przedpiecka z podłogą — bez niej granica jest linią prostą.
+        const d = Math.hypot(x - 11.5, y - 8.5);
+        if (d < 10 && rng.chance(0.3 - d * 0.026)) {
+          decals.push({ key: rng.chance(0.5) ? 'decal_soot_0' : 'decal_soot_1', x: px, y: py });
+        }
       } else if (tile.startsWith('dirt')) {
         if (rng.chance(0.07)) decals.push({ key: `decal_tuft_${rng.int(3)}`, x: px, y: py });
         if (rng.chance(0.02)) decals.push({ key: `decal_puddle_${rng.int(2)}`, x: px, y: py });
@@ -369,6 +421,7 @@ export function buildWorld() {
     tiles,
     decals: buildDecals(tiles),
     roof: buildRoof(),
+    windows: WINDOWS,
     props,
     lights: buildLights(),
     flames: buildFlames(),

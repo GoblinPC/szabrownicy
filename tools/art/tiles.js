@@ -57,27 +57,31 @@ function stoneFloor(name, { soot = 0, offset = 0 } = {}) {
 function woodFloor(name, { offset = 0 } = {}) {
   const rng = rngFor(name);
   const t = new Canvas(TILE, TILE);
-  t.fill(c('wood', 2));
+  // Podłoga jest CIEMNIEJSZA od mebli i skrzyń, które na niej stoją.
+  //
+  // Pierwsza wersja miała bazę `wood 2` — dokładnie tę samą, z której zrobione
+  // są beczki, skrzynie i stół. Przedmioty zlewały się z podłożem i cała hala
+  // była jedną brązową plamą. Deski schodzą więc o dwa stopnie rampy w dół,
+  // a przedmioty zostają na środku — kontrast robi sam materiał.
+  t.fill(c('wood', 1));
 
-  // Trzy deski na kafel. Cienka jasna krawędź u góry, ciemna szpara u dołu.
-  const edges = [0, 6, 11];
-  for (const y of edges) {
-    t.hline(0, TILE - 1, y, c('wood', 3));
-    t.hline(0, TILE - 1, y + 4 > TILE - 1 ? TILE - 1 : y + 4, c('wood', 0));
+  // Trzy deski na kafel. Wąska jaśniejsza krawędź u góry, szpara u dołu.
+  for (const y of [0, 6, 11]) {
+    t.hline(0, TILE - 1, y, c('wood', 2));
+    t.hline(0, TILE - 1, Math.min(TILE - 1, y + 4), c('wood', 0));
   }
 
   // Styki desek przesunięte co kafel, żeby podłoga nie ustawiła się w kratę.
   const joint = offset % 2 === 0 ? 5 : 12;
-  t.vline(joint, 1, 4, c('wood', 1));
-  t.vline((joint + 8) % TILE, 7, 10, c('wood', 1));
+  t.vline(joint, 1, 4, c('wood', 0));
+  t.vline((joint + 8) % TILE, 7, 10, c('wood', 0));
 
   // Słoje: krótkie poziome kreski, nie losowe kropki.
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 4; i++) {
     const y = 1 + rng.int(TILE - 2);
     const x = rng.int(TILE - 5);
-    t.hline(x, x + 2 + rng.int(3), y, c('wood', 1));
+    t.hline(x, x + 2 + rng.int(3), y, c('wood', 2));
   }
-  t.speckle(rng, c('wood', 3), 0.03);
   return t;
 }
 
@@ -122,6 +126,32 @@ function wallFace(name, { soot = 0 } = {}) {
       }
     }
   }
+  return t;
+}
+
+/**
+ * Ściana z okienkiem. Otwór jest mały i wysoko, jak w gospodarczym budynku —
+ * przez taki widać niewiele i o to chodzi: to, ile widać, ma zależeć od tego,
+ * gdzie gracz stoi.
+ */
+function wallWindow(name) {
+  const rng = rngFor(name);
+  const t = wallFace(name);
+
+  // Otwór: 8x6 px pośrodku kafla, z ościeżnicą z belek.
+  const x0 = 4;
+  const y0 = 4;
+  t.rect(x0 - 1, y0 - 1, 10, 8, c('wood', 0));       // rama
+  t.rect(x0, y0, 8, 6, c('night', 0));               // ciemny prześwit
+  // Górna krawędź otworu łapie światło z zewnątrz, dolna jest w cieniu.
+  t.hline(x0, x0 + 7, y0, c('night', 1));
+  t.hline(x0, x0 + 7, y0 + 5, c('soot', 0));
+  // Krzyżak: dwie listwy dzielące otwór.
+  t.vline(x0 + 3, y0, y0 + 5, c('wood', 1));
+  t.hline(x0, x0 + 7, y0 + 2, c('wood', 1));
+  // Parapet.
+  t.hline(x0 - 1, x0 + 8, y0 + 6, c('wood', 3));
+  t.speckle(rng, c('wood', 1), 0.1, { x: x0 - 1, y: y0 + 6, w: 10, h: 1 });
   return t;
 }
 
@@ -361,6 +391,7 @@ export function buildTiles() {
 
   for (let i = 0; i < 3; i++) add(`wall_face_${i}`, wallFace(`wall_face_${i}`));
   add('wall_face_soot', wallFace('wall_face_soot', { soot: 0.5 }));
+  add('wall_window', wallWindow('wall_window'));
   add('wall_top', wallTop('wall_top'));
 
   for (let i = 0; i < 2; i++) add(`roof_${i}`, roofShingles(`roof_${i}`, { offset: i }));

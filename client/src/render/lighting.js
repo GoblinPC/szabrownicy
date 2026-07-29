@@ -37,6 +37,11 @@ export class Lighting {
     if (this.width === w && this.height === h) return;
     if (this.scene.textures.exists(this.key)) this.scene.textures.remove(this.key);
     this.texture = this.scene.textures.createCanvas(this.key, w, h);
+    // Płótno pomocnicze na przygaszanie — nie trafia do gry, służy tylko do
+    // złożenia maski widoczności przed nałożeniem jej na scenę.
+    this.occlusion = document.createElement('canvas');
+    this.occlusion.width = w;
+    this.occlusion.height = h;
     // Wygładzanie jest tu pożądane — chcemy miękką plamę światła, nie kwadraty.
     this.texture.setFilter(Phaser.Textures.FilterMode.LINEAR);
     this.image.setTexture(this.key);
@@ -52,37 +57,74 @@ export class Lighting {
    * Krawędź jest rozmyta pasem gradientu. Ostry prostokąt czytał się jak błąd
    * renderowania — to była znana wada tej warstwy jeszcze przy samym ambiencie.
    */
-  occlude(ctx, w, h, box, strength) {
+  occlude(ctx, w, h, box, strength, player, toMaskX, toMaskY) {
     if (strength <= 0.01) return;
-    const feather = 30 / RESOLUTION;
-    const dark = (a) => `rgba(10,8,16,${(a * strength).toFixed(3)})`;
-    const SOLID = 0.9;
+
+    // Rysujemy na osobnym płótnie: najpierw zaciemniamy wszystko, potem
+    // **wycinamy** to, co widać. Tylko tak da się wyciąć klin przez okno —
+    // przy rysowaniu wprost na maskę można by dokładać ciemność, ale nie
+    // odejmować jej wybiórczo.
+    const o = this.occlusion.getContext('2d');
+    o.setTransform(1, 0, 0, 1, 0, 0);
+    o.clearRect(0, 0, w, h);
+    o.globalCompositeOperation = 'source-over';
+    o.fillStyle = `rgba(10,8,16,${(0.92 * strength).toFixed(3)})`;
+    o.fillRect(0, 0, w, h);
+
+    o.globalCompositeOperation = 'destination-out';
+
+    // 1. Wnętrze budynku — widać całe. Krawędź zmiękczona kilkoma coraz
+    // mniejszymi prostokątami; rozmycie jest wąskie (6 px świata), bo pas trawy
+    // między ścianą a skałą ma tylko dwa kafle i przy szerokim rozmyciu w ogóle
+    // nie gasł — było widać trawę po drugiej stronie ściany.
+    const steps = 3;
+    for (let i = steps; i >= 0; i--) {
+      const pad = i * (3 / RESOLUTION);
+      o.fillStyle = `rgba(0,0,0,${(0.45 + 0.55 * (1 - i / (steps + 1))).toFixed(3)})`;
+      o.fillRect(box.x0 - pad, box.y0 - pad, (box.x1 - box.x0) + pad * 2, (box.y1 - box.y0) + pad * 2);
+    }
+
+    // 2. Klin widoczności przez każdy otwór.
+    //
+    // Geometria jest ta sama co przy rzucaniu cienia, tylko odwrócona: promienie
+    // biegną od gracza przez oba końce otworu i dalej. To, co między nimi, widać.
+    if (player) {
+      const px = toMaskX(player.x);
+      const py = toMaskY(player.y);
+      const REACH = 900 / RESOLUTION;
+
+      for (const win of this.world.windows ?? []) {
+        const ax = toMaskX(win.a.x);
+        const ay = toMaskY(win.a.y);
+        const bx = toMaskX(win.b.x);
+        const by = toMaskY(win.b.y);
+
+        // Promień od gracza przez koniec otworu, przedłużony na zewnątrz.
+        const ray = (ex, ey) => {
+          const dx = ex - px;
+          const dy = ey - py;
+          const len = Math.hypot(dx, dy) || 1;
+          return [ex + (dx / len) * REACH, ey + (dy / len) * REACH];
+        };
+        const [fax, fay] = ray(ax, ay);
+        const [fbx, fby] = ray(bx, by);
+
+        o.fillStyle = 'rgba(0,0,0,0.82)';
+        o.beginPath();
+        o.moveTo(ax, ay);
+        o.lineTo(bx, by);
+        o.lineTo(fbx, fby);
+        o.lineTo(fax, fay);
+        o.closePath();
+        o.fill();
+      }
+    }
 
     ctx.globalCompositeOperation = 'multiply';
-
-    // Pełny mrok poza pasem rozmycia, po każdej ze stron.
-    ctx.fillStyle = dark(SOLID);
-    ctx.fillRect(0, 0, w, Math.max(0, box.y0 - feather));
-    ctx.fillRect(0, Math.min(h, box.y1 + feather), w, h);
-    ctx.fillRect(0, 0, Math.max(0, box.x0 - feather), h);
-    ctx.fillRect(Math.min(w, box.x1 + feather), 0, w, h);
-
-    // Pasy przejściowe przy samych ścianach.
-    const strip = (x, y, sw, sh, gx0, gy0, gx1, gy1) => {
-      if (sw <= 0 || sh <= 0) return;
-      const g = ctx.createLinearGradient(gx0, gy0, gx1, gy1);
-      g.addColorStop(0, dark(SOLID));
-      g.addColorStop(1, dark(0));
-      ctx.fillStyle = g;
-      ctx.fillRect(x, y, sw, sh);
-    };
-    strip(0, box.y0 - feather, w, feather, 0, box.y0 - feather, 0, box.y0);
-    strip(0, box.y1, w, feather, 0, box.y1 + feather, 0, box.y1);
-    strip(box.x0 - feather, 0, feather, h, box.x0 - feather, 0, box.x0, 0);
-    strip(box.x1, 0, feather, h, box.x1 + feather, 0, box.x1, 0);
+    ctx.drawImage(this.occlusion, 0, 0);
   }
 
-  update(time, inside = false) {
+  update(time, inside = false, player = null) {
     const view = this.scene.cameras.main.worldView;
     const w = Math.ceil(view.width / RESOLUTION) + 2;
     const h = Math.ceil(view.height / RESOLUTION) + 2;
@@ -131,7 +173,7 @@ export class Lighting {
       y0: toMaskY(this.building.y),
       x1: toMaskX(this.building.x + this.building.w),
       y1: toMaskY(this.building.y + this.building.h),
-    }, this.hidden);
+    }, this.hidden, player, toMaskX, toMaskY);
 
     // 4. Winieta — przygasza rogi kadru i zbiera uwagę na środku.
     ctx.globalCompositeOperation = 'source-over';
