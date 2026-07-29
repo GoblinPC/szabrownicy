@@ -138,20 +138,35 @@ function wallWindow(name) {
   const rng = rngFor(name);
   const t = wallFace(name);
 
-  // Otwór: 8x6 px pośrodku kafla, z ościeżnicą z belek.
-  const x0 = 4;
-  const y0 = 4;
-  t.rect(x0 - 1, y0 - 1, 10, 8, c('wood', 0));       // rama
-  t.rect(x0, y0, 8, 6, c('night', 0));               // ciemny prześwit
-  // Górna krawędź otworu łapie światło z zewnątrz, dolna jest w cieniu.
-  t.hline(x0, x0 + 7, y0, c('night', 1));
-  t.hline(x0, x0 + 7, y0 + 5, c('soot', 0));
-  // Krzyżak: dwie listwy dzielące otwór.
-  t.vline(x0 + 3, y0, y0 + 5, c('wood', 1));
-  t.hline(x0, x0 + 7, y0 + 2, c('wood', 1));
+  // Otwór 12x8 px, prawie na całą szerokość kafla. Pierwsza wersja miała 8x6
+  // i klin widoczności przez tak wąską szczelinę był na placu paskiem, przez
+  // który nic nie było widać.
+  const x0 = 2;
+  const y0 = 3;
+  t.rect(x0 - 1, y0 - 1, 14, 10, c('wood', 0));      // rama
+  t.rect(x0, y0, 12, 8, c('night', 0));              // prześwit
+  t.hline(x0, x0 + 11, y0, c('night', 1));           // światło z zewnątrz u góry
+  t.hline(x0, x0 + 11, y0 + 7, c('soot', 0));        // cień u dołu
+  // Krzyżak: jedna listwa w pionie, jedna w poziomie.
+  t.vline(x0 + 5, y0, y0 + 7, c('wood', 1));
+  t.hline(x0, x0 + 11, y0 + 3, c('wood', 1));
   // Parapet.
-  t.hline(x0 - 1, x0 + 8, y0 + 6, c('wood', 3));
-  t.speckle(rng, c('wood', 1), 0.1, { x: x0 - 1, y: y0 + 6, w: 10, h: 1 });
+  t.hline(x0 - 1, x0 + 12, y0 + 8, c('wood', 3));
+  t.speckle(rng, c('wood', 1), 0.1, { x: x0 - 1, y: y0 + 8, w: 14, h: 1 });
+  return t;
+}
+
+/**
+ * Okno w ścianie widzianej z góry (południowa strona hali). Z tej perspektywy
+ * otwór czyta się jako szczelina w wieńczącej belce.
+ */
+function wallTopWindow(name) {
+  const t = wallTop(name);
+  t.rect(1, 4, 14, 8, c('wood', 0));       // rama
+  t.rect(2, 5, 12, 6, c('night', 0));      // prześwit
+  t.hline(2, 13, 5, c('night', 1));
+  t.vline(7, 5, 10, c('wood', 1));         // listwa krzyżaka
+  t.hline(2, 13, 11, c('wood', 3));        // parapet
   return t;
 }
 
@@ -392,6 +407,7 @@ export function buildTiles() {
   for (let i = 0; i < 3; i++) add(`wall_face_${i}`, wallFace(`wall_face_${i}`));
   add('wall_face_soot', wallFace('wall_face_soot', { soot: 0.5 }));
   add('wall_window', wallWindow('wall_window'));
+  add('wall_top_window', wallTopWindow('wall_top_window'));
   add('wall_top', wallTop('wall_top'));
 
   for (let i = 0; i < 2; i++) add(`roof_${i}`, roofShingles(`roof_${i}`, { offset: i }));

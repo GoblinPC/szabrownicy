@@ -34,28 +34,35 @@ const APRON = { x0: 8, x1: 15, y0: 6, y1: 11 };
  * Ten sam mechanizm obsłuży potem okna w domkach graczy, więc opis okna jest
  * czystą geometrią, bez wiedzy o tym, że chodzi o karczmę.
  */
+// Okien w ścianie północnej nie ma celowo: stoi ona dwa kafle od krawędzi mapy,
+// a rzędy 0-1 to skalna grań — przez takie okno widać wprost skałę i nic więcej.
+// Ściana południowa jest najciekawsza, bo za nią jest plac.
 const WINDOW_TILES = [
-  { x: BUILDING.x0, y: 7, side: 'left' },
-  { x: BUILDING.x0, y: 13, side: 'left' },
-  { x: BUILDING.x1, y: 7, side: 'right' },
-  { x: BUILDING.x1, y: 13, side: 'right' },
-  { x: 20, y: BUILDING.y0 + 1, side: 'top' },
-  { x: 28, y: BUILDING.y0 + 1, side: 'top' },
-  { x: 36, y: BUILDING.y0 + 1, side: 'top' },
+  { x: BUILDING.x0, y: 6, side: 'left' },
+  { x: BUILDING.x0, y: 11, side: 'left' },
+  { x: BUILDING.x0, y: 16, side: 'left' },
+  { x: BUILDING.x1, y: 6, side: 'right' },
+  { x: BUILDING.x1, y: 11, side: 'right' },
+  { x: BUILDING.x1, y: 16, side: 'right' },
+  { x: 19, y: BUILDING.y1, side: 'bottom' },
+  { x: 28, y: BUILDING.y1, side: 'bottom' },
+  { x: 12, y: BUILDING.y1, side: 'bottom' },
+  { x: 35, y: BUILDING.y1, side: 'bottom' },
 ];
 
 const WINDOW_KEYS = new Set(WINDOW_TILES.map((w) => `${w.x},${w.y}`));
 
 export const WINDOWS = WINDOW_TILES.map((w) => {
-  // Otwór w rysunku kafla zajmuje piksele 4-11 w poziomie i 4-9 w pionie.
-  if (w.side === 'top') {
-    // Ściana biegnie w poziomie, więc otwór jest odcinkiem poziomym na jej licu.
-    const y = w.y * TILE + TILE;
-    return { a: { x: w.x * TILE + 4, y }, b: { x: w.x * TILE + 12, y } };
+  // Otwór w rysunku kafla ma 12 px, licząc od 2 do 14.
+  if (w.side === 'bottom') {
+    // Ściana biegnie w poziomie, więc otwór jest odcinkiem poziomym na jej licu
+    // od strony placu.
+    const y = (w.y + 1) * TILE;
+    return { a: { x: w.x * TILE + 2, y }, b: { x: w.x * TILE + 14, y } };
   }
   // Ściany boczne biegną w pionie — otwór jest odcinkiem pionowym.
   const x = w.side === 'left' ? w.x * TILE : (w.x + 1) * TILE;
-  return { a: { x, y: w.y * TILE + 4 }, b: { x, y: w.y * TILE + 12 } };
+  return { a: { x, y: w.y * TILE + 2 }, b: { x, y: w.y * TILE + 14 } };
 });
 
 export const INTERIOR_PX = {
@@ -67,7 +74,7 @@ export const INTERIOR_PX = {
 
 export const SPAWN = { x: 384, y: 352 };
 
-const SOLID_TILES = new Set(['wall_face', 'wall_window', 'wall_top', 'rock']);
+const SOLID_TILES = new Set(['wall_face', 'wall_window', 'wall_top', 'wall_top_window', 'rock']);
 
 /** Nazwa kafla bez numeru wariantu — po niej rozpoznajemy kolizję. */
 const baseName = (name) => name.replace(/_\d+$/, '').replace(/_soot\d?$/, '');
@@ -102,7 +109,8 @@ function pickTile(x, y, rng) {
     }
     if (y === BUILDING.y1) {
       const inGate = x >= GATE.x0 && x <= GATE.x1;
-      return inGate ? 'floor_stone_1' : 'wall_top';
+      if (inGate) return 'floor_stone_1';
+      return WINDOW_KEYS.has(`${x},${y}`) ? 'wall_top_window' : 'wall_top';
     }
   }
   if (y > BUILDING.y0 && y < BUILDING.y1 && (x === BUILDING.x0 || x === BUILDING.x1)) {

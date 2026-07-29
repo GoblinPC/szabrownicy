@@ -73,15 +73,22 @@ export class Lighting {
 
     o.globalCompositeOperation = 'destination-out';
 
-    // 1. Wnętrze budynku — widać całe. Krawędź zmiękczona kilkoma coraz
-    // mniejszymi prostokątami; rozmycie jest wąskie (6 px świata), bo pas trawy
-    // między ścianą a skałą ma tylko dwa kafle i przy szerokim rozmyciu w ogóle
-    // nie gasł — było widać trawę po drugiej stronie ściany.
+    // 1. Wnętrze budynku — widać całe.
+    //
+    // Rozmycie krawędzi idzie do WNĘTRZA, nie na zewnątrz. Wersja rozszerzająca
+    // prostokąt odsłaniała kilka pikseli za ścianą i przez to zza karczmy
+    // wystawał pas trawy. Najszerszy wycięty prostokąt kończy się dokładnie
+    // na linii murów.
     const steps = 3;
+    const stepPx = 4 / RESOLUTION;
     for (let i = steps; i >= 0; i--) {
-      const pad = i * (3 / RESOLUTION);
-      o.fillStyle = `rgba(0,0,0,${(0.45 + 0.55 * (1 - i / (steps + 1))).toFixed(3)})`;
-      o.fillRect(box.x0 - pad, box.y0 - pad, (box.x1 - box.x0) + pad * 2, (box.y1 - box.y0) + pad * 2);
+      const inset = i * stepPx;
+      o.fillStyle = `rgba(0,0,0,${(0.4 + 0.6 * (1 - i / (steps + 1))).toFixed(3)})`;
+      o.fillRect(
+        box.x0 + inset, box.y0 + inset,
+        Math.max(0, (box.x1 - box.x0) - inset * 2),
+        Math.max(0, (box.y1 - box.y0) - inset * 2)
+      );
     }
 
     // 2. Klin widoczności przez każdy otwór.
@@ -93,11 +100,23 @@ export class Lighting {
       const py = toMaskY(player.y);
       const REACH = 900 / RESOLUTION;
 
+      // Otwór traktujemy jako szerszy, niż jest naprawdę. Klin liczony co do
+      // piksela z okna szerokiego na kilkanaście pikseli daje na placu wąski
+      // pasek, przez który nic nie widać — a chodzi o to, żeby przez okno dało
+      // się cokolwiek zobaczyć. Rozszerzenie jest świadomym oszustwem.
+      const SPREAD = 10 / RESOLUTION;
+
       for (const win of this.world.windows ?? []) {
-        const ax = toMaskX(win.a.x);
-        const ay = toMaskY(win.a.y);
-        const bx = toMaskX(win.b.x);
-        const by = toMaskY(win.b.y);
+        const dx = win.b.x - win.a.x;
+        const dy = win.b.y - win.a.y;
+        const len = Math.hypot(dx, dy) || 1;
+        const ex = (dx / len) * SPREAD * RESOLUTION;
+        const ey = (dy / len) * SPREAD * RESOLUTION;
+
+        const ax = toMaskX(win.a.x - ex);
+        const ay = toMaskY(win.a.y - ey);
+        const bx = toMaskX(win.b.x + ex);
+        const by = toMaskY(win.b.y + ey);
 
         // Promień od gracza przez koniec otworu, przedłużony na zewnątrz.
         const ray = (ex, ey) => {
