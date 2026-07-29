@@ -255,10 +255,17 @@ export class ForgeScene extends Phaser.Scene {
 
     const body = this.net.update(keys, delta);
     if (!body) return;
-    this.px = body.x;
-    this.py = body.y;
     this.vx = body.vx;
     this.vy = body.vy;
+
+    // Do rysowania bierzemy punkt pośredni między krokami symulacji, żeby ruch
+    // był równy mimo kroku 16 ms i klatki 16,67 ms. Logika gry (strefa, dźwięk,
+    // kroki) korzysta z pozycji symulacji — tam gładkość nie ma znaczenia.
+    this.px = body.x;
+    this.py = body.y;
+    const drawn = this.net.renderPosition();
+    this.drawX = drawn.x;
+    this.drawY = drawn.y;
   }
 
   animatePlayer(time) {
@@ -270,11 +277,13 @@ export class ForgeScene extends Phaser.Scene {
     if (this.player.anims.currentAnim?.key !== key) this.player.play(key);
     if (this.facing === 'side') this.player.setFlipX(pose.flip);
 
-    this.player.setPosition(Math.round(this.px), Math.round(this.py));
-    this.player.setDepth(this.py);
+    const drawX = this.drawX ?? this.px;
+    const drawY = this.drawY ?? this.py;
+    this.player.setPosition(Math.round(drawX), Math.round(drawY));
+    this.player.setDepth(drawY);
 
     this.shadows.setFrame(this.playerShadow, this.player.frame.name, this.player.flipX);
-    this.shadows.refresh(this.playerShadow, this.px, this.py);
+    this.shadows.refresh(this.playerShadow, drawX, drawY);
 
     // Obłoczek kurzu przy zetknięciu stopy z ziemią.
     if (moving && this.player.anims.currentFrame) {

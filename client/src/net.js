@@ -35,7 +35,7 @@ const MAX_CATCHUP_STEPS = 16;   // najwyżej ~256 ms zaległości na klatkę
 // tam, którą wersję kodu naprawdę odpala dana przeglądarka. Bez tego nie da się
 // odróżnić "poprawka nie działa" od "przeglądarka odpala stary plik z cache".
 // Podnosić przy każdej zmianie w warstwie sieciowej lub w ruchu.
-const CLIENT_VERSION = 4;
+const CLIENT_VERSION = 5;
 const MAX_FRAME_MS = 250;   // dłuższa przerwa (przełączona karta) nie jest odrabiana
 
 function makeToken() {
@@ -216,6 +216,12 @@ export class Net {
 
     this.error = Math.hypot(this.body.x - predictedX, this.body.y - predictedY);
 
+    // Po zestawieniu z serwerem punkt odniesienia dla klatki pośredniej musi
+    // pójść razem z pozycją — inaczej rysowalibyśmy przejście od miejsca,
+    // w którym postać już nie jest.
+    this.prevX = this.body.x;
+    this.prevY = this.body.y;
+
     for (const p of message.ps) {
       const remote = this.upsert(p);
       remote.buffer.push({ at: now, x: p.x, y: p.y, f: p.f, m: p.m, l: p.l });
@@ -257,6 +263,9 @@ export class Net {
       steps++;
       this.seq++;
       const command = [this.seq, keys, STEP_MS];
+      // Pozycja sprzed kroku — z niej i z nowej liczymy klatkę pośrednią.
+      this.prevX = this.body.x;
+      this.prevY = this.body.y;
       advance(this.world, this.body, keys, STEP_MS / 1000);
       this.pending.push(command);
       this.outbox.push(command);
@@ -291,6 +300,26 @@ export class Net {
     if (this.pending.length > 240) this.pending.splice(0, this.pending.length - 240);
 
     return this.body;
+  }
+
+  /**
+   * Pozycja do narysowania — pośrednia między dwoma ostatnimi krokami symulacji.
+   *
+   * Symulacja chodzi krokiem 16 ms, a ekran odświeża się co 16,67 ms. Te liczby
+   * się nie dzielą, więc raz na kilkanaście klatek jedna dostaje dwa kroki ruchu,
+   * a inna żaden — i to widać jako drobne teleportowanie postaci, mimo pełnych
+   * 60 klatek. Rysowanie punktu pośredniego rozkłada ruch równo. Kosztem jest
+   * obraz opóźniony o najwyżej jeden krok, czyli 16 ms — niezauważalne.
+   */
+  renderPosition() {
+    if (!this.body) return null;
+    const fromX = this.prevX ?? this.body.x;
+    const fromY = this.prevY ?? this.body.y;
+    const alpha = Math.max(0, Math.min(1, this.accumulator / STEP_MS));
+    return {
+      x: fromX + (this.body.x - fromX) * alpha,
+      y: fromY + (this.body.y - fromY) * alpha,
+    };
   }
 
   /** Komplet liczb do panelu diagnostycznego. */
