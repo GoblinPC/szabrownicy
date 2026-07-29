@@ -31,6 +31,12 @@ const BUFFER_KEEP = 1000;     // ms historii pozycji trzymanej dla interpolacji
 const STEP_MS = 16;
 const MAX_CATCHUP_STEPS = 16;   // najwyżej ~256 ms zaległości na klatkę
 
+// Numer wersji klienta. Leci do serwera przy wejściu i ląduje w logu, więc widać
+// tam, którą wersję kodu naprawdę odpala dana przeglądarka. Bez tego nie da się
+// odróżnić "poprawka nie działa" od "przeglądarka odpala stary plik z cache".
+// Podnosić przy każdej zmianie w warstwie sieciowej lub w ruchu.
+const CLIENT_VERSION = 3;
+
 function makeToken() {
   const existing = localStorage.getItem('szab_token');
   if (existing && /^[a-z0-9]{8,64}$/i.test(existing)) return existing;
@@ -88,7 +94,7 @@ export class Net {
     this.socket.addEventListener('open', () => {
       this.retryIn = 500;
       this.setStatus('łączenie');
-      this.send({ t: 'join', token: this.token, variant: this.variant });
+      this.send({ t: 'join', token: this.token, variant: this.variant, ver: CLIENT_VERSION });
     });
 
     this.socket.addEventListener('message', (event) => {

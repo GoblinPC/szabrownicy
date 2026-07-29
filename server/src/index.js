@@ -24,23 +24,30 @@ const app = express();
 app.disable('x-powered-by');
 
 app.use(express.static(CLIENT_DIR, {
-  etag: PRODUCTION,
-  lastModified: PRODUCTION,
-  maxAge: PRODUCTION ? '1h' : 0,
-  setHeaders: (res, filePath) => {
-    // Grafika jest generowana i wymieniana rzadko, kod klienta zmienia się często
-    // — ale index.html nigdy nie może zostać w pamięci podręcznej, bo to on
-    // wskazuje na resztę.
-    if (!PRODUCTION || filePath.endsWith('index.html')) {
-      res.setHeader('Cache-Control', 'no-store');
-    }
+  etag: true,
+  lastModified: true,
+  setHeaders: (res) => {
+    // `no-cache` nie znaczy "nie zapamiętuj" tylko "zawsze zapytaj, czy się nie
+    // zmieniło" — przeglądarka dostaje 304 i nic nie pobiera, gdy plik jest ten
+    // sam. Zwykłe `max-age` było tu złym pomysłem: kod klienta to moduły ES,
+    // a strona sklepu osadza grę w ramce z innej domeny, więc odświeżenie
+    // strony rodzica wcale nie musi pobrać nowej wersji skryptów. Przez godzinę
+    // gracz siedziałby na starym kodzie i nie dałoby się tego z niego wydusić.
+    res.setHeader('Cache-Control', 'no-cache');
   },
 }));
 
 // Prosty punkt kontrolny — przydaje się do sprawdzenia, czy usługa żyje,
 // bez otwierania gry.
 app.get('/zdrowie', (_req, res) => {
-  res.json({ ok: true, graczy: game.players.size, czas: Math.round(process.uptime()) });
+  res.json({
+    ok: true,
+    graczy: game.players.size,
+    czas: Math.round(process.uptime()),
+    // Wersja kodu, którą odpala każdy podłączony klient — pozwala odróżnić
+    // "poprawka nie działa" od "przeglądarka trzyma stary plik".
+    wersje: [...game.players.values()].map((p) => `${p.name}: v${p.version ?? 0}`),
+  });
 });
 
 const server = http.createServer(app);

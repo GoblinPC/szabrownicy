@@ -162,7 +162,16 @@ export function attachGame(sockets, dataDir, variantCount = 6) {
           players: game.snapshot(),
         });
         broadcast({ t: 'spawn', p: game.describe(player) }, socket);
-        console.log(`  + ${name} (#${id}) — graczy: ${game.players.size}`);
+        const version = Number.isInteger(message.ver) ? message.ver : 0;
+        session.version = version;
+        player.version = version;
+        const agent = String(request.headers['user-agent'] ?? '');
+        const browser = /Firefox/.test(agent) ? 'Firefox'
+          : /Edg\//.test(agent) ? 'Edge'
+          : /Chrome/.test(agent) ? 'Chrome'
+          : /Safari/.test(agent) ? 'Safari'
+          : 'inna';
+        console.log(`  + ${name} (#${id}) — klient v${version}, ${browser} — graczy: ${game.players.size}`);
         return;
       }
 
