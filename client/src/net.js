@@ -35,7 +35,8 @@ const MAX_CATCHUP_STEPS = 16;   // najwyżej ~256 ms zaległości na klatkę
 // tam, którą wersję kodu naprawdę odpala dana przeglądarka. Bez tego nie da się
 // odróżnić "poprawka nie działa" od "przeglądarka odpala stary plik z cache".
 // Podnosić przy każdej zmianie w warstwie sieciowej lub w ruchu.
-const CLIENT_VERSION = 3;
+const CLIENT_VERSION = 4;
+const MAX_FRAME_MS = 250;   // dłuższa przerwa (przełączona karta) nie jest odrabiana
 
 function makeToken() {
   const existing = localStorage.getItem('szab_token');
@@ -69,6 +70,13 @@ export class Net {
     this.rtt = 0;
     this.error = 0;
     this.sentAt = new Map();
+
+    // Zliczanie czasu z trzech źródeł naraz. Jeśli "realny" i "Phaser" się
+    // rozjeżdżają, to znaczy że silnik wygładza czas i postać gubi ruch.
+    this.meter = {
+      frames: 0, real: 0, phaser: 0, simulated: 0, since: performance.now(),
+      fps: 0, realPerSec: 0, phaserPerSec: 0, simPerSec: 0, worstFrame: 0, lastWorst: 0,
+    };
   }
 
   onStatus(callback) {
@@ -221,7 +229,7 @@ export class Net {
    * Jedna klatka sterowania: przewiduje ruch u siebie i dokłada komendę do
    * wysyłki. Zwraca pozycję do narysowania.
    */
-  update(keys, deltaMs) {
+  update(keys, phaserDeltaMs) {
     if (!this.body) return null;
 
     // Wszystkie czasy w tym pliku pochodzą z `performance.now()`. Zegar Phasera
@@ -230,7 +238,19 @@ export class Net {
     // wygładzać ruch innych graczy przyklejała się do ostatniej migawki.
     const now = performance.now();
 
-    this.accumulator = (this.accumulator ?? 0) + Math.max(0, deltaMs);
+    // Czas liczymy sami, z zegara przeglądarki. `delta` Phasera jest wygładzana,
+    // a przy dużym skoku silnik wchodzi w tryb awaryjny i podstawia średnią
+    // zamiast prawdziwego czasu — postać gubiła wtedy ruch i zwalniała.
+    const realDelta = Math.min(MAX_FRAME_MS, Math.max(0, now - (this.lastFrameAt ?? now)));
+    this.lastFrameAt = now;
+
+    const meter = this.meter;
+    meter.frames++;
+    meter.real += realDelta;
+    meter.phaser += Math.max(0, phaserDeltaMs ?? 0);
+    if (realDelta > meter.worstFrame) meter.worstFrame = realDelta;
+
+    this.accumulator = (this.accumulator ?? 0) + realDelta;
     let steps = 0;
     while (this.accumulator >= STEP_MS && steps < MAX_CATCHUP_STEPS) {
       this.accumulator -= STEP_MS;
@@ -244,6 +264,18 @@ export class Net {
     // Po bardzo długiej przerwie (przełączona karta) nie odrabiamy wszystkiego —
     // resztę porzucamy, bo gracz i tak tego nie widział.
     if (this.accumulator > STEP_MS * MAX_CATCHUP_STEPS) this.accumulator = 0;
+
+    meter.simulated += steps * STEP_MS;
+    if (now - meter.since >= 1000) {
+      const seconds = (now - meter.since) / 1000;
+      meter.fps = meter.frames / seconds;
+      meter.realPerSec = meter.real / seconds;
+      meter.phaserPerSec = meter.phaser / seconds;
+      meter.simPerSec = meter.simulated / seconds;
+      meter.lastWorst = meter.worstFrame;
+      meter.frames = 0; meter.real = 0; meter.phaser = 0; meter.simulated = 0;
+      meter.worstFrame = 0; meter.since = now;
+    }
 
     // Pakiety wychodzą 30 razy na sekundę, a nie co klatkę — mniej ruchu w sieci
     // przy identycznym odczuciu sterowania.
@@ -259,6 +291,24 @@ export class Net {
     if (this.pending.length > 240) this.pending.splice(0, this.pending.length - 240);
 
     return this.body;
+  }
+
+  /** Komplet liczb do panelu diagnostycznego. */
+  stats() {
+    const m = this.meter;
+    return {
+      wersja: CLIENT_VERSION,
+      stan: this.status,
+      ping: this.rtt,
+      korekta: this.error,
+      fps: m.fps,
+      najgorszaKlatka: m.lastWorst,
+      czasRealny: m.realPerSec,
+      czasPhasera: m.phaserPerSec,
+      czasSymulacji: m.simPerSec,
+      niepotwierdzone: this.pending.length,
+      obok: this.remotes.size,
+    };
   }
 
   setVariant(variant) {

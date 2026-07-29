@@ -18,7 +18,23 @@ export class HudScene extends Phaser.Scene {
     // i kasowanie napisów co klatkę potrafi zauważalnie kosztować.
     this.plates = new Map();
 
-    this.setHint('WASD / strzałki — ruch    Shift — bieg    M — cisza    N — muzyka');
+    const agent = navigator.userAgent;
+    this.browser = /Firefox/.test(agent) ? 'Firefox'
+      : /Edg\//.test(agent) ? 'Edge'
+      : /Chrome/.test(agent) ? 'Chrome'
+      : /Safari/.test(agent) ? 'Safari'
+      : 'inna';
+
+    this.diagPanel = this.add.rectangle(0, 0, 250, 300, 0x14100f, 0.72).setOrigin(0, 0);
+    this.diag = this.add.bitmapText(8, 8, 'goblin', '', 11).setTint(0x66913f);
+    this.input.keyboard.on('keydown-F1', (event) => {
+      event.preventDefault();
+      const on = !this.diag.visible;
+      this.diag.setVisible(on);
+      this.diagPanel.setVisible(on);
+    });
+
+    this.setHint('WASD / strzałki — ruch    Shift — bieg    M — cisza    N — muzyka    F1 — diagnostyka');
     this.refreshAudioLabel();
     audio.onChange(() => this.refreshAudioLabel());
 
@@ -53,17 +69,42 @@ export class HudScene extends Phaser.Scene {
   }
 
   /**
-   * Liczby zamiast wrażeń: czas odpowiedzi serwera i wielkość korekty pozycji.
-   * Korekta bliska zeru znaczy, że przewidywanie u klienta zgadza się z serwerem
-   * — jeśli rośnie, ruch będzie szarpać.
+   * Panel diagnostyczny. Najważniejsze są trzy liczby czasu: ile go naprawdę
+   * minęło, ile twierdzi Phaser i ile trafiło do symulacji. Powinny być bliskie
+   * 1000 ms na sekundę — każda wyraźnie mniejsza znaczy, że postać gubi ruch,
+   * i od razu widać, na którym etapie.
    */
-  setNetStats(rtt, error, others) {
-    if (this.netStatus !== 'połączony') return;
+  setDiagnostics(stats) {
+    if (!this.diag.visible) return;
     const now = this.time.now;
-    // Odświeżanie napisu co klatkę jest niepotrzebne i tylko miga liczbami.
-    if (now - (this.lastStats ?? 0) < 250) return;
+    if (now - (this.lastStats ?? 0) < 200) return;   // migające liczby są nieczytelne
     this.lastStats = now;
-    this.net.setText(`sieć: ${Math.round(rtt)} ms   korekta ${error.toFixed(1)} px   obok: ${others}`);
+
+    const ms = (value) => `${Math.round(value)}`;
+    const strata = stats.czasRealny > 0
+      ? Math.round((1 - stats.czasSymulacji / stats.czasRealny) * 100)
+      : 0;
+
+    this.diag.setText([
+      `klient v${stats.wersja}   ${this.browser}`,
+      `stan: ${stats.stan}`,
+      '',
+      `fps: ${stats.fps.toFixed(0)}   najdłuższa klatka: ${ms(stats.najgorszaKlatka)} ms`,
+      '',
+      'czas na sekundę (ma być ~1000):',
+      `  realny:    ${ms(stats.czasRealny)} ms`,
+      `  Phaser:    ${ms(stats.czasPhasera)} ms`,
+      `  symulacja: ${ms(stats.czasSymulacji)} ms`,
+      `  strata ruchu: ${strata}%`,
+      '',
+      `ping: ${ms(stats.ping)} ms`,
+      `korekta pozycji: ${stats.korekta.toFixed(2)} px`,
+      `niepotwierdzone: ${stats.niepotwierdzone}`,
+      `gracze obok: ${stats.obok}`,
+    ].join('\n'));
+
+    // Strata ruchu to jedyna liczba, która wprost tłumaczy "postać jest ciężka".
+    this.diag.setTint(strata > 8 ? 0xc43a0d : 0x66913f);
   }
 
   /**
