@@ -386,7 +386,21 @@ export class ForgeScene extends Phaser.Scene {
     // Plakietki rysuje HUD, bo jego kamera nie jest powiększana — dzięki temu
     // nick zostaje mały i ostry niezależnie od zoomu świata.
     const camera = this.cameras.main;
-    this.scene.get('Hud')?.setNameplates(samples.map((sample) => ({
+    // Własny nick też. Wcześniej plakietki dostawali wyłącznie inni gracze, więc
+    // wchodząc na pusty serwer nie widziało się żadnej — a to jest pierwsza rzecz,
+    // po której gracz poznaje, że logowanie zadziałało.
+    // Identyfikator 0 jest wolny: serwer numeruje graczy od 1.
+    const plates = this.net.name
+      ? [...samples, {
+          id: 0,
+          name: this.net.name,
+          admin: this.net.admin,
+          x: this.drawX ?? this.px,
+          y: this.drawY ?? this.py,
+        }]
+      : samples;
+
+    this.scene.get('Hud')?.setNameplates(plates.map((sample) => ({
       id: sample.id,
       name: sample.name,
       admin: sample.admin,

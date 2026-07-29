@@ -35,7 +35,7 @@ const MAX_CATCHUP_STEPS = 16;   // najwyżej ~256 ms zaległości na klatkę
 // tam, którą wersję kodu naprawdę odpala dana przeglądarka. Bez tego nie da się
 // odróżnić "poprawka nie działa" od "przeglądarka odpala stary plik z cache".
 // Podnosić przy każdej zmianie w warstwie sieciowej lub w ruchu.
-const CLIENT_VERSION = 6;
+const CLIENT_VERSION = 7;
 const MAX_FRAME_MS = 250;   // dłuższa przerwa (przełączona karta) nie jest odrabiana
 
 export class Net {
