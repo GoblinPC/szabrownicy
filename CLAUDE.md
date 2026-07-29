@@ -150,20 +150,38 @@ Sterowanie: `M` cisza, `N` sama muzyka, suwaki w prawym górnym rogu.
 oświetlenie z migotaniem, cienie od ognia, cząstki (iskry, kurz, pył), sześć
 wariantów goblina z animacjami spoczynku i biegu w trzech kierunkach, muzyka,
 ambient i kroki, suwaki głośności, serwer deweloperski z przeładowywaniem na żywo.
+**Multiplayer** — serwer autorytatywny, przewidywanie ruchu u klienta, interpolacja
+innych graczy, plakietki z nickami. **Wdrożone** na `mp.szabrownicy.goblinpc.pl`,
+wpięte w guzik GRAJ na goblinpc.pl.
+
+## Sieć
+
+Serwer jest autorytatywny: klient wysyła **wyłącznie wciśnięte klawisze**, pozycję
+liczy serwer. Docelowo to survival PvP z rajdami, więc jest o co oszukiwać.
+
+- `client/src/world/movement.js` — fizyka ruchu, **jedyna kopia**, importowana
+  przez klienta i serwer. Dwie kopie zaczęłyby się rozjeżdżać i gracz widziałby
+  szarpanie przy każdej korekcie.
+- Wejście to komendy `[seq, maska klawiszy, ms]`, wysyłane 30 razy na sekundę
+  paczkami. Klient przewiduje ruch u siebie, a po migawce ustawia się na pozycji
+  z serwera i **odtwarza** komendy jeszcze niepotwierdzone.
+- Serwer tyka 20 Hz. Zapas czasu symulacji na gracza to 1,15× czasu rzeczywistego —
+  to blokuje przyspieszanie postaci przez zawyżanie `dt` w przerobionym kliencie.
+- Innych graczy pokazujemy 100 ms w przeszłości i interpolujemy między migawkami.
+- Ograniczniki: rozmiar wiadomości, liczba na sekundę, timeout na przedstawienie
+  się, heartbeat zrywający martwe połączenia.
+- Tożsamość: token z `localStorage` → nick i wariant w `server/data/players.json`.
 
 **Kolejka, w tej kolejności:**
 
-1. **Wnętrze kuźni** — mur na 2–3 kafle wysokości, dach z belkami znikający po
+1. **Kreator postaci** — warstwy zamiast gotowych wariantów (patrz niżej).
+2. **Czat z dymkami** nad głowami.
+3. **Ekran startowy** z nickiem i kreatorem.
+4. **Wnętrze kuźni** — mur na 2–3 kafle wysokości, dach z belkami znikający po
    wejściu pod niego. Teraz hala czyta się jak podwórko z płotkiem, nie jak wnętrze.
-2. **Ograniczona widoczność** — promienie od postaci zatrzymywane przez ściany;
-   w hali widać halę, plac za murem ciemnieje. Ten sam mechanizm obsłuży potem
-   kopalnię (bez pochodni mrok, promień zależny od siły źródła).
-3. **Rozplanowanie obiektów w strefy funkcjonalne.** Obecne współrzędne były
-   wpisane na ślepo i widać to — rzeczy są porozrzucane bez logiki.
-4. **Multiplayer** — strefy po stronie serwera, interpolacja, plakietki z nickami.
-5. **Czat z dymkami** nad głowami.
-6. **Ekran startowy** z nickiem i wyborem goblina.
-7. Wdrożenie na VPS — szczegóły niżej. Bez kroku eksportu, w odróżnieniu od Nibylandii.
+5. **Ograniczona widoczność** — promienie od postaci zatrzymywane przez ściany.
+   Ten sam mechanizm obsłuży potem noc i kopalnię.
+6. Dalej: świat z chunków, ekwipunek, zbieranie, crafting, walka, bazy, PvP.
 
 ## Wdrożenie
 
