@@ -27,6 +27,77 @@
     transition: opacity .4s;
   }
 
+  /* Ekran wejścia. Leży na grze, a nie zamiast niej — kuźnię widać już
+     w trakcie logowania, przez przyciemnione tło. */
+  #login {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    place-content: center;
+    background: rgba(11, 9, 8, .72);
+    z-index: 10;
+    transition: opacity .35s;
+  }
+  #login.login--gone { opacity: 0; pointer-events: none; }
+
+  #login-box {
+    display: grid;
+    gap: 10px;
+    min-width: 268px;
+    padding: 22px 24px 18px;
+    background: rgba(20, 16, 15, .95);
+    border: 1px solid #453b37;
+    border-radius: 5px;
+    box-shadow: 0 0 0 1px #14100f, 0 14px 40px rgba(0, 0, 0, .6);
+  }
+  #login-box h1 {
+    margin: 0;
+    font-size: 19px;
+    letter-spacing: 3px;
+    color: #f2700f;
+    text-align: center;
+  }
+  .login-sub {
+    margin: -8px 0 6px;
+    text-align: center;
+    font-size: 11px;
+    letter-spacing: 4px;
+    color: #6b5d54;
+  }
+  #login-box label {
+    display: grid;
+    gap: 3px;
+    font-size: 11px;
+    color: #a08d7e;
+  }
+  #login-box input {
+    background: #14100f;
+    border: 1px solid #453b37;
+    border-radius: 3px;
+    color: #e8dcc0;
+    font: inherit;
+    font-size: 13px;
+    padding: 7px 8px;
+  }
+  #login-box input:focus { outline: none; border-color: #f2700f; }
+  #login-box button {
+    margin-top: 4px;
+    background: #5a3f2b;
+    border: 1px solid #7a5738;
+    border-radius: 3px;
+    color: #ffe08a;
+    font: inherit;
+    font-size: 12px;
+    letter-spacing: 1px;
+    padding: 8px;
+    cursor: pointer;
+  }
+  #login-box button:hover:not(:disabled) { background: #7a5738; }
+  #login-box button:disabled { opacity: .55; cursor: default; }
+  .login-msg { margin: 0; min-height: 14px; font-size: 11px; color: #6b9c45; text-align: center; }
+  .login-msg--bad { color: #c43a0d; }
+  .login-hint { margin: 0; font-size: 10px; color: #5c4f49; text-align: center; line-height: 1.4; }
+
   #mixer {
     position: fixed;
     top: 10px;

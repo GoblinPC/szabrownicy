@@ -63,6 +63,13 @@ export class HudScene extends Phaser.Scene {
     this.zone.setText(text);
   }
 
+  /** Powitanie po wejściu — inne dla nowego konta i dla powrotu. */
+  setHello(name, fresh) {
+    this.setHint(fresh
+      ? `Witaj, ${name}. Konto założone.    WASD — ruch    Shift — bieg    F1 — diagnostyka`
+      : `Witaj ponownie, ${name}.    WASD — ruch    Shift — bieg    F1 — diagnostyka`);
+  }
+
   setNet(text) {
     this.netStatus = text;
     this.net.setText(`sieć: ${text}`);

@@ -35,28 +35,23 @@ const MAX_CATCHUP_STEPS = 16;   // najwyżej ~256 ms zaległości na klatkę
 // tam, którą wersję kodu naprawdę odpala dana przeglądarka. Bez tego nie da się
 // odróżnić "poprawka nie działa" od "przeglądarka odpala stary plik z cache".
 // Podnosić przy każdej zmianie w warstwie sieciowej lub w ruchu.
-const CLIENT_VERSION = 5;
+const CLIENT_VERSION = 6;
 const MAX_FRAME_MS = 250;   // dłuższa przerwa (przełączona karta) nie jest odrabiana
-
-function makeToken() {
-  const existing = localStorage.getItem('szab_token');
-  if (existing && /^[a-z0-9]{8,64}$/i.test(existing)) return existing;
-  const token = Array.from(crypto.getRandomValues(new Uint8Array(16)))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
-  localStorage.setItem('szab_token', token);
-  return token;
-}
 
 export class Net {
   constructor(world) {
     this.world = world;
-    this.token = makeToken();
     this.id = null;
+    this.name = null;
+    // Dane logowania trzymamy tylko w pamięci, żeby po zerwaniu połączenia
+    // wrócić do gry bez pytania gracza o hasło drugi raz. Nigdzie ich nie
+    // zapisujemy — w localStorage siedzi wyłącznie sam nick, do podpowiedzi.
+    this.credentials = null;
+    this.pending = null;
     this.status = 'łączenie';
     this.body = null;             // przewidywana pozycja własnej postaci
     this.remotes = new Map();
-    this.pending = [];            // komendy wysłane, jeszcze nie potwierdzone
+    this.unacked = [];            // komendy wysłane, jeszcze nie potwierdzone
     this.outbox = [];             // komendy czekające na najbliższą wysyłkę
     this.seq = 0;
     this.lastSend = 0;
@@ -89,10 +84,38 @@ export class Net {
     for (const callback of this.listeners) callback(status);
   }
 
+  /**
+   * Otwiera połączenie, ale **nie wchodzi do gry** — na to trzeba nicku i hasła.
+   * Świat jest już widoczny, postać stoi bezwładnie, dopóki gracz się nie zaloguje.
+   */
   connect(spawn, variant) {
-    this.body = { x: spawn.x, y: spawn.y, vx: 0, vy: 0 };
+    this.spawn = spawn;
     this.variant = variant;
+    this.body = null;
     this.open();
+  }
+
+  /**
+   * Próba wejścia. Zwraca `{ ok: true, name, fresh }` albo `{ ok: false, reason }`.
+   * Wolny nick zakłada konto, zajęty wymaga hasła — decyduje o tym serwer.
+   */
+  authenticate(name, pass) {
+    return new Promise((resolve) => {
+      this.credentials = { name, pass };
+      this.pending = resolve;
+      if (this.socket?.readyState === 1) this.sendJoin();
+      else this.setStatus('łączenie');   // wyślemy po otwarciu gniazda
+    });
+  }
+
+  sendJoin() {
+    if (!this.credentials) return;
+    this.send({
+      t: 'join',
+      name: this.credentials.name,
+      pass: this.credentials.pass,
+      ver: CLIENT_VERSION,
+    });
   }
 
   open() {
@@ -102,7 +125,9 @@ export class Net {
     this.socket.addEventListener('open', () => {
       this.retryIn = 500;
       this.setStatus('łączenie');
-      this.send({ t: 'join', token: this.token, variant: this.variant, ver: CLIENT_VERSION });
+      // Po zerwaniu i ponownym połączeniu wchodzimy sami, danymi z pamięci —
+      // gracz nie ma być pytany o hasło za każdym mignięciem sieci.
+      this.sendJoin();
     });
 
     this.socket.addEventListener('message', (event) => {
@@ -138,16 +163,29 @@ export class Net {
         location.reload();
         break;
 
-      case 'welcome':
+      case 'welcome': {
         this.id = message.id;
-        this.body.x = message.you.x;
-        this.body.y = message.you.y;
-        this.body.vx = 0;
-        this.body.vy = 0;
-        this.pending.length = 0;
+        this.name = message.name;
+        this.body = { x: message.you.x, y: message.you.y, vx: 0, vy: 0 };
+        this.prevX = message.you.x;
+        this.prevY = message.you.y;
+        this.unacked.length = 0;
         for (const p of message.players) this.upsert(p);
         this.setStatus('połączony');
+        const resolve = this.pending;
+        this.pending = null;
+        resolve?.({ ok: true, name: message.name, fresh: Boolean(message.fresh) });
         break;
+      }
+
+      case 'autherr': {
+        const resolve = this.pending;
+        this.pending = null;
+        this.credentials = null;
+        this.setStatus('logowanie odrzucone');
+        resolve?.({ ok: false, reason: message.reason });
+        break;
+      }
 
       case 'spawn':
         this.upsert(message.p);
@@ -190,6 +228,9 @@ export class Net {
    * których serwer jeszcze nie rozliczył.
    */
   reconcile(message) {
+    // Migawka może przyjść, zanim gracz się zaloguje (albo po rozłączeniu) —
+    // wtedy nie ma czego korygować.
+    if (!this.body) return;
     const now = performance.now();
 
     const sent = this.sentAt.get(message.ack);
@@ -209,8 +250,8 @@ export class Net {
     this.body.vx = message.you.vx;
     this.body.vy = message.you.vy;
 
-    while (this.pending.length && this.pending[0][0] <= message.ack) this.pending.shift();
-    for (const [, keys, ms] of this.pending) {
+    while (this.unacked.length && this.unacked[0][0] <= message.ack) this.unacked.shift();
+    for (const [, keys, ms] of this.unacked) {
       advance(this.world, this.body, keys, ms / 1000);
     }
 
@@ -267,7 +308,7 @@ export class Net {
       this.prevX = this.body.x;
       this.prevY = this.body.y;
       advance(this.world, this.body, keys, STEP_MS / 1000);
-      this.pending.push(command);
+      this.unacked.push(command);
       this.outbox.push(command);
     }
     // Po bardzo długiej przerwie (przełączona karta) nie odrabiamy wszystkiego —
@@ -297,7 +338,7 @@ export class Net {
     }
 
     // Gdyby serwer zamilkł, kolejka niepotwierdzonych komend rosłaby bez końca.
-    if (this.pending.length > 240) this.pending.splice(0, this.pending.length - 240);
+    if (this.unacked.length > 240) this.unacked.splice(0, this.unacked.length - 240);
 
     return this.body;
   }
@@ -335,7 +376,7 @@ export class Net {
       czasRealny: m.realPerSec,
       czasPhasera: m.phaserPerSec,
       czasSymulacji: m.simPerSec,
-      niepotwierdzone: this.pending.length,
+      niepotwierdzone: this.unacked.length,
       obok: this.remotes.size,
     };
   }

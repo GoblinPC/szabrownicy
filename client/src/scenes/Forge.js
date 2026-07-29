@@ -6,6 +6,7 @@ import { Lighting } from '../render/lighting.js';
 import { ShadowCaster } from '../render/shadows.js';
 import { audio } from '../audio/audio.js';
 import { Net } from '../net.js';
+import { showLogin } from '../ui/login.js';
 
 export class ForgeScene extends Phaser.Scene {
   constructor() {
@@ -156,6 +157,12 @@ export class ForgeScene extends Phaser.Scene {
     this.net = new Net(this.world);
     this.net.onStatus((status) => this.scene.get('Hud')?.setNet(status));
     this.net.connect(SPAWN, this.variant);
+
+    // Świat jest już widoczny, ale postać stoi bezwładnie, dopóki gracz nie
+    // poda nicku i hasła. Formularz leży nad kanwą i sam obsługuje ponawianie.
+    showLogin((name, pass) => this.net.authenticate(name, pass)).then((result) => {
+      this.scene.get('Hud')?.setHello(result.name, result.fresh);
+    });
 
     this.others = new Map();
   }
