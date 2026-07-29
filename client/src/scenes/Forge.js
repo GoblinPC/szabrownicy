@@ -189,15 +189,6 @@ export class ForgeScene extends Phaser.Scene {
       shift: Phaser.Input.Keyboard.KeyCodes.SHIFT,
     });
     this.cursors = this.input.keyboard.createCursorKeys();
-
-    // Podmiana wariantu postaci klawiszem — tymczasowo, do czasu ekranu startowego.
-    this.input.keyboard.on('keydown-TAB', (event) => {
-      event.preventDefault();
-      this.variant = (this.variant + 1) % this.variants.length;
-      localStorage.setItem('szab_variant', String(this.variant));
-      this.net.setVariant(this.variant);
-      this.scene.get('Hud')?.setHint(`Goblin: ${this.variants[this.variant].name}   (TAB — zmień)`);
-    });
   }
 
   // --- Pętla ------------------------------------------------------------------

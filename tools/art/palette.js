@@ -14,11 +14,6 @@ export const RAMPS = {
   iron:    ['#262b31', '#3a4048', '#545c66', '#767f8c', '#9aa4b0'], // kowadło, broń, okucia
   ember:   ['#7a1f0a', '#c43a0d', '#f2700f', '#ffa524', '#ffe08a'], // żar, ogień, rozgrzany metal
   goblin:  ['#1e3316', '#2f4a22', '#476b30', '#66913f', '#8ab355'], // skóra goblinów
-  // Skóra ludzi. Dwie rampy zamiast jednej rozjaśnianej, bo ciemna karnacja
-  // rozjaśniona matematycznie robi się szara — musi mieć własne, cieplejsze
-  // przejścia. Indeks 0 służy za obrys, zgodnie z zasadą palety.
-  skinA:   ['#5a3524', '#8a5537', '#b57a52', '#d9a074', '#f2c9a0'], // jasna
-  skinB:   ['#241510', '#3f2618', '#5e3823', '#835233', '#ab7049'], // ciemna
   foliage: ['#14260f', '#1e3a1c', '#33582a', '#4f7a33', '#6b9c45'], // trawa, drzewa, krzaki
   night:   ['#0d1220', '#182238', '#2a3a58', '#445a80', '#5f7aa8'], // chłodne cienie na zewnątrz
 };

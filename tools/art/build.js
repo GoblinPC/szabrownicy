@@ -16,7 +16,6 @@ import { buildTiles, TILE } from './tiles.js';
 import { buildProps } from './props.js';
 import { buildGoblins, VARIANTS } from './goblins.js';
 import { buildMockup } from './mockup.js';
-import { STYLES, SKINS, drawHuman, defaultLook } from './humans.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const GEN_DIR = path.join(ROOT, 'client/assets/gen');
@@ -189,75 +188,9 @@ function buildGoblinPreview(font, goblins) {
   drawText(canvas, font, 2, 4, 'warianty i kierunki', c('ember', 2));
   drawText(canvas, font, 2, 40 + 3 * 26 - 14, 'bieg z profilu', c('ember', 2));
   for (let f = 0; f < 6; f++) {
-    canvas.blit(find(`g1_side_run${f}`), 20 + f * 20, 40 + 3 * 26 - 2);
-    canvas.blit(find(`g2_down_run${f}`), 20 + 6 * 20 + f * 20, 40 + 3 * 26 - 2);
+    canvas.blit(find(`g0_side_run${f}`), 20 + f * 20, 40 + 3 * 26 - 2);
+    canvas.blit(find(`g0_down_run${f}`), 20 + 6 * 20 + f * 20, 40 + 3 * 26 - 2);
   }
-  return canvas;
-}
-
-/**
- * Cztery propozycje sylwetki człowieka do wyboru. Każda w trzech kierunkach,
- * w dwóch karnacjach, w samych majtkach i ubrana, plus cykl biegu z profilu.
- */
-function buildHumanPreview(font) {
-  const COL = 104;
-  const canvas = new Canvas(24 + STYLES.length * COL, 290);
-  canvas.fill(c('soot', 1));
-
-  drawText(canvas, font, 6, 4, 'CZTERY SYLWETKI — ktora?', c('ember', 3));
-
-  STYLES.forEach((style, i) => {
-    const bx = 16 + i * COL;
-    drawText(canvas, font, bx, 18, `${i + 1}. ${style.name}`, c('parchment'));
-
-    // Rząd 0: test sylwetki. Postać wypełniona jednym kolorem — jeśli nie czyta
-    // się na czarno, żadne cieniowanie jej nie uratuje. To jest najważniejsze
-    // kryterium przy wyborze budowy.
-    const sil = drawHuman(style, defaultLook(0, 1, 0, 0), 'down', 'idle', 0);
-    const silSide = drawHuman(style, defaultLook(0, 1, 0, 0), 'side', 'idle', 0);
-    const flat = (src, ox) => {
-      for (let yy = 0; yy < src.height; yy++) {
-        for (let xx = 0; xx < src.width; xx++) {
-          if (src.alphaAt(xx, yy) > 0) canvas.px(bx + ox + xx, 36 + yy, c('parchment'));
-        }
-      }
-    };
-    flat(sil, 0);
-    flat(silSide, 18);
-
-    // Rząd 1: w majtkach, jasna karnacja, trzy kierunki.
-    let y = 68;
-    drawText(canvas, font, bx - 12, y + 8, 'A', c('stone', 2));
-    ['down', 'up', 'side'].forEach((dir, d) => {
-      canvas.blit(drawHuman(style, defaultLook(0, 1, 0, 0), dir, 'idle', 0), bx + d * 18, y);
-    });
-
-    // Rząd 2: ciemna karnacja, łysy.
-    y += 32;
-    drawText(canvas, font, bx - 12, y + 8, 'B', c('stone', 2));
-    ['down', 'up', 'side'].forEach((dir, d) => {
-      canvas.blit(drawHuman(style, defaultLook(1, 0, 0, 0), dir, 'idle', 0), bx + d * 18, y);
-    });
-
-    // Rząd 3: ubrany.
-    y += 32;
-    drawText(canvas, font, bx - 12, y + 8, 'C', c('stone', 2));
-    ['down', 'up', 'side'].forEach((dir, d) => {
-      canvas.blit(drawHuman(style, defaultLook(0, 1, 1, 1), dir, 'idle', 0), bx + d * 18, y);
-    });
-
-    // Rząd 4-5: bieg z profilu.
-    y += 34;
-    drawText(canvas, font, bx - 12, y + 8, 'bieg', c('stone', 2));
-    for (let f = 0; f < 6; f++) {
-      canvas.blit(
-        drawHuman(style, defaultLook(0, 1, 0, 0), 'side', 'run', f),
-        bx + (f % 3) * 18, y + Math.floor(f / 3) * 29
-      );
-    }
-  });
-
-  drawText(canvas, font, 6, 276, 'sylwetka   A: majtki, jasna   B: ciemna, lysy   C: ubrany', c('stone', 3));
   return canvas;
 }
 
@@ -317,10 +250,6 @@ function main() {
   written.push(writePng(
     path.join(PREVIEW_DIR, 'gobliny.png'),
     buildGoblinPreview(font, goblins).scale(5)
-  ));
-  written.push(writePng(
-    path.join(PREVIEW_DIR, 'ludzie.png'),
-    buildHumanPreview(font).scale(4)
   ));
 
   console.log(`Font: ${CHARSET.length} znaków | kafle: ${tiles.length} | obiekty: ${props.length} | klatki postaci: ${goblins.length}`);

@@ -172,11 +172,20 @@ liczy serwer. Docelowo to survival PvP z rajdami, więc jest o co oszukiwać.
   się, heartbeat zrywający martwe połączenia.
 - Tożsamość: token z `localStorage` → nick i wariant w `server/data/players.json`.
 
+**Postać: jeden goblin, świadomie.** Próba zrobienia ludzkich sylwetek (jasna
+i ciemna karnacja, fryzury, warstwowe ubranie) została **odrzucona i usunięta**.
+Powód wart zapamiętania: postacie budowane z metryki — `rect()` na głowę, tułów
+i nogi — wyglądają jak sklejone prostokąty. Goblin wychodzi dobrze dokładnie
+dlatego, że jego sylwetka jest **wypisana ręcznie**, wiersz po wierszu
+(`PROFILE_SPANS`, uszy stawiane pikselami, brew, kieł). Jeśli wybór wyglądu
+kiedyś wróci, ma powstać przez rysowanie znak po znaku (`Canvas.fromAscii`),
+nie przez parametryzowanie prostokątów. I dopiero wtedy, gdy będzie po co —
+czyli przy ekwipunku widocznym na postaci.
+
 **Kolejka, w tej kolejności:**
 
-1. **Kreator postaci** — warstwy zamiast gotowych wariantów (patrz niżej).
-2. **Czat z dymkami** nad głowami.
-3. **Ekran startowy** z nickiem i kreatorem.
+1. **Czat z dymkami** nad głowami.
+2. **Ekran startowy** z nickiem.
 4. **Wnętrze kuźni** — mur na 2–3 kafle wysokości, dach z belkami znikający po
    wejściu pod niego. Teraz hala czyta się jak podwórko z płotkiem, nie jak wnętrze.
 5. **Ograniczona widoczność** — promienie od postaci zatrzymywane przez ściany.

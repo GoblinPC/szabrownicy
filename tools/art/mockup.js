@@ -136,9 +136,9 @@ function buildScene() {
   prop('logs', 66, 168);
 
   goblin('g0_side_idle0', 96, 128);
-  goblin('g2_down_idle0', 146, 158);
-  goblin('g3_up_idle1', 200, 112);
-  goblin('g4_side_run2', 214, 172);
+  goblin('g0_down_idle0', 146, 158);
+  goblin('g0_up_idle1', 200, 112);
+  goblin('g0_side_run2', 214, 172);
 
   items.sort((a, b) => a.sort - b.sort);
   for (const item of items) {

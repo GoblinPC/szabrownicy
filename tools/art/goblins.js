@@ -26,48 +26,17 @@ const OUTLINE = c('soot', 0);
 /** [ciemny, średni, jasny] — każda część ciała używa tej trójki. */
 const shades = (ramp, [a, b, d]) => [c(ramp, a), c(ramp, b), c(ramp, d)];
 
+// Na razie jedna postać. Próba zrobienia ludzkich sylwetek pokazała, że goblin
+// jest jedyną, która naprawdę wyszła — reszta wyglądała jak prostokąty sklejone
+// razem. Wybór wyglądu wróci, gdy będzie po co: przy ekwipunku, który widać
+// na postaci. Do tego czasu nie ma sensu utrzymywać sześciu wariantów.
 export const VARIANTS = [
   {
-    id: 0, name: 'Zwiadowca',
+    id: 0, name: 'Szabrownik',
     skin: shades('goblin', [1, 2, 3]),
     cloth: shades('wood', [1, 2, 3]),
     belt: c('copper'), boot: c('wood', 1),
     head: 'none', beard: false,
-  },
-  {
-    id: 1, name: 'Brodacz',
-    skin: shades('goblin', [1, 2, 3]),
-    cloth: shades('foliage', [0, 1, 2]),
-    belt: c('wood', 3), boot: c('wood', 0),
-    head: 'none', beard: true,
-  },
-  {
-    id: 2, name: 'Hełmiarz',
-    skin: shades('goblin', [2, 3, 4]),
-    cloth: shades('iron', [1, 2, 3]),
-    belt: c('iron', 4), boot: c('iron', 1),
-    head: 'helmet', beard: false,
-  },
-  {
-    id: 3, name: 'Popielaty',
-    skin: shades('stone', [1, 2, 3]),
-    cloth: shades('soot', [1, 2, 3]),
-    belt: c('iron', 2), boot: c('soot', 0),
-    head: 'hood', beard: false,
-  },
-  {
-    id: 4, name: 'Czerwony',
-    skin: shades('goblin', [1, 2, 3]),
-    cloth: ['#5c1622', c('blood'), '#c2455a'],
-    belt: c('copper'), boot: c('wood', 0),
-    head: 'cap', beard: false,
-  },
-  {
-    id: 5, name: 'Chudzielec',
-    skin: shades('goblin', [2, 3, 4]),
-    cloth: ['#6b4a10', c('copper'), '#d9a05b'],
-    belt: c('iron', 3), boot: c('wood', 1),
-    head: 'none', beard: true,
   },
 ];
 
