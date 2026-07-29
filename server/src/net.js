@@ -217,7 +217,17 @@ export function attachGame(sockets, dataDir, variantCount = 6) {
 
   // Pętla świata. Migawka leci osobno do każdego gracza, bo każdy dostaje własne
   // `you` — swoją pozycję prawdziwą, po której koryguje przewidywania.
+  // Rzeczywisty rytm tikania. setInterval potrafi się spóźniać, a od tego zależy,
+  // ile czasu symulacji serwer przyznaje graczom — warto to widzieć.
+  let lastTickAt = Date.now();
+  let worstGap = 0;
+
   setInterval(() => {
+    const gap = Date.now() - lastTickAt;
+    lastTickAt = Date.now();
+    if (gap > worstGap) worstGap = gap;
+    game.stats = { worstGap };
+
     game.tick();
     if (sessions.size === 0) return;
 

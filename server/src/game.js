@@ -105,12 +105,20 @@ export class Game {
       while (player.queue.length && handled < MAX_PER_TICK) {
         const [seq, keys, ms] = player.queue.shift();
         let dt = Math.min(ms / 1000, MAX_COMMAND_DT);
-        if (dt > player.budget) dt = player.budget;
+        // Licznik diagnostyczny: ile razy limit czasu obciął ruch. Przy uczciwym
+        // kliencie powinno to być zero — jeśli rośnie, to zabezpieczenie dusi
+        // normalną grę i postać zwalnia bez powodu.
+        if (dt > player.budget) {
+          dt = player.budget;
+          player.clamped = (player.clamped ?? 0) + 1;
+        }
         player.budget -= dt;
         player.seq = seq;
         handled++;
         if (dt > 0) advance(this.world, player, keys, dt);
       }
+      // Ile komend czeka w kolejce — jeśli stale rośnie, serwer nie nadąża.
+      player.backlog = player.queue.length;
 
       const pose = poseOf(player, player.facing);
       player.facing = pose.facing;

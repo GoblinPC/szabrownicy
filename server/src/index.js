@@ -46,7 +46,14 @@ app.get('/zdrowie', (_req, res) => {
     czas: Math.round(process.uptime()),
     // Wersja kodu, którą odpala każdy podłączony klient — pozwala odróżnić
     // "poprawka nie działa" od "przeglądarka trzyma stary plik".
-    wersje: [...game.players.values()].map((p) => `${p.name}: v${p.version ?? 0}`),
+    najgorszyTik: game.stats?.worstGap ?? 0,
+    gracze: [...game.players.values()].map((p) => ({
+      kto: p.name,
+      wersja: p.version ?? 0,
+      // Ile razy limit czasu obcial ruch i ile komend czeka w kolejce.
+      obciec: p.clamped ?? 0,
+      kolejka: p.backlog ?? 0,
+    })),
   });
 });
 
