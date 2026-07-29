@@ -236,8 +236,29 @@ export class ForgeScene extends Phaser.Scene {
       left: Phaser.Input.Keyboard.KeyCodes.A,
       right: Phaser.Input.Keyboard.KeyCodes.D,
       shift: Phaser.Input.Keyboard.KeyCodes.SHIFT,
-    });
-    this.cursors = this.input.keyboard.createCursorKeys();
+      aup: Phaser.Input.Keyboard.KeyCodes.UP,
+      adown: Phaser.Input.Keyboard.KeyCodes.DOWN,
+      aleft: Phaser.Input.Keyboard.KeyCodes.LEFT,
+      aright: Phaser.Input.Keyboard.KeyCodes.RIGHT,
+      // Drugi argument to przechwytywanie klawiszy. MUSI być `false`.
+      //
+      // Przy domyślnym `true` Phaser wywołuje `preventDefault()` na każdym
+      // zarejestrowanym klawiszu — a wtedy litera nigdy nie dochodzi do pola
+      // tekstowego pod spodem. Objawiało się to tak, że przy logowaniu nie dało
+      // się wpisać `S` (bo `S` to „w dół"), ani `W`, `A`, `D`. To samo zabiłoby
+      // czat. Kadr jest nieprzewijalny (`overflow: hidden`), więc strzałki nie
+      // mają czego przewinąć i nie ma po co ich przechwytywać.
+    }, false);
+  }
+
+  /**
+   * Czy gracz właśnie coś pisze. Gdy kursor stoi w polu tekstowym — logowanie
+   * teraz, czat wkrótce — klawisze nie mogą ruszać postacią.
+   */
+  isTyping() {
+    const el = document.activeElement;
+    if (!el) return false;
+    return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable;
   }
 
   // --- Pętla ------------------------------------------------------------------
@@ -288,11 +309,14 @@ export class ForgeScene extends Phaser.Scene {
    */
   movePlayer(delta) {
     let keys = 0;
-    if (this.keys.left.isDown || this.cursors.left.isDown) keys |= KEY_LEFT;
-    if (this.keys.right.isDown || this.cursors.right.isDown) keys |= KEY_RIGHT;
-    if (this.keys.up.isDown || this.cursors.up.isDown) keys |= KEY_UP;
-    if (this.keys.down.isDown || this.cursors.down.isDown) keys |= KEY_DOWN;
-    if (this.keys.shift.isDown) keys |= KEY_RUN;
+    // Podczas pisania postać stoi — inaczej wpisanie nicku wysyłałoby ją w podróż.
+    if (!this.isTyping()) {
+      if (this.keys.left.isDown || this.keys.aleft.isDown) keys |= KEY_LEFT;
+      if (this.keys.right.isDown || this.keys.aright.isDown) keys |= KEY_RIGHT;
+      if (this.keys.up.isDown || this.keys.aup.isDown) keys |= KEY_UP;
+      if (this.keys.down.isDown || this.keys.adown.isDown) keys |= KEY_DOWN;
+      if (this.keys.shift.isDown) keys |= KEY_RUN;
+    }
 
     const body = this.net.update(keys, delta);
     if (!body) return;
@@ -404,10 +428,15 @@ export class ForgeScene extends Phaser.Scene {
       id: sample.id,
       name: sample.name,
       admin: sample.admin,
-      x: (sample.x - camera.scrollX) * camera.zoom,
+      // Przeliczenie świata na ekran musi iść przez `worldView`, a NIE przez
+      // `scrollX`/`scrollY`. Przy powiększeniu kamery te dwie wartości to nie to
+      // samo: `worldView` uwzględnia zoom, `scroll` nie. Z `scroll` plakietki
+      // lądowały daleko poza kadrem i test widoczności je ukrywał — dlatego nie
+      // było widać żadnego nicku, także cudzego.
+      x: (sample.x - camera.worldView.x) * camera.zoom,
       // 31 pikseli nad stopami to czubek grzebienia hełmu z zapasem — liczone
       // w świecie i dopiero potem przeliczane, więc trzyma się przy każdym zoomie.
-      y: (sample.y - 31 - camera.scrollY) * camera.zoom,
+      y: (sample.y - 31 - camera.worldView.y) * camera.zoom,
     })));
   }
 

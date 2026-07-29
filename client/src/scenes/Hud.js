@@ -25,9 +25,10 @@ export class HudScene extends Phaser.Scene {
       : /Safari/.test(agent) ? 'Safari'
       : 'inna';
 
-    this.diagPanel = this.add.rectangle(0, 0, 250, 300, 0x14100f, 0.72).setOrigin(0, 0);
+    this.diagPanel = this.add.rectangle(0, 0, 270, 330, 0x14100f, 0.72).setOrigin(0, 0);
     this.diag = this.add.bitmapText(8, 8, 'goblin', '', 11).setTint(0x66913f);
     this.input.keyboard.on('keydown-F1', (event) => {
+      if (typing()) return;
       event.preventDefault();
       const on = !this.diag.visible;
       this.diag.setVisible(on);
@@ -38,8 +39,18 @@ export class HudScene extends Phaser.Scene {
     this.refreshAudioLabel();
     audio.onChange(() => this.refreshAudioLabel());
 
-    this.input.keyboard.on('keydown-M', () => audio.unlock().then(() => audio.toggleMute()));
-    this.input.keyboard.on('keydown-N', () => audio.unlock().then(() => audio.toggleMusic()));
+    // Skróty nie mogą działać, gdy gracz pisze — inaczej litera „m" w nicku
+    // wyciszałaby dźwięk.
+    const typing = () => {
+      const el = document.activeElement;
+      return el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
+    };
+    this.input.keyboard.on('keydown-M', () => {
+      if (!typing()) audio.unlock().then(() => audio.toggleMute());
+    });
+    this.input.keyboard.on('keydown-N', () => {
+      if (!typing()) audio.unlock().then(() => audio.toggleMusic());
+    });
 
     this.scale.on('resize', () => this.reposition());
     this.reposition();
@@ -108,6 +119,9 @@ export class HudScene extends Phaser.Scene {
       `korekta pozycji: ${stats.korekta.toFixed(2)} px`,
       `niepotwierdzone: ${stats.niepotwierdzone}`,
       `gracze obok: ${stats.obok}`,
+      `plakietki: ${this.plates.size}` + (this.lastPlate
+        ? `  (${this.lastPlate.name} @ ${this.lastPlate.x},${this.lastPlate.y})` : ''),
+      `ekran: ${Math.round(this.scale.width)}x${Math.round(this.scale.height)}`,
     ].join('\n'));
 
     // Strata ruchu to jedyna liczba, która wprost tłumaczy "postać jest ciężka".
@@ -138,9 +152,11 @@ export class HudScene extends Phaser.Scene {
       if (plate.text !== label) plate.setText(label);
 
       plate.setPosition(Math.round(entry.x), Math.round(entry.y));
+      // Zapamiętane do panelu diagnostycznego — po tych liczbach widać, czy
+      // plakietka w ogóle istnieje i gdzie na ekranie wylądowała.
+      this.lastPlate = { name: entry.name, x: Math.round(entry.x), y: Math.round(entry.y) };
       // Napis daleko poza kadrem nie musi być rysowany.
-      plate.setVisible(entry.x > -60 && entry.x < this.scale.width + 60
-        && entry.y > -60 && entry.y < this.scale.height + 60);
+      plate.setVisible(true);
     }
 
     for (const [id, plate] of this.plates) {
