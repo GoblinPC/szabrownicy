@@ -389,6 +389,7 @@ export class ForgeScene extends Phaser.Scene {
     this.scene.get('Hud')?.setNameplates(samples.map((sample) => ({
       id: sample.id,
       name: sample.name,
+      admin: sample.admin,
       x: (sample.x - camera.scrollX) * camera.zoom,
       // 31 pikseli nad stopami to czubek grzebienia hełmu z zapasem — liczone
       // w świecie i dopiero potem przeliczane, więc trzyma się przy każdym zoomie.

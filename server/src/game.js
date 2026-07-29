@@ -43,11 +43,12 @@ export class Game {
     return this.players.size >= MAX_PLAYERS;
   }
 
-  add(id, { name, variant }) {
+  add(id, { name, variant, admin = false }) {
     const player = {
       id,
       name,
       variant,
+      admin,
       // Lekkie rozrzucenie wokół punktu startowego, żeby wchodzący nie lądowali
       // dokładnie jeden w drugim.
       x: SPAWN.x + (Math.random() * 24 - 12),
@@ -149,6 +150,9 @@ export class Game {
       f: player.facing,
       m: player.moving ? 1 : 0,
       l: player.flip ? 1 : 0,
+      // Odznaka administratora — jawna dla wszystkich, żeby nie dało się
+      // podszyć pod obsługę.
+      a: player.admin ? 1 : 0,
     };
   }
 

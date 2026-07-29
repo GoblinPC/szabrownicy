@@ -22,6 +22,52 @@ const PASS_MAX = 72;
 /** Nick: litery (także polskie), cyfry, podkreślenie i myślnik. */
 const NAME_RE = /^[\p{L}\p{N}_-]{3,16}$/u;
 
+/**
+ * Nicki zastrzeżone — nikt ich sobie nie założy z ekranu logowania.
+ *
+ * Chodzi o podszywanie się: gracz o nicku „GoblinPC" albo „Admin" może naopowiadać
+ * ludziom, że jest od obsługi, i wyciągać od nich cokolwiek. Konta z tej listy
+ * zakłada się wyłącznie narzędziem `server/src/admin.js`, z konsoli serwera.
+ *
+ * Porównanie idzie po formie znormalizowanej: bez wielkości liter i bez znaków
+ * ozdobnych, więc „G0blin", „g-o-b-l-i-n" i „GOBLIN" też są zablokowane.
+ */
+const RESERVED = new Set([
+  'goblin', 'goblinpc', 'goblin-pc', 'goblinshop',
+  'admin', 'administrator', 'admini', 'adm',
+  'mod', 'moderator', 'gm', 'gamemaster',
+  'obsluga', 'support', 'pomoc', 'system', 'serwer', 'server',
+  'szabrownicy', 'kuznia', 'bot', 'null', 'undefined',
+]);
+
+/**
+ * Forma do porównań z listą zastrzeżonych: małe litery, cyfry podobne do liter
+ * sprowadzone do liter, wywalone myślniki i podkreślenia.
+ */
+function normalize(name) {
+  return name
+    .toLocaleLowerCase('pl')
+    .replace(/[_-]/g, '')
+    .replace(/0/g, 'o')
+    .replace(/1/g, 'i')
+    .replace(/3/g, 'e')
+    .replace(/4/g, 'a')
+    .replace(/5/g, 's')
+    .replace(/7/g, 't')
+    .replace(/ł/g, 'l')
+    .replace(/ó/g, 'o')
+    .replace(/ą/g, 'a')
+    .replace(/ę/g, 'e')
+    .replace(/ś/g, 's')
+    .replace(/ć/g, 'c')
+    .replace(/ź|ż/g, 'z')
+    .replace(/ń/g, 'n');
+}
+
+export function isReserved(name) {
+  return RESERVED.has(normalize(String(name ?? '').trim()));
+}
+
 export function checkName(value) {
   if (typeof value !== 'string') return 'nick jest wymagany';
   const name = value.trim();
@@ -84,13 +130,21 @@ export class Accounts {
     }
   }
 
-  async register(name, password) {
+  /**
+   * `allowReserved` przechodzi tylko z konsoli serwera (`admin.js`) — z sieci
+   * nigdy, bo to ono broni przed podszywaniem się pod obsługę.
+   */
+  async register(name, password, { allowReserved = false, admin = false } = {}) {
     const nameError = checkName(name);
     if (nameError) return { error: nameError };
     const passError = checkPassword(password);
     if (passError) return { error: passError };
 
     const clean = name.trim();
+    if (!allowReserved && isReserved(clean)) {
+      return { error: 'ten nick jest zastrzeżony' };
+    }
+
     const key = Accounts.keyOf(clean);
     if (this.byKey.has(key)) return { error: 'ten nick jest już zajęty' };
 
@@ -100,10 +154,31 @@ export class Accounts {
       salt,
       hash: await hash(password, salt),
       variant: 0,
+      admin,
       created: Date.now(),
       lastSeen: Date.now(),
     };
     this.byKey.set(key, account);
+    this.dirty = true;
+    return { account };
+  }
+
+  /** Zmiana hasła istniejącego konta — używane przez narzędzie konsolowe. */
+  async setPassword(name, password) {
+    const passError = checkPassword(password);
+    if (passError) return { error: passError };
+    const account = this.byKey.get(Accounts.keyOf(name));
+    if (!account) return { error: 'nie ma takiego konta' };
+    account.salt = crypto.randomBytes(16).toString('hex');
+    account.hash = await hash(password, account.salt);
+    this.dirty = true;
+    return { account };
+  }
+
+  setAdmin(name, admin) {
+    const account = this.byKey.get(Accounts.keyOf(name));
+    if (!account) return { error: 'nie ma takiego konta' };
+    account.admin = admin;
     this.dirty = true;
     return { account };
   }

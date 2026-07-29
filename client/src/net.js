@@ -166,6 +166,7 @@ export class Net {
       case 'welcome': {
         this.id = message.id;
         this.name = message.name;
+        this.admin = Boolean(message.admin);
         this.body = { x: message.you.x, y: message.you.y, vx: 0, vy: 0 };
         this.prevX = message.you.x;
         this.prevY = message.you.y;
@@ -216,9 +217,10 @@ export class Net {
     if (existing) {
       existing.name = p.n;
       existing.variant = p.v;
+      existing.admin = Boolean(p.a);
       return existing;
     }
-    const remote = { id: p.id, name: p.n, variant: p.v, buffer: [] };
+    const remote = { id: p.id, name: p.n, variant: p.v, admin: Boolean(p.a), buffer: [] };
     this.remotes.set(p.id, remote);
     return remote;
   }
@@ -416,7 +418,7 @@ export class Net {
         sample = before ?? buffer[buffer.length - 1];
       }
 
-      result.push({ id: remote.id, name: remote.name, variant: remote.variant, ...sample });
+      result.push({ id: remote.id, name: remote.name, variant: remote.variant, admin: remote.admin, ...sample });
     }
 
     return result;

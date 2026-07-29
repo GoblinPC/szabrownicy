@@ -124,14 +124,18 @@ export class HudScene extends Phaser.Scene {
     for (const entry of list) {
       seen.add(entry.id);
       let plate = this.plates.get(entry.id);
+      // Administrator ma inny kolor plakietki i gwiazdkę przed nickiem. Jedno
+      // i drugie jest po to, żeby nie dało się podszyć pod obsługę: sam nick
+      // można wpisać, koloru plakietki nie.
+      const label = entry.admin ? `\u2605 ${entry.name}` : entry.name;
       if (!plate) {
-        plate = this.add.bitmapText(0, 0, 'goblin', entry.name, 11)
+        plate = this.add.bitmapText(0, 0, 'goblin', label, 11)
           .setOrigin(0.5, 1)
-          .setTint(0xbda997)
-          .setAlpha(0.85);
+          .setAlpha(0.9);
         this.plates.set(entry.id, plate);
       }
-      if (plate.text !== entry.name) plate.setText(entry.name);
+      plate.setTint(entry.admin ? 0xffa524 : 0xbda997);
+      if (plate.text !== label) plate.setText(label);
 
       plate.setPosition(Math.round(entry.x), Math.round(entry.y));
       // Napis daleko poza kadrem nie musi być rysowany.

@@ -94,7 +94,7 @@ export function attachGame(sockets, dataDir, variantCount = 6) {
     const variant = (((account.variant ?? 0) % variantCount) + variantCount) % variantCount;
 
     const id = nextId++;
-    const player = game.add(id, { name: account.name, variant });
+    const player = game.add(id, { name: account.name, variant, admin: Boolean(account.admin) });
     session.player = player;
     session.joining = false;
     clearTimeout(session.joinTimer);
@@ -109,11 +109,12 @@ export function attachGame(sockets, dataDir, variantCount = 6) {
       hz: TICK_HZ,
       name: account.name,
       fresh: !exists,
+      admin: Boolean(account.admin),
       you: { x: player.x, y: player.y },
       players: game.snapshot(),
     });
     broadcast({ t: 'spawn', p: game.describe(player) }, socket);
-    console.log(`  + ${account.name} (#${id}) — ${exists ? 'logowanie' : 'NOWE KONTO'}`
+    console.log(`  + ${account.name}${account.admin ? ' [ADMIN]' : ''} (#${id}) — ${exists ? 'logowanie' : 'NOWE KONTO'}`
       + `, klient v${version}, ${browser} — graczy: ${game.players.size}`);
   }
 
