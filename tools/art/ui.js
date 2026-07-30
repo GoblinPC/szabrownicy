@@ -20,10 +20,38 @@ import { makeRng, seedFrom } from './rng.js';
 
 const rngFor = (name) => makeRng(seedFrom(name));
 
-// Szerokość nierozciąganego brzegu. Trzy piksele to minimum, przy którym mieści
-// się obrys, jasna krawędź i cień — czyli tyle, ile trzeba, żeby ramka wyglądała
-// na kutą, a nie narysowaną kreską.
-export const SLICE = 3;
+// Szerokość nierozciąganego brzegu.
+//
+// Sześć pikseli, a nie trzy. Trzy wystarczały na kreskę z cieniem, ale **nie
+// mieszczą ornamentu w rogu** — a to on odróżnia ramkę zdobną od prostokąta.
+// Róg 6×6 daje miejsce na okucie z wąsem wchodzącym na oba boki.
+export const SLICE = 6;
+
+// Rampa ramki: ciemne drewno z mosiężnym okuciem. Bliżej złota z gier fantasy
+// niż stalowoszarego panelu, a dalej od interfejsu systemowego.
+// Profil brzegu **zmierzony z obrazka odniesienia** (`Assets/hud.png`), a nie
+// dobrany na oko. Przekrój poziomy przez ramkę panelu gracza dał tam kolejno:
+//
+//   #010000 #060101  — czarny obrys, dwa piksele
+//   #31251c #403122 #4a3b29 #544533  — drewno rosnące ku środkowi listwy
+//   #463a2c #2d2922  — i opadające
+//   #030203  — czarna kreska od wewnątrz
+//   #0e1011  — wypełnienie panelu, prawie czarne i lekko chłodne
+//
+// Najciekawszy wynik pomiaru: **nasza rampa `wood` już w to trafia**. `#7a5738`
+// z palety wobec `#79634b` z obrazka to różnica niewidoczna w grze. Nie trzeba
+// więc niczego dokładać do palety — wystarczyło ułożyć warstwy w tej kolejności
+// i grubości, co odniesienie.
+//
+// Okucie narożne jest tam wyraźnie jaśniejsze i **szarozłote**, nie pomarańczowe
+// (`#8b7e60`, `#927861`). Stąd `stone 3` zamiast `ember`: pierwsza wersja świeciła
+// jak neon właśnie dlatego, że wzięła pomarańcz z ognia.
+const FRAME_EDGE = () => c('soot', 0);
+const FRAME_DARK = () => c('wood', 0);
+const FRAME_MID = () => c('wood', 2);
+const FRAME_LIGHT = () => c('wood', 3);
+const FRAME_BRASS = () => c('stone', 3);
+const FRAME_FILL = () => c('soot', 0);
 
 /**
  * Ramka dziewięciodzielna.
@@ -34,32 +62,51 @@ export const SLICE = 3;
  * @param tone  `iron` — panele bojowe, `wood` — okna i menu
  * @param fill  czy środek ma być wypełniony (panel), czy pusty (sama ramka)
  */
-export function frame9(name, { tone = 'iron', fill = true } = {}) {
-  const rng = rngFor(name);
+export function frame9(name, { fill = true } = {}) {
   const size = SLICE * 3;
   const t = new Canvas(size, size);
 
-  const dark = c(tone, 0);
-  const mid = c(tone, 2);
-  const light = c(tone, 3);
-  const inner = tone === 'wood' ? c('soot', 1) : c('soot', 0);
+  if (fill) t.rect(0, 0, size, size, FRAME_FILL());
 
-  if (fill) t.rect(0, 0, size, size, inner);
+  // **Faza, nie równa obwódka.**
+  //
+  // Porównanie z odniesieniem pokazało to od razu: ramka rysowana jednym kolorem
+  // dookoła czyta się jak obramowanie tabelki, choćby miała pięć warstw. Wzór ma
+  // **światło od góry i z lewej, cień od dołu i z prawej** — dopiero to sprawia,
+  // że deska wygląda na grubą.
+  t.frame(0, 0, size, size, FRAME_EDGE());
+  t.frame(1, 1, size - 2, size - 2, FRAME_DARK());
 
-  // Brzeg: ciemny obrys na zewnątrz, metal w środku brzegu, jasna krawędź od góry
-  // i od lewej. Światło pada z góry z lewej — tak samo jak w całej reszcie grafiki.
-  t.frame(0, 0, size, size, dark);
-  t.frame(1, 1, size - 2, size - 2, mid);
-  t.hline(1, size - 2, 1, light);
-  t.vline(1, 1, size - 2, light);
-  t.hline(1, size - 2, size - 2, dark);
-  t.vline(size - 2, 1, size - 2, dark);
+  // Listwa: jasna u góry i po lewej, ciemna u dołu i po prawej.
+  t.hline(2, size - 3, 2, FRAME_LIGHT());
+  t.vline(2, 2, size - 3, FRAME_LIGHT());
+  t.hline(2, size - 3, size - 3, FRAME_DARK());
+  t.vline(size - 3, 2, size - 3, FRAME_DARK());
 
-  // Nit w rogu. Jeden piksel, a to on odróżnia kutą ramkę od prostokąta.
-  t.px(1, 1, c(tone, 4));
-  t.px(size - 2, 1, c(tone, 4));
-  t.px(1, size - 2, c(tone, 4));
-  if (rng.chance(0.5)) t.px(size - 2, size - 2, c(tone, 4));
+  t.hline(3, size - 4, 3, FRAME_MID());
+  t.vline(3, 3, size - 4, FRAME_MID());
+  t.hline(3, size - 4, size - 4, FRAME_EDGE());
+  t.vline(size - 4, 3, size - 4, FRAME_EDGE());
+
+  t.frame(4, 4, size - 8, size - 8, FRAME_EDGE());
+
+  // Okucie narożne: jasny kwadrat z wąsami wchodzącymi na oba boki. Na obrazku
+  // odniesienia to najjaśniejszy punkt całej ramki i to on odróżnia ramę zdobną
+  // od prostokąta. Mieści się wyłącznie dlatego, że róg ma sześć pikseli.
+  const brass = FRAME_BRASS();
+  const dark = FRAME_DARK();
+  const corner = (cx, cy, sx, sy) => {
+    t.rect(Math.min(cx, cx + sx), Math.min(cy, cy + sy), 2, 2, brass);
+    t.px(cx + sx * 2, cy, brass);
+    t.px(cx, cy + sy * 2, brass);
+    t.px(cx + sx * 3, cy, dark);
+    t.px(cx, cy + sy * 3, dark);
+    t.px(cx + sx, cy + sy, dark);
+  };
+  corner(1, 1, 1, 1);
+  corner(size - 2, 1, -1, 1);
+  corner(1, size - 2, 1, -1);
+  corner(size - 2, size - 2, -1, -1);
 
   return t;
 }
@@ -87,28 +134,65 @@ export function barCap(name, { tone = 'goblin' } = {}) {
  * więc gra rysuje wypełnienie sama, przycinając ten kształt. Tutaj powstaje sama
  * skorupa: obrys i wnętrze do wypełnienia.
  */
+/**
+ * Znacznik uniku — romb 19×19.
+ *
+ * Poprzednia wersja miała jedenaście pikseli i użytkownik **w ogóle jej nie
+ * zauważył**. To jest właściwa lekcja o HUD-zie: element czytany kątem oka musi
+ * być wyraźnie większy, niż wydaje się potrzebne, gdy patrzy się na niego wprost.
+ */
 export function dodgePip(name, { filled = false } = {}) {
-  const t = new Canvas(11, 11);
+  const R = 9;
+  const size = R * 2 + 1;
+  const t = new Canvas(size, size);
   const outline = c('soot', 0);
-  const shell = c('stone', 1);
-  const hot = c('ember', 3);
+  const rim = c('wood', 1);
+  const shell = c('stone', 0);
+  const hot = c('ember', 2);
+  const bright = c('ember', 3);
   const glow = c('ember', 4);
 
-  for (let y = 0; y < 11; y++) {
-    // Romb: |x-5| + |y-5| <= 5. Rysowany wierszami, żeby krawędź była schodkowa
-    // i pikselowa, a nie wygładzona.
-    const span = 5 - Math.abs(y - 5);
+  for (let y = 0; y < size; y++) {
+    const span = R - Math.abs(y - R);
     if (span < 0) continue;
-    for (let x = 5 - span; x <= 5 + span; x++) {
-      const edge = Math.abs(x - 5) + Math.abs(y - 5) >= 5;
-      if (edge) t.px(x, y, outline);
-      else t.px(x, y, filled ? hot : shell);
+    for (let x = R - span; x <= R + span; x++) {
+      const d = Math.abs(x - R) + Math.abs(y - R);
+      if (d >= R) t.px(x, y, outline);
+      else if (d >= R - 1) t.px(x, y, rim);
+      else if (!filled) t.px(x, y, shell);
+      // Gorący rdzeń jaśnieje ku górze — płaski romb wygląda jak naklejka.
+      else t.px(x, y, y < R - 1 ? bright : hot);
     }
   }
-  // Błysk na gotowym znaczniku — po nim widać z daleka, że unik jest naładowany.
   if (filled) {
-    t.px(4, 4, glow);
-    t.px(5, 3, glow);
+    t.px(R - 2, R - 3, glow);
+    t.px(R - 1, R - 4, glow);
+    t.px(R - 3, R - 2, glow);
+  }
+  return t;
+}
+
+/**
+ * Wypełnienie paska — **wypukłe, nie płaskie**.
+ *
+ * Porównanie z odniesieniem pokazało, że paski w grach tego rodzaju nie są
+ * prostokątami w kolorze: mają jasny połysk w górnej jednej trzeciej, ciemniejszy
+ * spód i ściętą górną krawędź. Bez tego pasek wygląda jak wykres słupkowy.
+ *
+ * Zwracamy **jeden pionowy plasterek**, który gra rozciąga na dowolną długość —
+ * kolor jest stały wzdłuż paska, więc szerokość nie ma tu nic do rzeczy.
+ */
+export function barSlice(name, ramp) {
+  const H = 10;
+  const t = new Canvas(1, H);
+  for (let y = 0; y < H; y++) {
+    const k = y / (H - 1);
+    let shade;
+    if (k < 0.12) shade = 3;        // górna krawędź: najjaśniejsza
+    else if (k < 0.38) shade = 4;   // połysk
+    else if (k < 0.72) shade = 2;
+    else shade = 1;                 // spód w cieniu
+    t.px(0, y, c(ramp, shade));
   }
   return t;
 }
@@ -117,13 +201,17 @@ export function buildUi() {
   const entries = [];
   const add = (name, canvas) => entries.push({ name, canvas });
 
-  add('frame_iron', frame9('frame_iron', { tone: 'iron' }));
-  add('frame_wood', frame9('frame_wood', { tone: 'wood' }));
+  add('frame_panel', frame9('frame_panel', { fill: true }));
   // Ramka bez wypełnienia — do paska życia, którego środek maluje gra.
-  add('frame_slot', frame9('frame_slot', { tone: 'iron', fill: false }));
+  add('frame_slot', frame9('frame_slot', { fill: false }));
 
   add('bar_cap_life', barCap('bar_cap_life', { tone: 'goblin' }));
   add('bar_cap_low', barCap('bar_cap_low', { tone: 'ember' }));
+
+  // Plasterki wypełnień. Rozciągane w poziomie przez grę.
+  add('bar_life', barSlice('bar_life', 'goblin'));
+  add('bar_hurt', barSlice('bar_hurt', 'ember'));
+  add('bar_empty', barSlice('bar_empty', 'soot'));
 
   add('pip_empty', dodgePip('pip_empty', { filled: false }));
   add('pip_full', dodgePip('pip_full', { filled: true }));

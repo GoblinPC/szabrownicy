@@ -95,10 +95,17 @@ export class HudScene extends Phaser.Scene {
   }
 
   create() {
-    this.hint = this.add.bitmapText(10, 10, 'goblin', '', 11).setTint(0x9c8f80);
-    this.zone = this.add.bitmapText(10, 26, 'goblin', '', 11).setTint(EMBER);
-    this.sound_ = this.add.bitmapText(10, 42, 'goblin', '', 11).setTint(0x4fc3f7);
-    this.net = this.add.bitmapText(10, 58, 'goblin', '', 11).setTint(0x66913f);
+    // Na ekranie zostaje **tylko to, co zmienia decyzję w walce**.
+    //
+    // Podpowiedź sterowania, stan dźwięku i stan sieci zeszły pod `F1` razem
+    // z resztą przyrządów. To były trzy linijki technicznego tekstu wiszące nad
+    // grą przez cały czas i nie niosły nic, co gracz musiałby wiedzieć w chwili,
+    // gdy ktoś na niego biegnie. Zostają — ale schowane.
+    this.zone = this.add.bitmapText(0, 0, 'goblin', '', 11).setTint(EMBER);
+    this.sound_ = this.add.bitmapText(0, 0, 'goblin', '', 11)
+      .setTint(0x4fc3f7).setDepth(DEPTH.diag + 1).setVisible(false);
+    this.net = this.add.bitmapText(0, 0, 'goblin', '', 11)
+      .setTint(0x66913f).setDepth(DEPTH.diag + 1).setVisible(false);
 
     // Plakietki innych graczy. Trzymamy je w puli i tylko przestawiamy — tworzenie
     // i kasowanie napisów co klatkę potrafi zauważalnie kosztować.
@@ -112,7 +119,6 @@ export class HudScene extends Phaser.Scene {
     this.createDiagnostics();
     this.createHealth();
 
-    this.setHint('WASD — ruch    MYSZ — cios    SPACJA — odskok    Shift — bieg    Enter — czat    F1 — panel');
     this.refreshAudioLabel();
     audio.onChange(() => this.refreshAudioLabel());
 
@@ -429,8 +435,13 @@ export class HudScene extends Phaser.Scene {
     }
   }
 
+  /**
+   * Podpowiedź sterowania. Nie ma jej już na ekranie — trafia do logu czatu jako
+   * jedna linijka przy wejściu i tam blaknie razem z resztą. Wisząca stale nad
+   * grą była szumem: czyta się ją raz, a przeszkadza zawsze.
+   */
   setHint(text) {
-    this.hint.setText(text);
+    this.hintText = text;
   }
 
   /**
@@ -473,9 +484,13 @@ export class HudScene extends Phaser.Scene {
 
   /** Powitanie po wejściu — inne dla nowego konta i dla powrotu. */
   setHello(name, fresh) {
-    this.setHint(fresh
-      ? `Witaj, ${name}.    WASD — ruch    MYSZ — cios    SPACJA — odskok    Enter — czat`
-      : `Witaj ponownie, ${name}.    WASD — ruch    MYSZ — cios    SPACJA — odskok    Enter — czat`);
+    // **Bez powitania.** Nikt nie potrzebuje wiedzieć, że wrócił. Zostaje jedna
+    // linijka sterowania w logu czatu, która sama zblaknie po chwili ciszy —
+    // czyta się ją raz, a wisząca stale nad grą przeszkadzałaby zawsze.
+    this.addMessage({
+      system: true,
+      text: 'WASD ruch   MYSZ cios   SPACJA unik   Shift bieg   Enter czat   F1 panel',
+    });
   }
 
   setNet(text) {
@@ -503,6 +518,10 @@ export class HudScene extends Phaser.Scene {
     this.diag.setText([
       `klient v${stats.wersja}   ${this.browser}`,
       `stan: ${stats.stan}`,
+      // Stan sieci i dźwięku zszedł tutaj z ekranu. To są liczby dla
+      // prowadzącego serwer, nie informacje potrzebne graczowi w walce.
+      this.net.text,
+      this.sound_.text,
       '',
       `fps: ${stats.fps.toFixed(0)}   najdłuższa klatka: ${ms(stats.najgorszaKlatka)} ms`,
       '',
@@ -595,7 +614,7 @@ export class HudScene extends Phaser.Scene {
     // plecaka i okno opcji. Phaser umie 9-slice sam, więc rozciąganie nie rozmywa
     // rogów, choćby pasek miał dowolną szerokość.
     this.healthFrame = this.add.nineslice(
-      0, 0, 'ui', 'frame_slot', 176, 15, SLICE, SLICE, SLICE, SLICE
+      0, 0, 'ui', 'frame_slot', 232, 26, SLICE, SLICE, SLICE, SLICE
     ).setOrigin(0, 0).setDepth(DEPTH.plate);
 
     // Wypełnienie pod ramką: ramka ma pusty środek, więc pasek widać przez nią.
@@ -636,12 +655,18 @@ export class HudScene extends Phaser.Scene {
     this.healthGhost += (this.healthShown - this.healthGhost) * Math.min(1, dt * 2.6);
     if (this.healthGhost < this.healthShown) this.healthGhost = this.healthShown;
 
-    // Cały stan ciała w jednym bloku w lewym dolnym rogu: pasek życia, a pod nim
-    // uniki. Oko ma mieć **jeden adres**, nie trzy rozrzucone po ekranie.
-    const FRAME_W = 176;
-    const FRAME_H = 15;
-    const x = 10;
-    const y = this.scale.height - 92;
+    // Cały stan ciała w jednym bloku: pasek życia, a pod nim uniki i nazwa strefy.
+    // Oko ma mieć **jeden adres**, nie trzy rozrzucone po ekranie.
+    // Rozmiar dobrany po uwadze użytkownika, że poprzedniego paska **w ogóle nie
+    // zauważył**. To jest właściwa lekcja o HUD-zie: element czytany kątem oka
+    // musi być wyraźnie większy, niż wydaje się potrzebne, gdy patrzy się na niego
+    // wprost. Poprzedni miał 176×15 i chował się w rogu.
+    const FRAME_W = 232;
+    const FRAME_H = 26;
+    // Lewy górny róg, nie dolny: tam odruchowo szuka się swojego stanu i tam
+    // trzyma go większość gier tego rodzaju.
+    const x = 12;
+    const y = 12;
     // Wnętrze ramki, licząc jej trzypikselowy brzeg.
     const bx = x + SLICE;
     const by = y + SLICE;
@@ -670,7 +695,9 @@ export class HudScene extends Phaser.Scene {
         .setDepth(DEPTH.plate + 2)
         .setTint(TEXT);
     }
-    this.healthLabel.setPosition(x + FRAME_W + 7, y + 1);
+    // Liczba **w pasku**, nie obok niego: obok robi się z niej osobny element,
+    // którego oko musi szukać. W środku jest częścią paska.
+    this.healthLabel.setPosition(bx + 5, by + Math.round((bh - 11) / 2));
     this.healthLabel.setText(this.healthText ?? '');
 
     // Uniki pod paskiem.
@@ -679,9 +706,9 @@ export class HudScene extends Phaser.Scene {
     // masz, ale ile *zaraz* będziesz miał — a to jest różnica między „mam jeden"
     // a „za pół sekundy mam dwa", czyli dokładnie ta informacja, na której opiera
     // się decyzja o wejściu w zwarcie.
-    const py = y + FRAME_H + 3;
+    const py = y + FRAME_H + 4;
     this.pips.forEach((pip, i) => {
-      const px = x + i * 13;
+      const px = x + 2 + i * 23;
       pip.empty.setPosition(px, py);
       pip.full.setPosition(px, py);
 
@@ -693,6 +720,10 @@ export class HudScene extends Phaser.Scene {
       // Przycinamy od dołu: widoczny zostaje dolny pasek pełnego rombu.
       pip.full.setCrop(0, h - shown, pip.full.width, shown);
     });
+
+    // Nazwa strefy pod znacznikami — najmniejszy element bloku, bo zmienia się
+    // rzadko. Kolor niesie w niej całą treść.
+    this.zone.setPosition(x + 3, py + 24);
   }
 
   update(time, delta) {
@@ -704,10 +735,9 @@ export class HudScene extends Phaser.Scene {
   }
 
   reposition() {
-    this.hint.setPosition(10, this.scale.height - 64);
-    this.zone.setPosition(10, this.scale.height - 48);
-    this.sound_.setPosition(10, this.scale.height - 32);
-    this.net.setPosition(10, this.scale.height - 16);
+    // Panel gracza i strefa ustawiają się same w `updateHealth()` — trzymają się
+    // lewego górnego rogu, więc rozmiar okna ich nie dotyczy. Tutaj zostają tylko
+    // te elementy, które wiszą przy dolnej krawędzi.
 
     // Log siedzi nad polem do pisania, a to nad paskiem podpowiedzi. Wysokość
     // pola (`#chat-input` w index.html) jest stała, więc ten odstęp jest wpisany
