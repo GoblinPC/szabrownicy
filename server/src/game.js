@@ -73,10 +73,18 @@ const PLAYER_HP = 100;
 // śmierć ma boleć czasem — ma boleć stratą tego, co się niosło.
 const DEATH_MS = 3000;
 
-// Regeneracja: powolna i **tylko poza walką**. Powolna, żeby wracanie do kuźni
-// miało sens; przerywana ciosem, żeby nie dało się przeczekać wymiany ciosów.
-const REGEN_PER_SEC = 3.5;
-const REGEN_DELAY_MS = 6000;
+// **Życie nie regeneruje się samo. Nigdy.**
+//
+// To jest decyzja o gatunku, nie o balansie, i była już raz podjęta źle: pierwsza
+// wersja miała powolne odnawianie poza walką. Przy samoleczeniu każda rana jest
+// tymczasowa, więc żadna nie jest decyzją — siada się na chwilę w krzakach i gra
+// toczy się dalej. Leczyć mają: mikstury (kupione albo zrobione), łóżko we własnym
+// pokoju i jedzenie. Wszystkie kosztują.
+//
+// Odrodzenie **nie daje pełnego życia** z tego samego powodu. Bez tego istnieje
+// najprostsze możliwe nadużycie: zabić się, żeby wrócić zdrowym. Docelowa kara za
+// śmierć to utrata niesionych rzeczy — dojdzie razem z ekwipunkiem.
+const RESPAWN_HP = 0.5;
 
 /**
  * Czy punkt leży w strefie bezpiecznej.
@@ -227,17 +235,11 @@ export class Game {
   /** Leżenie, wstawanie i powolna regeneracja poza walką. */
   stepPlayers(now, dt) {
     for (const player of this.players.values()) {
-      if (player.hp <= 0) {
-        if (now < player.deadUntil) continue;
-        player.hp = player.maxHp;
+      if (player.hp <= 0 && now >= player.deadUntil) {
+        player.hp = Math.round(player.maxHp * RESPAWN_HP);
         player.x = SPAWN.x + (Math.random() * 24 - 12);
         player.y = SPAWN.y + (Math.random() * 16 - 8);
         player.hurtSeq++;   // po tym klient pozna, że gracz wstał
-        continue;
-      }
-
-      if (player.hp < player.maxHp && now - player.lastHurtAt > REGEN_DELAY_MS) {
-        player.hp = Math.min(player.maxHp, player.hp + REGEN_PER_SEC * dt);
       }
     }
   }

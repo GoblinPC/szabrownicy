@@ -234,6 +234,47 @@ w jednej częstotliwości.
 
 Sterowanie: `M` cisza, `N` sama muzyka, suwaki w prawym górnym rogu.
 
+## Jaka to ma być gra
+
+Ustalone 2026-07-30. **To ma być gra trudna, a każdy system ma boleć.** Główna
+inspiracja to Tibia. Zasada nadrzędna, z której wynika reszta:
+
+> Jeśli mechanika nie zmienia decyzji gracza, to jej nie ma — choćby była w kodzie.
+
+Wzorzec **negatywny** podany wprost przez użytkownika: głód w Ruście. Jest, a
+wszyscy mają go w nosie, bo trudno od niego umrzeć i prawie nic nie odbiera.
+
+- **Życie nie regeneruje się samo. Nigdy.** Leczą mikstury (kupione albo zrobione),
+  łóżko we własnym pokoju i jedzenie. Wszystko kosztuje. Pierwsza wersja miała
+  powolne odnawianie poza walką — **usunięte tego samego dnia**, bo przy
+  samoleczeniu żadna rana nie jest decyzją.
+- **Brak jedzenia zabija.** Jedzenie jest trudne: trzeba polować albo kupić.
+- **Śmierć wyrzuca niesione rzeczy** i musi mieć **karę na czas**. Bez kary
+  pojawia się najprostsze nadużycie świata: odłożyć wszystko do skrzyni, zabić
+  się dla odnowienia i lecieć dalej. Dlatego odrodzenie daje dziś **połowę życia**,
+  a nie pełne — to zaślepka do czasu, aż będzie co gubić.
+- **Ekwipunek zdobywa się długo.** Zbroja ze skóry to nie pięć saren, tylko żmudny
+  kawałek rozgrywki — chodzi o to, żeby cieszyć się nawet skórzanym hełmem i **bać
+  się jego straty**.
+- **Kuźnia jest strefą bezpieczną**, reszta świata nie.
+- Na później: **system czaszek przy PvP** (PK jak w Tibii i Hurtworldzie).
+
+### Pokój w karczmie zamiast baz
+
+Pomysł użytkownika i **przyjmuję go jako obowiązujący**, bo rozwiązuje problem,
+który inaczej blokował całą resztę: bazy w otwartym świecie wymagają własności,
+uprawnień i obrony pod nieobecność właściciela, a przy dwóch graczach online baza
+to szopa, na którą nikt nie przyjdzie.
+
+Zamiast tego: **każdy ma pokój w karczmie, w tym samym miejscu**. Po wejściu ładuje
+się jego własny — skrzynia, łóżko (odpoczynek), później ogródek do hodowli roślin
+na mikstury i jedzenie. Za złoto u karczmarza **powiększa się pokój** i to odblokowuje
+kolejne budowle.
+
+Technicznie to wnętrze ładowane przy wejściu, czyli dokładnie ten przypadek, który
+CLAUDE.md już dopuszcza: szybkie przeładowanie na przejściu, nie teleport i nie
+osobny świat.
+
 ## Stan i co dalej
 
 **Działa i jest wdrożone** na `mp.szabrownicy.goblinpc.pl`, wpięte w guzik GRAJ
