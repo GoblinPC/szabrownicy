@@ -29,6 +29,14 @@ export const TORCH_DAY = 0.34;
 // rogi są przygaszone, a nie żeby ich nie przygaszać wcale.
 export const VIGNETTE_DAY = 0.3;
 
+// Od jakiej odległości od okna cokolwiek przez nie widać. Przy 40 px, czyli
+// dwóch i pół kafla, klin jest pełny; od 150 px w górę okno nie pokazuje nic.
+// Liczby dobrane pod to, jak stoi się przy oknie w tej grze: kafel ma 16 px,
+// więc pełna widoczność zaczyna się mniej więcej wtedy, gdy postać jest już
+// przy ścianie.
+const WINDOW_NEAR = 40;
+const WINDOW_FAR = 150;
+
 // Deszcz nie tylko przygasza — **zabiera kolor**. Sama ciemniejsza wersja tego
 // samego nieba wygląda jak wieczór, nie jak ulewa; dopiero zjazd w stronę szarości
 // czyta się jako chmury. Stąd dwa ruchy naraz: mniej jasności i mniej nasycenia.
@@ -129,10 +137,22 @@ export class Lighting {
     //
     // Geometria jest ta sama co przy rzucaniu cienia, tylko odwrócona: promienie
     // biegną od gracza przez oba końce otworu i dalej. To, co między nimi, widać.
+    //
+    // Sam klin to jednak za mało i pierwsza wersja wyglądała źle z trzech powodów
+    // naraz, wszystkich wskazanych przez użytkownika: krawędzie były **ostre jak
+    // nożyczki**, wszystkie okna działały **z każdej odległości**, a przez to cały
+    // plac migotał wachlarzami przy każdym kroku. Trzy poprawki, po jednej na każdy:
+    //
+    // 1. **Rozmycie** — klin rysujemy przez filtr, więc boki są miękkie.
+    // 2. **Zanik z odległością od okna** — światło wpadające przez okno nie oświetla
+    //    w nieskończoność, a wachlarz sięgający krańca mapy czyta się jak reflektor.
+    // 3. **Zanik z odległością gracza** — okno pokazuje coś dopiero, gdy się do
+    //    niego podejdzie. To najważniejsza z trzech: patrząc z drugiego końca hali
+    //    nie widzi się przez okno i tak, a właśnie te dalekie kliny robiły ruch.
     if (player) {
       const px = toMaskX(player.x);
       const py = toMaskY(player.y);
-      const REACH = 900 / RESOLUTION;
+      const REACH = 340 / RESOLUTION;
 
       // Otwór traktujemy jako szerszy, niż jest naprawdę. Klin liczony co do
       // piksela z okna szerokiego na kilkanaście pikseli daje na placu wąski
@@ -140,7 +160,21 @@ export class Lighting {
       // się cokolwiek zobaczyć. Rozszerzenie jest świadomym oszustwem.
       const SPREAD = 10 / RESOLUTION;
 
+      // Rozmycie krawędzi klina. Dwa piksele maski to cztery piksele świata —
+      // dość, żeby bok przestał być kreską, i za mało, żeby klin się rozlał.
+      o.filter = 'blur(2px)';
+
       for (const win of this.world.windows ?? []) {
+        const midX = (win.a.x + win.b.x) / 2;
+        const midY = (win.a.y + win.b.y) / 2;
+
+        // Ile gracz widzi przez to konkretne okno. Przy oknie — wszystko,
+        // z drugiego końca hali — nic.
+        const near = Math.hypot(player.x - midX, player.y - midY);
+        const closeness = Math.max(0, Math.min(1,
+          (WINDOW_FAR - near) / (WINDOW_FAR - WINDOW_NEAR)));
+        if (closeness <= 0.01) continue;
+
         const dx = win.b.x - win.a.x;
         const dy = win.b.y - win.a.y;
         const len = Math.hypot(dx, dy) || 1;
@@ -162,7 +196,18 @@ export class Lighting {
         const [fax, fay] = ray(ax, ay);
         const [fbx, fby] = ray(bx, by);
 
-        o.fillStyle = 'rgba(0,0,0,0.82)';
+        // Zanik z odległością od okna — liczony od **środka otworu**, nie od
+        // gracza. Dzięki temu klin gaśnie tam, gdzie kończyłby się snop światła,
+        // a nie tam, gdzie akurat stoi patrzący.
+        const mx = toMaskX(midX);
+        const my = toMaskY(midY);
+        const fade = o.createRadialGradient(mx, my, 0, mx, my, REACH);
+        const peak = 0.86 * closeness;
+        fade.addColorStop(0, `rgba(0,0,0,${peak.toFixed(3)})`);
+        fade.addColorStop(0.45, `rgba(0,0,0,${(peak * 0.72).toFixed(3)})`);
+        fade.addColorStop(1, 'rgba(0,0,0,0)');
+
+        o.fillStyle = fade;
         o.beginPath();
         o.moveTo(ax, ay);
         o.lineTo(bx, by);
@@ -171,6 +216,8 @@ export class Lighting {
         o.closePath();
         o.fill();
       }
+
+      o.filter = 'none';
     }
 
     ctx.globalCompositeOperation = 'multiply';
