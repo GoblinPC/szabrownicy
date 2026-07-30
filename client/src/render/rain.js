@@ -24,6 +24,9 @@ const SLANT = 0.2;
 
 // Krople lądują na różnych głębokościach kadru, nie na jednej linii. W rzucie 3/4
 // każdy piksel w dół to zarazem „dalej", więc kropla musi mieć własne dno.
+//
+// `FALL_MIN` to zapas pod dolną krawędzią kadru — bez niego ostatnie kilkanaście
+// pikseli ekranu byłoby suche, bo żadna kropla nie miałaby tam dna.
 const FALL_MIN = 40;
 const FALL_SPAN = 210;
 
@@ -41,16 +44,25 @@ export class Rain {
   }
 
   spawn(view, above = true) {
+    // Dno kropli losujemy **z wysokości kadru**, a nie od miejsca startu.
+    //
+    // Pierwsza wersja dawała `landY = start + 40..250`, a krople startowały nad
+    // górną krawędzią — więc najniższy punkt, w jaki mogły trafić, wypadał gdzieś
+    // w trzech czwartych ekranu i **dolny pas nigdy nie dostawał deszczu**.
+    // Liczone od kadru każda kropla ma własną głębokość i pada wszędzie.
+    const landY = view.y + Math.random() * (view.height + FALL_MIN);
+    // Kropla w locie zaczyna gdzieś nad swoim dnem, żeby po wyjściu z hali deszcz
+    // nie zjeżdżał falą z góry ekranu.
     const y = above
-      ? view.y - Math.random() * 120
-      : view.y + Math.random() * view.height;
+      ? view.y - 20 - Math.random() * 160
+      : landY - 20 - Math.random() * FALL_SPAN;
     return {
       x: view.x - 60 + Math.random() * (view.width + 160),
       y,
       // Szybsze krople są dłuższe — to ta sama zasada co przy rozmyciu ruchu
       // i bez niej wszystkie wyglądają jakby leciały z jedną prędkością.
       speed: 300 + Math.random() * 240,
-      landY: y + FALL_MIN + Math.random() * FALL_SPAN,
+      landY,
     };
   }
 
