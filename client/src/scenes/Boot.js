@@ -12,6 +12,7 @@ export class BootScene extends Phaser.Scene {
     this.load.atlas('props', 'assets/gen/props.png', 'assets/gen/props.json');
     this.load.atlas('goblins', 'assets/gen/goblins.png', 'assets/gen/goblins.json');
     this.load.bitmapFont('goblin', 'assets/gen/font.png', 'assets/gen/font.xml');
+    this.load.atlas('ui', 'assets/gen/ui.png', 'assets/gen/ui.json');
     this.load.json('tileIndex', 'assets/gen/tiles.json');
     this.load.json('variants', 'assets/gen/variants.json');
   }

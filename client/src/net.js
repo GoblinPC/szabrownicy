@@ -386,6 +386,7 @@ export class Net {
     this.body.dodgeSeq = message.you.ds ?? 0;
     this.body.dodgeDx = message.you.ddx ?? 0;
     this.body.dodgeDy = message.you.ddy ?? 0;
+    if (Number.isFinite(message.you.df)) this.body.dodgeFuel = message.you.df;
 
     while (this.unacked.length && this.unacked[0][0] <= message.ack) this.unacked.shift();
     for (const [, keys, ms, turn] of this.unacked) {

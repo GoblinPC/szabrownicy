@@ -34,6 +34,13 @@ i posłuży jako pierwsza minigierka za portalem.
   Sporo dotychczasowych błędów wzięło się dokładnie stąd.
 - Przy grafice: wygenerować podgląd do `docs/preview/` i **obejrzeć go
   narzędziem Read**, zanim się powie, że coś jest gotowe.
+- **Grafiki nie oszczędzać.** Generowanie jest tu tanie: dziesięć zwierząt
+  z animacjami albo pakiet ozdób powstaje w kilka minut, więc gdy coś da się
+  poprawić albo dołożyć hurtem — robić to, nie pytając. Szczegóły robią cały
+  klimat i to jest najmocniejsza strona tego projektu.
+  **Ale:** tanie jest *rysowanie*, nie *ocenianie*. Prawie każda partia wymaga
+  podglądu i poprawek — obrys ucha, ucięte drzewce i kałuże wzięły po dwa–trzy
+  podejścia. Planować więc czas na oglądanie, a nie na samo generowanie.
 
 ## Uruchamianie
 

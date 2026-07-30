@@ -445,6 +445,9 @@ export function attachGame(sockets, dataDir, variantCount = 6, { guests = false 
           // komend po korekcie przewijałoby go drugi raz.
           d: Math.round(me.dodge ?? 0),
           dw: Math.round(me.dodgeWait ?? 0),
+          // Ładunki uniku jako ułamek — HUD pokazuje z nich nie tylko ile jest,
+          // ale ile zaraz będzie.
+          df: Math.round((me.dodgeFuel ?? 0) * 1000) / 1000,
           ds: me.dodgeSeq ?? 0,
           ddx: Math.round((me.dodgeDx ?? 0) * 1000) / 1000,
           ddy: Math.round((me.dodgeDy ?? 0) * 1000) / 1000,

@@ -39,10 +39,28 @@ export const KEY_MASK = 127;
 // 2. **Przerywa dochodzenie do siebie po ciosie.** Wolno go zrobić w ostatniej
 //    fazie ciosu, więc po uderzeniu można od razu wycofać się z zasięgu zamiast
 //    stać jak słup do końca animacji. To jest ta rzecz, która robi z walki taniec.
-// 3. **Ma przerwę.** Bez niej gracz skacze bez końca i nic go nie kosztuje.
+// 3. **Kosztuje ładunek.** Bez tego gracz skacze bez końca i nic go nie kosztuje.
+//
+// Ładunki zamiast jednej przerwy, i to jest różnica w rozgrywce, nie w liczbach:
+// przy jednej przerwie każdy odskok jest taki sam, a przy trzech ładunkach można
+// **wydać wszystko naraz** — trzy skoki pod rząd to ucieczka, po której przez
+// chwilę nie masz nic. To jest decyzja, a przerwa nią nie była.
+//
+// Ładunek trzymamy jako **liczbę zmiennoprzecinkową 0–3**, a nie licznik sztuk:
+// dzięki temu ładowanie jest ciągłe, odtwarza się identycznie po korekcie
+// i pasek na HUD-zie może pokazać, ile *zaraz* będzie.
 export const DODGE_MS = 200;
-export const DODGE_COOLDOWN_MS = 520;
+export const DODGE_CHARGES = 3;
+export const DODGE_RECHARGE_MS = 2600;
+// Krótka blokada po odskoku, żeby trzy ładunki nie wyszły w jednej klatce jako
+// jeden długi lot. Chodzi o trzy osobne skoki, a nie o rakietę.
+export const DODGE_GAP_MS = 260;
 const DODGE_SPEED = 250;
+
+/** Ile ładunków uniku jest gotowych — z częściowym, jako ułamek. */
+export function dodgeFuel(body) {
+  return Math.max(0, Math.min(DODGE_CHARGES, body.dodgeFuel ?? DODGE_CHARGES));
+}
 
 /** Ile odskoku już minęło, albo `null` poza odskokiem. */
 export function dodgeElapsed(body) {
@@ -473,16 +491,26 @@ export function advance(world, body, keys, dt, aim = null) {
   if (body.dodge > 0) body.dodge = Math.max(0, body.dodge - dt * 1000);
   if (body.dodgeWait > 0) body.dodgeWait = Math.max(0, body.dodgeWait - dt * 1000);
 
+  // Ładowanie leci zawsze, także w trakcie skoku i w trakcie ciosu — przerwa
+  // między skokami wynika z `dodgeWait`, a nie z zatrzymanego ładowania.
+  if (body.dodgeFuel === undefined) body.dodgeFuel = DODGE_CHARGES;
+  body.dodgeFuel = Math.min(
+    DODGE_CHARGES,
+    body.dodgeFuel + (dt * 1000) / DODGE_RECHARGE_MS
+  );
+
   // Wolno go zrobić także w ostatniej fazie ciosu — wtedy odskok **przerywa**
   // dochodzenie do siebie i można wycofać się natychmiast po uderzeniu.
   const canDodge = !(body.dodge > 0)
     && !(body.dodgeWait > 0)
+    && body.dodgeFuel >= 1
     && (!phase || phase.name === 'recover');
 
   if (canDodge && (keys & KEY_DODGE)) {
     const escape = dodgeAimOf(keys, body);
+    body.dodgeFuel -= 1;
     body.dodge = DODGE_MS;
-    body.dodgeWait = DODGE_MS + DODGE_COOLDOWN_MS;
+    body.dodgeWait = DODGE_MS + DODGE_GAP_MS;
     body.dodgeDx = escape.dx;
     body.dodgeDy = escape.dy;
     body.dodgeSeq = (body.dodgeSeq ?? 0) + 1;

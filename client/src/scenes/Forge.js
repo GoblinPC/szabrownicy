@@ -1,8 +1,8 @@
-// Kuźnia — jedyna na razie strefa świata.
+﻿// Kuźnia — jedyna na razie strefa świata.
 
 import { buildWorld, surfaceAt, TILE, WORLD_W, WORLD_H, SPAWN, INTERIOR_PX, ROOF_PX, BUILDING_PX } from '../world/forge.js';
 import {
-  poseOf, inAttackArc, attackStep, strikeFrom, ATTACK_STEPS,
+  poseOf, inAttackArc, attackStep, strikeFrom, ATTACK_STEPS, dodgeFuel,
   KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_RUN, KEY_ATTACK, KEY_DODGE,
 } from '../world/movement.js';
 import { Lighting } from '../render/lighting.js';
@@ -1112,6 +1112,7 @@ export class ForgeScene extends Phaser.Scene {
     const hud = this.scene.get('Hud');
     hud?.setDiagnostics(this.net.stats());
     hud?.setHealth(this.net.hp ?? 0, this.net.maxHp ?? 100, this.net.safe);
+    hud?.setDodge(dodgeFuel(this.net.body ?? {}));
 
     // Plakietki rysuje HUD, bo jego kamera nie jest powiększana — dzięki temu
     // nick zostaje mały i ostry niezależnie od zoomu świata.
@@ -1158,9 +1159,24 @@ export class ForgeScene extends Phaser.Scene {
 
   reportZone() {
     const label = this.isInside() ? 'Kuźnia' : 'Plac przed kuźnią';
-    if (label !== this.lastZone) {
-      this.lastZone = label;
-      this.scene.get('Hud')?.setZone(label);
+    const safe = this.net.safe !== false;
+    if (label === this.lastZone && safe === this.lastSafe) return;
+
+    const hud = this.scene.get('Hud');
+    hud?.setZone(label, safe);
+
+    // Zmiana zasad świata dostaje komunikat **na środku ekranu**. To jedyny
+    // przypadek, w którym cokolwiek wchodzi na środek, i właśnie dlatego zadziała:
+    // gracz nie może dowiedzieć się o przekroczeniu granicy PvP dopiero od
+    // pierwszego ciosu w plecy.
+    if (this.lastSafe !== undefined && safe !== this.lastSafe) {
+      hud?.announce(
+        safe ? 'STREFA BEZPIECZNA' : 'DZICZ - TU MOŻNA CIĘ ZABIĆ',
+        safe
+      );
     }
+
+    this.lastZone = label;
+    this.lastSafe = safe;
   }
 }

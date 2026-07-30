@@ -9,6 +9,11 @@
 import { audio } from '../audio/audio.js';
 import { createChatInput } from '../ui/chat.js';
 import { bubbleShape, bubbleWidth, BUBBLE_COLORS } from '../render/bubble.js';
+import { DODGE_CHARGES } from '../world/movement.js';
+
+// Szerokosc nierozciaganego brzegu ramki 9-slice. Musi zgadzac sie z SLICE
+// w tools/art/ui.js - to ta sama grafika ogladana z dwoch stron.
+const SLICE = 3;
 
 const CHAT_LIMIT = 120;        // musi zgadzać się z limitem serwera
 const LOG_LINES = 6;
@@ -428,8 +433,42 @@ export class HudScene extends Phaser.Scene {
     this.hint.setText(text);
   }
 
-  setZone(text) {
-    this.zone.setText(text);
+  /**
+   * Nazwa strefy i to, czy jesteś w niej bezpieczny.
+   *
+   * Bezpieczeństwo idzie **kolorem**, nie słowem: kolor czyta się kątem oka,
+   * a słowo trzeba przeczytać. Napis jest dla pewności, nie zamiast.
+   */
+  setZone(text, safe = true) {
+    // Tylko znaki z `CHARSET` w `tools/art/font.js`. Font jest generowany i ma
+    // zamkniętą listę glifów — wszystko poza nią wypada jako puste miejsce.
+    this.zone.setText(safe ? `${text}   [bezpiecznie]` : `${text}   [DZICZ]`);
+    this.zone.setTint(safe ? 0x66913f : 0xc43a0d);
+  }
+
+  /**
+   * Komunikat na środku ekranu. Jedyna rzecz, która ma prawo tam wejść —
+   * zarezerwowana na zmianę zasad świata, czyli przekroczenie granicy PvP.
+   * Gdyby wchodziło tam cokolwiek innego, przestałby działać.
+   */
+  announce(text, good = true) {
+    if (!this.banner) {
+      this.banner = this.add.bitmapText(0, 0, 'goblin', '', 22)
+        .setOrigin(0.5, 0.5)
+        .setDepth(DEPTH.diag - 1);
+    }
+    this.banner.setText(text);
+    this.banner.setTint(good ? 0x8ab355 : 0xc43a0d);
+    this.banner.setPosition(Math.round(this.scale.width / 2), Math.round(this.scale.height * 0.32));
+    this.banner.setAlpha(1);
+    this.bannerUntil = this.time.now + 2200;
+  }
+
+  updateBanner(now) {
+    if (!this.banner || this.banner.alpha <= 0) return;
+    const left = this.bannerUntil - now;
+    if (left <= 0) this.banner.setAlpha(0);
+    else if (left < 700) this.banner.setAlpha(left / 700);
   }
 
   /** Powitanie po wejściu — inne dla nowego konta i dla powrotu. */
@@ -552,16 +591,39 @@ export class HudScene extends Phaser.Scene {
    * Bez tego mocny cios i lekkie draśnięcie wyglądają tak samo.
    */
   createHealth() {
-    this.health = this.add.graphics().setDepth(DEPTH.plate);
+    // Ramka jako sprite dziewięciodzielny — ten sam, którym będą obramowane panel
+    // plecaka i okno opcji. Phaser umie 9-slice sam, więc rozciąganie nie rozmywa
+    // rogów, choćby pasek miał dowolną szerokość.
+    this.healthFrame = this.add.nineslice(
+      0, 0, 'ui', 'frame_slot', 176, 15, SLICE, SLICE, SLICE, SLICE
+    ).setOrigin(0, 0).setDepth(DEPTH.plate);
+
+    // Wypełnienie pod ramką: ramka ma pusty środek, więc pasek widać przez nią.
+    this.health = this.add.graphics().setDepth(DEPTH.plate - 1);
     this.healthShown = 1;   // ułamek, do którego dojeżdża pasek
     this.healthGhost = 1;   // jasny ślad po świeżej stracie
     this.healthValue = 1;
+
+    // Znaczniki uniku. Pusty i pełny to osobne sprite'y; ładujący się rysujemy
+    // przycięciem pełnego, żeby wypełniał się od dołu.
+    this.pips = [];
+    for (let i = 0; i < DODGE_CHARGES; i++) {
+      this.pips.push({
+        empty: this.add.image(0, 0, 'ui', 'pip_empty').setOrigin(0, 0).setDepth(DEPTH.plate),
+        full: this.add.image(0, 0, 'ui', 'pip_full').setOrigin(0, 0).setDepth(DEPTH.plate + 1),
+      });
+    }
+    this.dodgeFuel = DODGE_CHARGES;
   }
 
   setHealth(hp, maxHp, safe) {
     this.healthValue = maxHp > 0 ? Math.max(0, Math.min(1, hp / maxHp)) : 0;
     this.healthText = `${Math.max(0, Math.round(hp))}/${Math.round(maxHp)}`;
     this.healthSafe = Boolean(safe);
+  }
+
+  setDodge(fuel) {
+    this.dodgeFuel = Math.max(0, Math.min(DODGE_CHARGES, fuel));
   }
 
   updateHealth(delta) {
@@ -574,35 +636,63 @@ export class HudScene extends Phaser.Scene {
     this.healthGhost += (this.healthShown - this.healthGhost) * Math.min(1, dt * 2.6);
     if (this.healthGhost < this.healthShown) this.healthGhost = this.healthShown;
 
-    const W = 168;
-    const H = 9;
+    // Cały stan ciała w jednym bloku w lewym dolnym rogu: pasek życia, a pod nim
+    // uniki. Oko ma mieć **jeden adres**, nie trzy rozrzucone po ekranie.
+    const FRAME_W = 176;
+    const FRAME_H = 15;
     const x = 10;
-    const y = this.scale.height - 88;
+    const y = this.scale.height - 92;
+    // Wnętrze ramki, licząc jej trzypikselowy brzeg.
+    const bx = x + SLICE;
+    const by = y + SLICE;
+    const bw = FRAME_W - SLICE * 2;
+    const bh = FRAME_H - SLICE * 2;
+
+    this.healthFrame.setPosition(x, y);
 
     this.health.clear();
-    this.health.fillStyle(PANEL, 0.85);
-    this.health.fillRect(x - 1, y - 1, W + 2, H + 2);
-    this.health.fillStyle(0x2a1c14, 1);
-    this.health.fillRect(x, y, W, H);
-    this.health.fillStyle(0xffe08a, 0.55);
-    this.health.fillRect(x, y, Math.round(W * this.healthGhost), H);
+    this.health.fillStyle(0x231c15, 1);
+    this.health.fillRect(bx, by, bw, bh);
+    // Jasny ślad po świeżej stracie — to on pokazuje wielkość ciosu.
+    this.health.fillStyle(0xffe08a, 0.5);
+    this.health.fillRect(bx, by, Math.round(bw * this.healthGhost), bh);
     // Zieleń przy pełnym życiu, żar przy resztkach — kolor sam ostrzega.
     const low = this.healthShown < 0.3;
     this.health.fillStyle(low ? 0xc43a0d : 0x66913f, 1);
-    this.health.fillRect(x, y, Math.round(W * this.healthShown), H);
-    this.health.lineStyle(1, BORDER, 1);
-    this.health.strokeRect(x - 1, y - 1, W + 2, H + 2);
+    const filled = Math.round(bw * this.healthShown);
+    this.health.fillRect(bx, by, filled, bh);
+    // Jaśniejszy grzbiet u góry wypełnienia: pasek przestaje być płaską plamą.
+    this.health.fillStyle(low ? 0xf2700f : 0x8ab355, 1);
+    this.health.fillRect(bx, by, filled, 2);
 
     if (!this.healthLabel) {
       this.healthLabel = this.add.bitmapText(0, 0, 'goblin', '', 11)
-        .setDepth(DEPTH.plate + 1)
+        .setDepth(DEPTH.plate + 2)
         .setTint(TEXT);
     }
-    this.healthLabel.setPosition(x + W + 6, y - 1);
-    this.healthLabel.setText(
-      `${this.healthText ?? ''}${this.healthSafe ? '   bezpiecznie' : ''}`
-    );
-    this.healthLabel.setTint(this.healthSafe ? 0x66913f : TEXT);
+    this.healthLabel.setPosition(x + FRAME_W + 7, y + 1);
+    this.healthLabel.setText(this.healthText ?? '');
+
+    // Uniki pod paskiem.
+    //
+    // Ładujący się znacznik **wypełnia się od dołu**, więc widać nie tylko ile
+    // masz, ale ile *zaraz* będziesz miał — a to jest różnica między „mam jeden"
+    // a „za pół sekundy mam dwa", czyli dokładnie ta informacja, na której opiera
+    // się decyzja o wejściu w zwarcie.
+    const py = y + FRAME_H + 3;
+    this.pips.forEach((pip, i) => {
+      const px = x + i * 13;
+      pip.empty.setPosition(px, py);
+      pip.full.setPosition(px, py);
+
+      const part = Math.max(0, Math.min(1, this.dodgeFuel - i));
+      pip.full.setVisible(part > 0);
+      if (part <= 0) return;
+      const h = pip.full.height;
+      const shown = Math.max(1, Math.round(h * part));
+      // Przycinamy od dołu: widoczny zostaje dolny pasek pełnego rombu.
+      pip.full.setCrop(0, h - shown, pip.full.width, shown);
+    });
   }
 
   update(time, delta) {
@@ -610,6 +700,7 @@ export class HudScene extends Phaser.Scene {
     this.updateLog(time);
     this.updateRoster(time);
     this.updateHealth(delta ?? 16);
+    this.updateBanner(time);
   }
 
   reposition() {
