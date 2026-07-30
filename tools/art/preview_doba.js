@@ -24,7 +24,12 @@ import { buildTiles, TILE } from './tiles.js';
 import { buildProps } from './props.js';
 import { buildWorld, INTERIOR_PX } from '../../client/src/world/forge.js';
 import { skyColor, darkness, partOfDay } from '../../client/src/world/daylight.js';
-import { AMBIENT_FORGE, FORGE_NIGHT, TORCH_DAY, VIGNETTE_DAY } from '../../client/src/render/lighting.js';
+import { AMBIENT_FORGE, FORGE_NIGHT, TORCH_DAY, VIGNETTE_DAY, overcast } from '../../client/src/render/lighting.js';
+
+// `--deszcz` pokazuje **samo przygaszenie i wypranie koloru**. Padających kropli
+// tu nie ma i być nie może: rysuje je Phaser wprost na kanwę gry. Ten arkusz
+// odpowiada wyłącznie na pytanie „czy w ulewie świat ma dobry kolor".
+const RAIN = process.argv.includes('--deszcz') ? 1 : 0;
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -83,7 +88,7 @@ const inInterior = (x, y) =>
  */
 function lightMask(phase) {
   const night = darkness(phase);
-  const yard = skyColor(phase);
+  const yard = overcast(skyColor(phase), RAIN);
   const forgeDim = 1 - (1 - FORGE_NIGHT) * night;
   const forge = AMBIENT_FORGE.map((v) => v * forgeDim);
   const outdoorDim = TORCH_DAY + (1 - TORCH_DAY) * night;
@@ -178,7 +183,7 @@ const PANELS = [{ canvas: scene, label: 'bez swiatla', sky: null }].concat(
   HOURS.map((hour) => ({
     canvas: lit(scene, hour.phase),
     label: `${hour.label} / ${partOfDay(hour.phase)}`,
-    sky: skyColor(hour.phase),
+    sky: overcast(skyColor(hour.phase), RAIN),
   }))
 );
 
@@ -206,14 +211,16 @@ PANELS.forEach((panel, index) => {
 });
 
 drawText(sheet, font, PAD, 3,
-  `doba 16 minut, kolor nieba z daylight.js${noRoof ? '  (bez dachu)' : ''}`, c('ember', 4));
+  `doba 16 minut, kolor nieba z daylight.js${noRoof ? '  (bez dachu)' : ''}${RAIN ? '  (ulewa)' : ''}`,
+  c('ember', 4));
 
-const out = path.join(ROOT, `docs/preview/doba${noRoof ? '_wnetrze' : ''}.png`);
+const out = path.join(ROOT,
+  `docs/preview/doba${noRoof ? '_wnetrze' : ''}${RAIN ? '_deszcz' : ''}.png`);
 fs.mkdirSync(path.dirname(out), { recursive: true });
 const big = sheet.scale(3);
 fs.writeFileSync(out, encodePng(big.width, big.height, big.data));
 console.log(`${path.relative(ROOT, out)}  (${big.width}x${big.height})`);
 for (const hour of HOURS) {
-  const sky = skyColor(hour.phase);
+  const sky = overcast(skyColor(hour.phase), RAIN);
   console.log(`  ${hour.label.padEnd(16)} niebo ${String(sky).padEnd(15)} mrok ${darkness(hour.phase).toFixed(2)}`);
 }

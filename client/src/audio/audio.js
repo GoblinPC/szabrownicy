@@ -154,6 +154,10 @@ class GameAudio {
     this.ambience?.setWind(level);
   }
 
+  setRain(level) {
+    this.ambience?.setRain(level);
+  }
+
   setZone(zone) {
     this.ambience?.setZone(zone);
   }

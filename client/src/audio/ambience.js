@@ -25,6 +25,7 @@ export class Ambience {
 
     this.fireLevel = 0;
     this.windLevel = 0;
+    this.rainLevel = 0;
     this.zone = 'yard';
     this.nextCrackle = ctx.currentTime;
     this.nextGust = ctx.currentTime + 4;
@@ -33,6 +34,12 @@ export class Ambience {
     this.fire = this.buildLoop({ type: 'lowpass', frequency: 420, q: 1 });
     this.windLow = this.buildLoop({ type: 'bandpass', frequency: 480, q: 0.9 });
     this.windHigh = this.buildLoop({ type: 'bandpass', frequency: 1100, q: 4.5 });
+
+    // Deszcz też dwiema warstwami i z tego samego powodu co wiatr. Syk wysokich
+    // to krople o coś uderzające i on sam brzmi jak szum radia; dopiero warstwa
+    // niska daje wrażenie ściany wody. Mżawka to prawie sam syk, ulewa dokłada dół.
+    this.rainHiss = this.buildLoop({ type: 'highpass', frequency: 1700, q: 0.7 });
+    this.rainBody = this.buildLoop({ type: 'bandpass', frequency: 640, q: 0.7 });
 
     this.crackleBus = ctx.createGain();
     this.crackleBus.gain.value = 0;
@@ -67,6 +74,10 @@ export class Ambience {
     this.windLevel = Math.max(0, Math.min(1, level));
   }
 
+  setRain(level) {
+    this.rainLevel = Math.max(0, Math.min(1, level));
+  }
+
   setZone(zone) {
     this.zone = zone;
   }
@@ -85,6 +96,11 @@ export class Ambience {
     this.windLow.gain.gain.setTargetAtTime(this.windLevel * 0.34 * breath, now, 0.6);
     this.windLow.filter.frequency.setTargetAtTime(400 + 240 * breath, now, 0.9);
     this.windHigh.gain.gain.setTargetAtTime(this.windLevel * 0.075 * Math.max(0, breath - 0.5), now, 0.7);
+
+    // Deszcz dochodzi i cichnie wolno (stała czasowa 1,5 s), bo ulewa nie zaczyna
+    // się w jednej chwili. Dół rośnie z kwadratem siły — mżawka ma sam syk.
+    this.rainHiss.gain.gain.setTargetAtTime(this.rainLevel * 0.5, now, 1.5);
+    this.rainBody.gain.gain.setTargetAtTime(this.rainLevel ** 2 * 0.34, now, 1.5);
 
     this.scheduleCrackles(now);
     this.scheduleGusts(now);

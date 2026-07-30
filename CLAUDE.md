@@ -138,10 +138,55 @@ trzech, a przeliczyć i tak musi klient.
 - W dzień przygasają **pochodnie na dworze** (`TORCH_DAY`) i **winieta**
   (`VIGNETTE_DAY`). Ognie pod dachem zostają na pełnej mocy — hala jest ciemna całą
   dobę, a przygaszone palenisko robiło z niej płaską szarość.
-- **Suwak pory dnia pod `F1`** (`client/src/ui/clock.js`) — do oglądania świateł bez
-  czekania. Przestawia **wyłącznie widok u siebie**, zegar dalej prowadzi serwer;
-  guzik „auto" oddaje sterowanie. Nie ma tu czego oszukiwać, bo nocne potwory i głód
-  i tak będzie liczył serwer, dla którego ten suwak nie istnieje.
+- **Suwaki pory dnia i pogody pod `F1`** (`client/src/ui/testpanel.js`) — do oglądania
+  świateł bez czekania. Przestawiają **wyłącznie widok u siebie**, zegar i pogodę dalej
+  prowadzi serwer; guzik „auto" oddaje sterowanie. Nie ma tu czego oszukiwać, bo nocne
+  potwory i głód i tak będzie liczył serwer, dla którego te suwaki nie istnieją.
+
+## Pogoda
+
+`client/src/world/weather.js` — na razie sam deszcz. Wspólny dla obu stron jak
+`daylight.js`, ale z innego powodu: siła opadu jest **funkcją czasu**, więc nie ma
+żadnego stanu do trzymania ani do zapisania, a restart serwera nie przestawia pogody
+w środku ulewy. Serwer i tak wysyła wynik w migawce (`r`) — o pogodzie rozstrzyga on.
+
+- Blok pogody trwa **90 sekund**, między blokami przechodzimy gładko, więc deszcz
+  narasta i cichnie zamiast włączać się jak przełącznik.
+- `DRY = 0.82` wygląda na przesadę i nie jest nią: deszcz rozlewa się na bloki
+  sąsiednie, więc jeden mokry moczy też pół suchego z każdej strony. Przy 0,62
+  wychodziło **55% czasu z opadem** — deszcz był stanem normalnym. Zmierzone
+  rozkładem po całej dobie, nie na oko; dziś 71% sucho, 16% mży, 10% pada, 4% ulewa.
+  **Po zmianie tej stałej zmierzyć ponownie**, bo intuicja tu myli.
+- `client/src/render/rain.js` — krople **nad maską światła** (w ulewie deszcz widać
+  najlepiej, a pod maską zniknąłby razem z placem w nocy), pryśnięcia **pod maską**
+  (żeby ogień je podświetlał). Bez pryśnięć krople przelatują przez obraz jak tapeta
+  puszczona przed kamerą i widać, że nic nie dotyka świata.
+- Kolor: `overcast()` w `lighting.js` robi **dwie rzeczy naraz** — przygasza i zabiera
+  nasycenie. Samo przygaszenie wygląda jak wieczór, nie jak chmury.
+- Dźwięk: dwie warstwy szumu jak przy wietrze i z tego samego powodu. Syk wysokich
+  sam brzmi jak szum radia; ścianę wody robi dopiero warstwa niska, rosnąca z kwadratem
+  siły opadu — mżawka to prawie sam syk.
+
+## Świetliki i ćmy
+
+`client/src/render/critters.js`. Obie rzeczy są **czystą dekoracją i istnieją tylko
+u gracza** — serwer o nich nie wie i nie musi, bo nie da się w nie uderzyć. Gęstość
+obu bierze się z `darkness(phase)`, żeby nie dało się doprowadzić do świetlików
+w południe przez zapomniany drugi próg.
+
+- **Świetlik to cztery piksele krzyża i jeden rdzenia, przy szczycie 0,5 alfy.**
+  Pierwsza wersja miała `fillCircle` o promieniu 3,5 px — Phaser wygładza okręgi, więc
+  przy `pixelArt: true` wychodziła gładka kulka obok świata z twardych pikseli
+  i z daleka czytało się to jako **mrygające kółka**, nie owady. Odrzucone przez
+  użytkownika i słusznie.
+- Świetliki trzymają się drzew (65% podejść), a nie rozsypują równo po placu — rój
+  czyta się jako coś żywego dopiero wtedy, gdy ma się czego trzymać.
+- Reguła „tylko nad trawą" brzmiała ładnie i była bezużyteczna: trawy jest **68 kafli**
+  i to w dwóch zaułkach za kuźnią. Miejsce do lądowania sprawdzamy siatką kolizji,
+  a nie `surfaceAt` — ta nazywa ziemią wszystko, czego nie zna, także skałę.
+- Świetliki idą **nad maską światła** (mają świecić własnym światłem), więc w hali
+  trzeba je wyłączyć ręcznie, bo przeświecałyby przez ścianę. Ćmy idą **pod maskę**
+  i znikają razem z placem za darmo.
 
 Dwie rzeczy wyszły dopiero z podglądu i obie były niewidoczne w liczbach: **południe
 było za ciemne**, bo winieta pełną mocą zjadała jasność dodaną przez niebo, a pierwsza
@@ -321,12 +366,14 @@ Kilka błędów w układzie mapy dało się zauważyć dopiero w grze. Stąd:
 - `node tools/art/preview_world.js [x0 y0 x1 y1] [--bez-dachu]` — render wycinka
   mapy do `docs/preview/swiat.png`, dokładnie tak jak widzi gracz. Stawia też
   postać przy murze, żeby było widać, czy dach nie wchodzi jej na głowę.
-- `node tools/art/preview_doba.js [--bez-dachu]` — ten sam kadr o sześciu porach doby
+- `node tools/art/preview_doba.js [--bez-dachu] [--deszcz]` — ten sam kadr o kilku porach doby
   do `docs/preview/doba.png`, plus **ten sam kadr bez światła** jako pierwsza kratka.
   Ta jedna kratka jest tu najważniejsza: bez niej nie da się odróżnić „południe jest
   za ciemne" od „ziemia po prostu ma ciemną teksturę". Stałe bierze z `daylight.js`
   i `lighting.js`, więc nie pokaże czegoś innego niż gra; reimplementowane jest samo
-  składanie maski, bo płótna 2D przeglądarki w Node nie ma.
+  składanie maski, bo płótna 2D przeglądarki w Node nie ma. `--deszcz` pokazuje **samo
+  przygaszenie i wypranie koloru** — padających kropli tu nie ma i być nie może,
+  rysuje je Phaser wprost na kanwę gry.
 - `node tools/art/preview_bubble.js` — arkusz dymków czatu do `docs/preview/dymek.png`,
   na dwóch tłach: ciepły mrok hali i chłodna trawa placu. Geometria pochodzi
   z `client/src/render/bubble.js`, czyli z kodu gry. **Dwa tła są tu po coś** —

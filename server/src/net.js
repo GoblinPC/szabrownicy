@@ -12,6 +12,7 @@
 import { Game, TICK_HZ } from './game.js';
 import { Accounts, checkName, isReserved } from './accounts.js';
 import { phaseOf } from '../../client/src/world/daylight.js';
+import { rainAt } from '../../client/src/world/weather.js';
 
 const MAX_MESSAGE_BYTES = 1024;      // najdłuższa sensowna wiadomość to kilkadziesiąt bajtów
 const MAX_MESSAGES_PER_SECOND = 90;  // wejście leci ~30 Hz, zapas na skoki
@@ -409,6 +410,9 @@ export function attachGame(sockets, dataDir, variantCount = 6, { guests = false 
         // to jedna liczba zamiast trzech na klatkę, a przeliczeniem i tak musi
         // zająć się klient, bo to on rysuje.
         d: Math.round(phaseOf(Date.now()) * 10000) / 10000,
+        // Deszcz tą samą drogą i z tego samego powodu: o pogodzie rozstrzyga
+        // serwer, a jedna liczba na migawkę nic nie waży.
+        r: Math.round(rainAt(Date.now()) * 1000) / 1000,
         ack: me.seq,
         // Stan ciosu należy do serwera dokładnie tak samo jak pozycja.
         //

@@ -29,6 +29,25 @@ export const TORCH_DAY = 0.34;
 // rogi są przygaszone, a nie żeby ich nie przygaszać wcale.
 export const VIGNETTE_DAY = 0.3;
 
+// Deszcz nie tylko przygasza — **zabiera kolor**. Sama ciemniejsza wersja tego
+// samego nieba wygląda jak wieczór, nie jak ulewa; dopiero zjazd w stronę szarości
+// czyta się jako chmury. Stąd dwa ruchy naraz: mniej jasności i mniej nasycenia.
+const RAIN_DIM = 0.42;   // ile jasności zabiera pełna ulewa
+const RAIN_GREY = 0.65;  // ile koloru zabiera pełna ulewa
+
+/** Niebo przykryte chmurami: ciemniejsze i wyprane z barwy. */
+export function overcast([r, g, b], rain) {
+  if (rain <= 0.001) return [r, g, b];
+  const grey = (r + g + b) / 3;
+  const dim = 1 - RAIN_DIM * rain;
+  const wash = RAIN_GREY * rain;
+  return [
+    Math.round((r + (grey - r) * wash) * dim),
+    Math.round((g + (grey - g) * wash) * dim),
+    Math.round((b + (grey - b) * wash) * dim),
+  ];
+}
+
 export class Lighting {
   constructor(scene, world, interior, building = interior) {
     this.scene = scene;
@@ -158,7 +177,7 @@ export class Lighting {
     ctx.drawImage(this.occlusion, 0, 0);
   }
 
-  update(time, inside = false, player = null, phase = 0.5) {
+  update(time, inside = false, player = null, phase = 0.5, rain = 0) {
     const view = this.scene.cameras.main.worldView;
     const w = Math.ceil(view.width / RESOLUTION) + 2;
     const h = Math.ceil(view.height / RESOLUTION) + 2;
@@ -170,7 +189,7 @@ export class Lighting {
 
     // 1. Światło otoczenia — plac na całości, wnętrze hali nadpisane cieplejszym.
     const night = darkness(phase);
-    const yard = skyColor(phase);
+    const yard = overcast(skyColor(phase), rain);
     const forgeDim = 1 - (1 - FORGE_NIGHT) * night;
     const forge = AMBIENT_FORGE.map((c) => Math.round(c * forgeDim));
 

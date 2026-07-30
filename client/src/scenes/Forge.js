@@ -10,7 +10,10 @@ import { ShadowCaster } from '../render/shadows.js';
 import { audio } from '../audio/audio.js';
 import { Net } from '../net.js';
 import { showLogin } from '../ui/login.js';
-import { createClockSlider } from '../ui/clock.js';
+import { createTestPanel } from '../ui/testpanel.js';
+import { Critters } from '../render/critters.js';
+import { Rain } from '../render/rain.js';
+import { darkness } from '../world/daylight.js';
 
 // Jak długo trzymamy wciśnięcie ciosu w buforze po puszczeniu klawisza.
 const ATTACK_BUFFER_MS = 140;
@@ -37,6 +40,8 @@ export class ForgeScene extends Phaser.Scene {
     this.drawRoof();
 
     this.lighting = new Lighting(this, this.world, INTERIOR_PX, BUILDING_PX);
+    this.critters = new Critters(this, this.world, TILE, BUILDING_PX);
+    this.rain = new Rain(this);
 
     this.setupCamera();
     this.setupInput();
@@ -190,16 +195,19 @@ export class ForgeScene extends Phaser.Scene {
       });
     });
 
-    // Suwak pory dnia. Chodzi razem z panelem diagnostycznym pod F1, bo to ten
-    // sam rodzaj rzeczy — przyrząd, nie interfejs gracza.
-    this.clock = createClockSlider((phase) => this.net.setDayOverride(phase));
+    // Suwaki pory dnia i pogody. Chodzą razem z panelem diagnostycznym pod F1,
+    // bo to ten sam rodzaj rzeczy — przyrząd, nie interfejs gracza.
+    this.testPanel = createTestPanel(
+      (phase) => this.net.setDayOverride(phase),
+      (rain) => this.net.setRainOverride(rain)
+    );
 
     this.others = new Map();
   }
 
   /** Wywoływane przez HUD, gdy gracz przełączy F1. */
   setDiagVisible(on) {
-    this.clock?.setVisible(on);
+    this.testPanel?.setVisible(on);
   }
 
   /**
@@ -719,13 +727,15 @@ export class ForgeScene extends Phaser.Scene {
     this.updateCameraKick(dt);
     this.updateOthers();
     this.updateRoof(dt);
-    this.lighting.update(
-      time,
-      this.isInsideBuilding(this.px, this.py),
-      { x: this.px, y: this.py },
-      this.net.phaseNow()
-    );
-    this.clock.follow(this.net.serverPhase());
+    const inside = this.isInsideBuilding(this.px, this.py);
+    const phase = this.net.phaseNow();
+    const rain = this.net.rainNow();
+    this.lighting.update(time, inside, { x: this.px, y: this.py }, phase, rain);
+    // Po świetle, nie przed: świetliki i ćmy sterują się tą samą porą dnia,
+    // a rozjazd o jedną klatkę widać przy zapalaniu się świetlików o zmierzchu.
+    this.critters.update(dt, time, darkness(phase), inside);
+    this.rain.update(dt, rain, inside);
+    this.testPanel.follow(this.net.serverPhase(), this.net.rain ?? 0);
     this.updateAmbience(dt);
     this.reportZone();
   }
@@ -745,13 +755,18 @@ export class ForgeScene extends Phaser.Scene {
 
     const inside = this.isInside();
     const wind = inside ? 0.18 : 1;
+    // Deszcz w hali słychać, ale przez dach — ciszej niż wiatr, bo krople bębnią
+    // po goncie tuż nad głową, a nie wieją przez bramę.
+    const rain = this.net.rainNow() * (inside ? 0.4 : 1);
 
     const blend = Math.min(1, dt * 2.5);
     this.fireLevel = (this.fireLevel ?? 0) + (fire - (this.fireLevel ?? 0)) * blend;
     this.windLevel = (this.windLevel ?? 0) + (wind - (this.windLevel ?? 0)) * blend;
+    this.rainLevel = (this.rainLevel ?? 0) + (rain - (this.rainLevel ?? 0)) * blend;
 
     audio.setFire(this.fireLevel);
     audio.setWind(this.windLevel);
+    audio.setRain(this.rainLevel);
     audio.setZone(inside ? 'forge' : 'yard');
   }
 

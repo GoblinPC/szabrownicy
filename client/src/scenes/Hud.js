@@ -481,7 +481,7 @@ export class HudScene extends Phaser.Scene {
       `korekta pozycji: ${stats.korekta.toFixed(2)} px`,
       `niepotwierdzone: ${stats.niepotwierdzone}`,
       `gracze obok: ${stats.obok}`,
-      `pora dnia: ${stats.poraDnia}`,
+      `pora dnia: ${stats.poraDnia}   ${stats.pogoda}`,
       `plakietki: ${this.plates.size}   dymki: ${this.bubbles.size}`,
       `ekran: ${Math.round(this.scale.width)}x${Math.round(this.scale.height)}`,
     ].join('\n'));

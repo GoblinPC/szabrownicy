@@ -18,6 +18,7 @@ import { advance, poseOf } from './world/movement.js';
 // `advance` znaczy tu co innego niż w ruchu — stąd alias, żeby nie było wątpliwości,
 // który krok czasu jest który.
 import { advance as advanceDay, partOfDay, phaseOf } from './world/daylight.js';
+import { weatherName } from './world/weather.js';
 
 const INTERP_DELAY = 100;     // ms — o tyle cofamy widok innych graczy
 const SEND_HZ = 30;
@@ -399,6 +400,11 @@ export class Net {
       this.dayPhaseAt = now;
     }
 
+    // Deszcz zmienia się wolno, więc bierzemy go wprost z migawki. Wygładzaniem
+    // zajmuje się scena — i musi, bo przy wejściu do gry pierwsza wartość bywa
+    // pełną ulewą i bez łagodnego dojścia deszcz zaczynałby się jedną klatką.
+    if (typeof message.r === 'number') this.rain = message.r;
+
     for (const p of message.ps) {
       const remote = this.upsert(p);
       remote.buffer.push({ at: now, x: p.x, y: p.y, f: p.f, m: p.m, l: p.l, s: p.s });
@@ -523,6 +529,17 @@ export class Net {
     this.dayOverride = phase;
   }
 
+  /** Siła deszczu z serwera, 0–1. Zanim przyjdzie pierwsza migawka — sucho. */
+  rainNow() {
+    if (this.rainOverride != null) return this.rainOverride;
+    return this.rain ?? 0;
+  }
+
+  /** Ręczne przestawienie pogody — jak przy porze dnia, wyłącznie u siebie. */
+  setRainOverride(rain) {
+    this.rainOverride = rain;
+  }
+
   /** Pora dnia z serwera, bez względu na suwak — do podpisu pod suwakiem. */
   serverPhase() {
     if (this.dayPhase == null) return phaseOf(Date.now());
@@ -545,6 +562,7 @@ export class Net {
       niepotwierdzone: this.unacked.length,
       obok: this.remotes.size,
       poraDnia: partOfDay(this.phaseNow()),
+      pogoda: weatherName(this.rainNow()),
     };
   }
 

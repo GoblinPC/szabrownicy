@@ -186,28 +186,31 @@
     cursor: pointer;
   }
 
-  /* Suwak pory dnia — przyrząd testowy, chodzi pod F1 razem z panelem
-     diagnostycznym. Siedzi pod mikserem, żeby nie zasłaniać rogu z nickami. */
-  #clock {
+  /* Panel testowy: pora dnia i pogoda. Przyrząd, nie interfejs gracza — chodzi
+     pod F1 razem z panelem diagnostycznym. Siedzi pod mikserem, żeby nie
+     zasłaniać rogu z nickami. */
+  #testpanel {
     position: fixed;
     top: 152px;
     right: 10px;
     width: 226px;
-    padding: 6px 8px 7px;
+    padding: 6px 8px 8px;
     background: rgba(20, 16, 15, .82);
     border: 1px solid #453b37;
     border-radius: 4px;
     font-size: 11px;
     user-select: none;
   }
-  .clock-head {
+  .test-title {
     display: flex;
     justify-content: space-between;
     align-items: center;
     color: #f2700f;
-    margin-bottom: 5px;
+    border-bottom: 1px solid #2e2725;
+    padding-bottom: 4px;
+    margin-bottom: 6px;
   }
-  .clock-auto {
+  .test-auto {
     background: none;
     border: 1px solid #453b37;
     border-radius: 3px;
@@ -217,10 +220,12 @@
     padding: 1px 6px;
     cursor: pointer;
   }
-  .clock-auto--on { border-color: #6b9c45; color: #6b9c45; }
-  #clock .mixer-row { grid-template-columns: 1fr 38px; }
-  .clock-caption { margin-top: 4px; color: #5c4f49; font-size: 10px; }
-  .clock-caption--manual { color: #f2700f; }
+  .test-auto:hover { border-color: #6b9c45; color: #6b9c45; }
+  .test-row + .test-row { margin-top: 7px; }
+  .test-head { color: #a08d7e; margin-bottom: 2px; }
+  #testpanel .mixer-row { grid-template-columns: 1fr 38px; }
+  .test-caption { margin-top: 3px; color: #5c4f49; font-size: 10px; }
+  .test-caption--manual { color: #f2700f; }
 </style>
 </head>
 <body>
