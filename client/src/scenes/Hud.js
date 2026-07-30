@@ -16,10 +16,10 @@ import { DODGE_CHARGES } from '../world/movement.js';
 // 232 piksele zajmowalby na ekranie 1920 nieco ponad dziesiata czesc szerokosci.
 const PANEL_X = 16;
 const PANEL_Y = 16;
-const UI_SCALE = 3;
-const BAR_W = 132;
-const BAR_H = 20;
-const PIP_STEP = 23;
+const UI_SCALE = 2;
+const BAR_W = 100;
+const BAR_H = 18;
+const PIP_STEP = 21;
 
 // Szerokość nierozciąganego brzegu ramki 9-slice.
 //
@@ -116,7 +116,11 @@ export class HudScene extends Phaser.Scene {
     // z resztą przyrządów. To były trzy linijki technicznego tekstu wiszące nad
     // grą przez cały czas i nie niosły nic, co gracz musiałby wiedzieć w chwili,
     // gdy ktoś na niego biegnie. Zostają — ale schowane.
-    this.zone = this.add.bitmapText(0, 0, 'goblin', '', 11).setTint(EMBER);
+    // Nazwy strefy **nie ma na ekranie**. Gracz i tak widzi, gdzie stoi, a przy
+    // przekroczeniu granicy PvP dostaje komunikat na środku — i to jest jedyny
+    // moment, w którym ta informacja cokolwiek zmienia. Stały napis w rogu był
+    // tylko szumem.
+    this.zone = this.add.bitmapText(0, 0, 'goblin', '', 11).setVisible(false);
     this.sound_ = this.add.bitmapText(0, 0, 'goblin', '', 11)
       .setTint(0x4fc3f7).setDepth(DEPTH.diag + 1).setVisible(false);
     this.net = this.add.bitmapText(0, 0, 'goblin', '', 11)
@@ -683,7 +687,7 @@ export class HudScene extends Phaser.Scene {
 
   setHealth(hp, maxHp, safe) {
     this.healthValue = maxHp > 0 ? Math.max(0, Math.min(1, hp / maxHp)) : 0;
-    this.healthText = `\/${Math.round(maxHp)}`;
+    this.healthText = `${Math.max(0, Math.round(hp))}/${Math.round(maxHp)}`;
     this.healthSafe = Boolean(safe);
   }
 
