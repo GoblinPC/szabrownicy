@@ -85,6 +85,29 @@ export class Rain {
     if (this.level < 0.01 && this.drops.length === 0 && this.splashes.length === 0) return;
 
     const view = this.scene.cameras.main.worldView;
+
+    // Krople jadą **razem z kamerą**.
+    //
+    // Bez tego deszcz stoi w świecie, a kadr od niego ucieka: biegnąc widać
+    // pusty pas z tej strony, w którą się idzie, i kroplami trzeba czekać, aż
+    // się dosypią. Przesuwając je o ruch kamery mamy pełny deszcz w każdej
+    // klatce — a że kropla i tak leci w dół z własną prędkością, nikt nie
+    // zauważy, że jej tor jest liczony względem ekranu.
+    //
+    // Pryśnięcia zostają w świecie: one **dotykają ziemi** i mają zostać tam,
+    // gdzie spadły.
+    const dx = view.x - (this.lastViewX ?? view.x);
+    const dy = view.y - (this.lastViewY ?? view.y);
+    this.lastViewX = view.x;
+    this.lastViewY = view.y;
+    if (dx || dy) {
+      for (const drop of this.drops) {
+        drop.x += dx;
+        drop.y += dy;
+        drop.landY += dy;
+      }
+    }
+
     const want = Math.round(MAX_DROPS * this.level);
 
     // Przy pierwszym uzupełnianiu rozstawiamy krople na całej wysokości kadru,
@@ -95,7 +118,10 @@ export class Rain {
     if (this.drops.length > want) this.drops.length = want;
 
     const wind = SLANT * (0.8 + 0.35 * Math.sin(this.scene.time.now * 0.0004));
-    this.sheet.lineStyle(1, DROP_COLOR, 0.34 + 0.2 * this.level);
+    // Przezroczystość niższa, niż podpowiada intuicja: deszcz ma być warstwą,
+    // przez którą widać grę, a nie firanką przed nią. Poprzednia wartość
+    // dochodziła do 0,54 i zasłaniała świat.
+    this.sheet.lineStyle(1, DROP_COLOR, 0.16 + 0.12 * this.level);
 
     for (const drop of this.drops) {
       const step = drop.speed * dt;

@@ -608,6 +608,98 @@ function gateArch() {
   return finish(t);
 }
 
+/**
+ * Słup bramy — kamienny filar z okuciem i pochodnią u szczytu.
+ *
+ * Stoi po obu stronach każdego przejścia przez mur. Bez niego wyjście z miasta
+ * jest **dziurą w skale**: gracz nie widzi, gdzie kończy się strefa bezpieczna,
+ * a przekroczenie granicy PvP ma być decyzją, nie przypadkiem. Dwa filary robią
+ * z otworu bramę i to one niosą całą informację.
+ */
+function gatePost(name) {
+  const rng = rngFor(name);
+  const t = new Canvas(12, 34);
+
+  // Trzon z ciosanego kamienia, warstwami — równy filar wygląda jak słupek.
+  for (let y = 4; y < 34; y++) {
+    const warstwa = Math.floor((y - 4) / 5);
+    const wcięcie = warstwa % 2 === 0 ? 0 : 1;
+    for (let x = 1 + wcięcie; x < 11 - wcięcie; x++) {
+      const jasne = x < 4;
+      t.px(x, y, c('stone', jasne ? 2 : 1));
+    }
+    // Spoina między warstwami.
+    if ((y - 4) % 5 === 0) t.hline(1 + wcięcie, 10 - wcięcie, y, c('stone', 0));
+  }
+  t.speckle(rng, c('stone', 3), 0.08, { x: 1, y: 4, w: 10, h: 30 });
+
+  // Głowica: szersza płyta z okuciem.
+  t.rect(0, 2, 12, 4, c('stone', 2));
+  t.hline(0, 11, 2, c('stone', 3));
+  t.hline(0, 11, 5, c('stone', 0));
+  t.rect(4, 0, 4, 3, c('iron', 2));
+  t.px(5, 1, c('iron', 4));
+
+  return finish(t.outline(c('soot', 0)));
+}
+
+/**
+ * Krzak — kępa liści bez pnia, przez którą da się przejść.
+ *
+ * Sam las z drzew jest ścianą i jednym rodzajem kształtu. Krzaki wypełniają
+ * poziom, na którym nic nie było: między trawą przy ziemi a koronami wysoko.
+ * To one, a nie drzewa, sprawiają, że polana przestaje być łysiną.
+ */
+function bush(name) {
+  const rng = rngFor(name);
+  const w = rng.between(12, 18);
+  const h = rng.between(9, 13);
+  const t = new Canvas(w, h);
+  const cx = w / 2;
+
+  // Kilka nachodzących na siebie kęp — jedna elipsa wygląda jak zielona poduszka.
+  const kepy = rng.between(3, 4);
+  for (let i = 0; i < kepy; i++) {
+    const ex = rng.between(3, w - 4);
+    const ey = rng.between(4, h - 2);
+    const rx = rng.between(3, 5);
+    const ry = rng.between(2, 4);
+    const odcien = rng.between(1, 3);
+    t.ellipse(ex, ey, rx, ry, c('foliage', odcien));
+  }
+  // Światło na wierzchu, cień u dołu — inaczej krzak jest płaską plamą.
+  for (let x = 0; x < w; x++) {
+    for (let y = 0; y < h; y++) {
+      if (!t.alphaAt(x, y)) continue;
+      if (!t.alphaAt(x, y - 1) && y < h * 0.55) t.px(x, y, c('foliage', 4));
+      if (!t.alphaAt(x, y + 1)) t.px(x, y, c('foliage', 0));
+    }
+  }
+  // Kilka gałązek wystających poza obrys — równa kępa wygląda jak strzyżona.
+  for (let i = 0; i < 4; i++) {
+    const gx = rng.between(2, w - 3);
+    const gy = rng.between(2, Math.floor(h * 0.6));
+    t.px(gx, gy, c('foliage', 4));
+  }
+  return finish(t.outline(c('foliage', 0)));
+}
+
+/** Kwiaty — kilka łodyg z barwnymi główkami. Drobiazg, ale to on daje kolor. */
+function flowers(name) {
+  const rng = rngFor(name);
+  const t = new Canvas(12, 9);
+  const barwy = [c('ember', 4), c('parchment'), c('ember', 3), c('night', 4)];
+
+  for (let i = 0; i < rng.between(3, 5); i++) {
+    const x = rng.between(1, 10);
+    const h = rng.between(3, 6);
+    for (let y = 0; y < h; y++) t.px(x, 8 - y, c('foliage', 2));
+    t.px(x, 8 - h, rng.pick(barwy));
+    if (rng.chance(0.5)) t.px(x + 1, 8 - h + 1, c('foliage', 3));
+  }
+  return finish(t);
+}
+
 // --- Ogień (klatki animacji) --------------------------------------------------
 
 /**
@@ -675,6 +767,9 @@ export function buildProps() {
   add('fence', fence());
   add('campfire', campfire());
   add('gate', gateArch());
+  add('gatepost', gatePost('gatepost'));
+  for (let i = 0; i < 3; i++) add(`bush${i}`, bush(`bush${i}`));
+  for (let i = 0; i < 2; i++) add(`flowers${i}`, flowers(`flowers${i}`));
 
   for (let f = 0; f < 4; f++) {
     add(`flame_small_${f}`, flame(6, 9, f, 'small'));

@@ -18,10 +18,24 @@ import { makeRng, seedFrom } from '../util/rng.js';
  * surowiec** — dwa obozy bandytów obok siebie to jeden obóz widziany dwa razy.
  */
 export const REGIONS = [
-  { key: 'las', dir: 'south', ground: 'grass', tree: 0.72, rock: 0.06 },
-  { key: 'skalisko', dir: 'west', ground: 'dirt', tree: 0.12, rock: 0.8 },
-  { key: 'mokradla', dir: 'east', ground: 'dirt', tree: 0.38, rock: 0.1 },
+  { key: 'las', dir: 'south', ground: 'grass', tree: 0.62, rock: 0.06, bush: 0.5 },
+  { key: 'skalisko', dir: 'west', ground: 'dirt', tree: 0.12, rock: 0.7, bush: 0.2 },
+  { key: 'mokradla', dir: 'east', ground: 'dirt', tree: 0.34, rock: 0.1, bush: 0.62 },
 ];
+
+/**
+ * Polany.
+ *
+ * Las o równej gęstości jest ścianą, po której się chodzi, a nie miejscem, przez
+ * które się idzie — użytkownik nazwał to wprost: „gęsto te drzewa". Polana daje
+ * trzy rzeczy naraz: **prześwit dla oka**, miejsce, w którym da się walczyć,
+ * i kontrast, który przyciąga — bo jest jaśniejsza od otoczenia.
+ *
+ * Osobne, rzadsze pole szumu: duże plamy, w których nic nie rośnie.
+ */
+export function inClearing(x, y) {
+  return field(x, y, 8.9) > 0.66;
+}
 
 /**
  * Rozrzut z **wymuszonym minimalnym odstępem**.

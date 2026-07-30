@@ -12,7 +12,7 @@
 //   34-35  skalna granica
 
 import { makeRng, seedFrom } from '../util/rng.js';
-import { field, scatter, REGIONS } from './terrain.js';
+import { field, scatter, REGIONS, inClearing } from './terrain.js';
 
 /**
  * Kukła treningowa na placu, na prawo od bramy.
@@ -695,6 +695,20 @@ function buildWildProps(tiles) {
     return true;
   };
 
+  // Słupy przy każdej bramie — po jednym z każdej strony przejścia. To one robią
+  // z otworu w skale bramę: bez nich nie widać, gdzie kończy się miasto.
+  for (const gate of GATES) {
+    const px = gate.x * TILE;
+    const py = gate.y * TILE;
+    if (gate.key === 'south') {
+      out.push({ key: 'gatepost', x: px - 6, y: py + gate.h * TILE, body: { w: 12, h: 8 } });
+      out.push({ key: 'gatepost', x: px + gate.w * TILE + 6, y: py + gate.h * TILE, body: { w: 12, h: 8 } });
+    } else {
+      out.push({ key: 'gatepost', x: px + gate.w * TILE / 2, y: py - 4, body: { w: 12, h: 8 } });
+      out.push({ key: 'gatepost', x: px + gate.w * TILE / 2, y: py + gate.h * TILE + 16, body: { w: 12, h: 8 } });
+    }
+  }
+
   for (const region of REGIONS) {
     // Prostokąt obszaru: wszystko poza miastem po danej stronie.
     const box = region.dir === 'south'
@@ -703,10 +717,12 @@ function buildWildProps(tiles) {
         ? { x0: 3 * TILE, y0: 3 * TILE, x1: (CITY_OX - 1) * TILE, y1: (CITY_OY + CITY_H) * TILE }
         : { x0: (CITY_OX + CITY_W + 1) * TILE, y0: 3 * TILE, x1: (MAP_W - 3) * TILE, y1: (CITY_OY + CITY_H) * TILE };
 
-    // Drzewa: minimalny odstęp 34 px, więc korony się nie zlewają, a gęstość
-    // steruje szumem — stąd biorą się gęstwiny i polany.
-    const drzewa = scatter(rng, box, 34, 2600, (x, y) =>
-      wolne(x, y) && field(x / TILE, y / TILE, 1.3) < region.tree);
+    // Drzewa: minimalny odstęp 40 px, więc korony się nie zlewają, a gęstość
+    // steruje szumem — stąd biorą się gęstwiny. **Na polanach nie rosną.**
+    const drzewa = scatter(rng, box, 40, 2400, (x, y) =>
+      wolne(x, y)
+      && !inClearing(x / TILE, y / TILE)
+      && field(x / TILE, y / TILE, 1.3) < region.tree);
     for (const p of drzewa) {
       out.push({ key: 'tree', x: Math.round(p.x), y: Math.round(p.y), body: { w: 8, h: 8 } });
     }
@@ -716,6 +732,16 @@ function buildWildProps(tiles) {
       wolne(x, y) && field(x / TILE, y / TILE, 4.1) < region.rock);
     for (const p of glazy) {
       out.push({ key: 'boulder', x: Math.round(p.x), y: Math.round(p.y), body: { w: 14, h: 7 } });
+    }
+
+    // Krzaki: **wchodzą także na polany** i to jest ich zadanie. Polana bez
+    // niczego jest łysiną; polana z krzakami i kwiatami jest miejscem.
+    // Nie zastawiają drogi ciałem — przez krzak da się przejść.
+    const krzaki = scatter(rng, box, 22, 3000, (x, y) =>
+      wolne(x, y) && field(x / TILE, y / TILE, 6.2) < region.bush);
+    for (const p of krzaki) {
+      const kind = rng.chance(0.75) ? `bush${rng.int(3)}` : `flowers${rng.int(2)}`;
+      out.push({ key: kind, x: Math.round(p.x), y: Math.round(p.y) });
     }
   }
 
@@ -819,6 +845,7 @@ export function creatureAt(world, x0, y0, x1, y1) {
   }
   return null;
 }
+
 
 
 
