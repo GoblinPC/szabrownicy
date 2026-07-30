@@ -652,36 +652,68 @@ function gatePost(name) {
  */
 function bush(name) {
   const rng = rngFor(name);
-  const w = rng.between(12, 18);
-  const h = rng.between(9, 13);
+  const w = rng.between(14, 20);
+  const h = rng.between(10, 14);
   const t = new Canvas(w, h);
-  const cx = w / 2;
 
-  // Kilka nachodzących na siebie kęp — jedna elipsa wygląda jak zielona poduszka.
-  const kepy = rng.between(3, 4);
-  for (let i = 0; i < kepy; i++) {
-    const ex = rng.between(3, w - 4);
-    const ey = rng.between(4, h - 2);
-    const rx = rng.between(3, 5);
-    const ry = rng.between(2, 4);
-    const odcien = rng.between(1, 3);
-    t.ellipse(ex, ey, rx, ry, c('foliage', odcien));
+  // **Krzak to pęk gałązek, nie kula liści.**
+  //
+  // Pierwsza wersja składała się z nachodzących elips i użytkownik nazwał to
+  // wprost: wyglądało jak slime. Gładki, zamknięty obrys zawsze będzie czytał się
+  // jak galareta — kształt roślinny poznaje się po **postrzępionej sylwetce**
+  // i po prześwitach, przez które widać tło.
+  //
+  // Stąd budowa od gałązek: każda wychodzi z jednego punktu przy ziemi i niesie
+  // kilka listków. Obrys robi się nierówny sam z siebie.
+  const rootX = Math.floor(w / 2);
+  const galezie = rng.between(5, 8);
+
+  for (let i = 0; i < galezie; i++) {
+    // Wachlarz od pionu w obie strony.
+    const kat = -Math.PI / 2 + (i / (galezie - 1) - 0.5) * 2.1 + rng.range(-0.2, 0.2);
+    const dlugosc = rng.between(5, h - 2);
+    let x = rootX;
+    let y = h - 1;
+
+    for (let s = 0; s < dlugosc; s++) {
+      x += Math.cos(kat) * 0.9;
+      y += Math.sin(kat) * 0.9;
+      const px = Math.round(x);
+      const py = Math.round(y);
+      if (px < 0 || px >= w || py < 0 || py >= h) break;
+      // Galazka ciemna, listki jasniejsze - inaczej pek zlewa sie w plame.
+      // Galazke rysujemy CO DRUGI KROK: pelna linia dominowala nad listkami
+      // i krzak wychodzil ciemny mimo zdjecia obrysu.
+      if (s % 2 === 0) t.px(px, py, c('foliage', 1));
+      if (s > 0) {
+        for (const [ox, oy] of [[1, 0], [-1, 0], [0, -1]]) {
+          if (!rng.chance(0.62)) continue;
+          t.px(px + ox, py + oy, c('foliage', rng.chance(0.45) ? 4 : 3));
+        }
+      }
+    }
   }
-  // Światło na wierzchu, cień u dołu — inaczej krzak jest płaską plamą.
+
+  // Zagęszczenie u nasady — tam gałązki naprawdę się schodzą.
+  for (let i = 0; i < 6; i++) {
+    t.px(rootX + rng.between(-2, 2), h - 1 - rng.between(0, 2), c('foliage', 1));
+  }
+
+  // Światło od góry: listki na wierzchu jaśnieją. Bez tego pęk jest płaski.
   for (let x = 0; x < w; x++) {
     for (let y = 0; y < h; y++) {
       if (!t.alphaAt(x, y)) continue;
-      if (!t.alphaAt(x, y - 1) && y < h * 0.55) t.px(x, y, c('foliage', 4));
-      if (!t.alphaAt(x, y + 1)) t.px(x, y, c('foliage', 0));
+      if (!t.alphaAt(x, y - 1) && y < h * 0.5 && rng.chance(0.6)) t.px(x, y, c('foliage', 4));
     }
   }
-  // Kilka gałązek wystających poza obrys — równa kępa wygląda jak strzyżona.
-  for (let i = 0; i < 4; i++) {
-    const gx = rng.between(2, w - 3);
-    const gy = rng.between(2, Math.floor(h * 0.6));
-    t.px(gx, gy, c('foliage', 4));
-  }
-  return finish(t.outline(c('foliage', 0)));
+
+  // **Bez obrysu.**
+  //
+  // Reguła „obrys z najciemniejszego odcienia materiału" obowiązuje dla brył —
+  // beczki, muru, postaci. Przy pęku gałązek obrys dokłada ciemny piksel wokół
+  // **każdej gałązki z osobna**, więc podwaja masę i z ażurowego krzaka robi
+  // ciemną plamę. Tu rolę obrysu pełni sama gałązka, ciemniejsza od listków.
+  return finish(t);
 }
 
 /** Kwiaty — kilka łodyg z barwnymi główkami. Drobiazg, ale to on daje kolor. */
@@ -779,3 +811,4 @@ export function buildProps() {
 
   return entries;
 }
+
