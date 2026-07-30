@@ -16,6 +16,19 @@ export const RAMPS = {
   goblin:  ['#1e3316', '#2f4a22', '#476b30', '#66913f', '#8ab355'], // skóra goblinów
   foliage: ['#14260f', '#1e3a1c', '#33582a', '#4f7a33', '#6b9c45'], // trawa, drzewa, krzaki
   night:   ['#0d1220', '#182238', '#2a3a58', '#445a80', '#5f7aa8'], // chłodne cienie na zewnątrz
+
+  // Rampy interfejsu. Osobne od świata, bo mają inne zadanie: pasek życia musi
+  // być **czerwony**, bo to konwencja starsza niż ta gra i nikt nie będzie się
+  // jej uczył od nowa.
+  //
+  // Wszystkie trzy są **przygaszone**. Pierwsza wersja brała życie z rampy
+  // `ember` i wyglądała jak neon: barwy o pełnym nasyceniu należą do ognia
+  // i błysków, a nie do panelu, na który patrzy się bez przerwy. Odcień
+  // zdejmuje się nasyceniem, nie jasnością — przyciemniony jaskrawy kolor
+  // dalej jest jaskrawy, tylko ciemny.
+  life:    ['#2e1416', '#4d2024', '#7a3236', '#a04a4a', '#c47a74'], // pasek życia
+  stamina: ['#16242e', '#22394a', '#365a70', '#527f96', '#7ba5b8'], // wytrzymałość
+  food:    ['#2b2113', '#463620', '#6e5630', '#977a45', '#bda06a'], // głód
 };
 
 export const ACCENT = {

@@ -11,9 +11,14 @@ import { createChatInput } from '../ui/chat.js';
 import { bubbleShape, bubbleWidth, BUBBLE_COLORS } from '../render/bubble.js';
 import { DODGE_CHARGES } from '../world/movement.js';
 
-// Szerokosc nierozciaganego brzegu ramki 9-slice. Musi zgadzac sie z SLICE
-// w tools/art/ui.js - to ta sama grafika ogladana z dwoch stron.
-const SLICE = 3;
+// Szerokość nierozciąganego brzegu ramki 9-slice.
+//
+// **Musi zgadzać się z `SLICE` w `tools/art/ui.js`** — to ta sama grafika
+// oglądana z dwóch stron. Rozjazd już raz kosztował błąd: brzeg urósł
+// w generatorze z 3 na 6, tutaj został 3, i pasek życia wylewał się poza ramkę.
+// Liczba jest wpisana w dwóch miejscach, bo klient nie importuje niczego
+// z narzędzi budowania — przy zmianie poprawić obie.
+const SLICE = 6;
 
 const CHAT_LIMIT = 120;        // musi zgadzać się z limitem serwera
 const LOG_LINES = 6;
@@ -609,30 +614,60 @@ export class HudScene extends Phaser.Scene {
    * opóźnieniem — po niej widać, ile życia właśnie ubyło, a nie tylko ile zostało.
    * Bez tego mocny cios i lekkie draśnięcie wyglądają tak samo.
    */
+  /**
+   * Panel gracza: portret, życie, wytrzymałość, głód i uniki.
+   *
+   * **Rysowany w powiększeniu `UI_SCALE`, nie w pikselach ekranu.** To była
+   * przyczyna, dla której poprzednich wersji nie dało się zobaczyć w grze:
+   * kanwa pracuje w pełnej rozdzielczości monitora, więc pasek szeroki na 232
+   * piksele zajmował na ekranie 1920 nieco ponad dziesiątą część szerokości
+   * i miał piętnaście pikseli wysokości. Świat jest powiększany dwu- albo
+   * czterokrotnie i interfejs musi być też — inaczej pixel art w HUD-zie jest
+   * po prostu drobny, a nie pikselowy.
+   */
   createHealth() {
     // Ramka jako sprite dziewięciodzielny — ten sam, którym będą obramowane panel
     // plecaka i okno opcji. Phaser umie 9-slice sam, więc rozciąganie nie rozmywa
     // rogów, choćby pasek miał dowolną szerokość.
-    this.healthFrame = this.add.nineslice(
-      0, 0, 'ui', 'frame_slot', 232, 26, SLICE, SLICE, SLICE, SLICE
-    ).setOrigin(0, 0).setDepth(DEPTH.plate);
+    this.panel = this.add.image(PANEL_X, PANEL_Y, 'ui', 'player_panel')
+      .setOrigin(0, 0)
+      .setScale(UI_SCALE)
+      .setDepth(DEPTH.plate);
 
-    // Wypełnienie pod ramką: ramka ma pusty środek, więc pasek widać przez nią.
-    this.health = this.add.graphics().setDepth(DEPTH.plate - 1);
-    this.healthShown = 1;   // ułamek, do którego dojeżdża pasek
-    this.healthGhost = 1;   // jasny ślad po świeżej stracie
+    // Wypełnienia pasków rysujemy sami — muszą się zmieniać płynnie, więc nie
+    // mogą być gotowym obrazkiem. Idą **pod** panelem, bo panel ma w sobie
+    // wgłębienia z cieniem i to on ma zostać na wierzchu.
+    this.health = this.add.graphics().setDepth(DEPTH.plate + 1);
+
+    this.healthShown = 1;
+    this.healthGhost = 1;
     this.healthValue = 1;
+
+    // Portret w okrągłej ramie panelu: ten sam goblin, którym gra się w świecie.
+    this.portrait = this.add.image(0, 0, 'goblins', 'g0_down_idle0')
+      .setOrigin(0.5, 0.5)
+      .setScale(UI_SCALE * 2)
+      .setDepth(DEPTH.plate + 2);
+
+    this.nameLabel = this.add.bitmapText(0, 0, 'goblin', '', 11)
+      .setScale(UI_SCALE).setTint(TEXT).setDepth(DEPTH.plate + 3);
 
     // Znaczniki uniku. Pusty i pełny to osobne sprite'y; ładujący się rysujemy
     // przycięciem pełnego, żeby wypełniał się od dołu.
     this.pips = [];
     for (let i = 0; i < DODGE_CHARGES; i++) {
       this.pips.push({
-        empty: this.add.image(0, 0, 'ui', 'pip_empty').setOrigin(0, 0).setDepth(DEPTH.plate),
-        full: this.add.image(0, 0, 'ui', 'pip_full').setOrigin(0, 0).setDepth(DEPTH.plate + 1),
+        empty: this.add.image(0, 0, 'ui', 'pip_empty')
+          .setOrigin(0, 0).setScale(UI_SCALE).setDepth(DEPTH.plate + 2),
+        full: this.add.image(0, 0, 'ui', 'pip_full')
+          .setOrigin(0, 0).setScale(UI_SCALE).setDepth(DEPTH.plate + 3),
       });
     }
     this.dodgeFuel = DODGE_CHARGES;
+  }
+
+  setPlayerName(name) {
+    this.playerName = name;
   }
 
   setHealth(hp, maxHp, safe) {
