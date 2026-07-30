@@ -11,21 +11,15 @@ import { createChatInput } from '../ui/chat.js';
 import { bubbleShape, bubbleWidth, BUBBLE_COLORS } from '../render/bubble.js';
 import { DODGE_CHARGES } from '../world/movement.js';
 
-// Uklad panelu gracza. Liczby pochodza z generatora (tools/art/panel.js) i sa
-// tu powtorzone, bo klient nie importuje niczego z narzedzi budowania.
-// Przy zmianie ukladu poprawic w obu miejscach.
-const PANEL_X = 14;
-const PANEL_Y = 14;
-// Interfejs rysujemy w powiekszeniu, tak jak swiat. Kanwa pracuje w pelnej
-// rozdzielczosci monitora, wiec panel szeroki na 232 piksele zajmowalby na
-// ekranie 1920 nieco ponad dziesiata czesc szerokosci - i tego wlasnie
-// uzytkownik nie byl w stanie zobaczyc w grze.
+// Uklad panelu stanu. Rysowany w jednostkach interfejsu i powiekszany UI_SCALE
+// razy - kanwa pracuje w pelnej rozdzielczosci monitora, wiec pasek szeroki na
+// 232 piksele zajmowalby na ekranie 1920 nieco ponad dziesiata czesc szerokosci.
+const PANEL_X = 16;
+const PANEL_Y = 16;
 const UI_SCALE = 3;
-const BAR_SLOTS = [{ key: 'life', x: 78, y: 34, w: 142, h: 22 }];
-const PORTRAIT = { x: 8, y: 8, r: 32 };
-const NAME_SLOT = { x: 78, y: 8, w: 142, h: 20 };
-const PIP_SLOTS = [{ x: 80, y: 62 }, { x: 106, y: 62 }, { x: 132, y: 62 }];
-const ZONE_SLOT = { x: 160, y: 62, w: 60, h: 22 };
+const BAR_W = 132;
+const BAR_H = 20;
+const PIP_STEP = 23;
 
 // Szerokość nierozciąganego brzegu ramki 9-slice.
 //
@@ -641,56 +635,55 @@ export class HudScene extends Phaser.Scene {
    * czterokrotnie i interfejs musi być też — inaczej pixel art w HUD-zie jest
    * po prostu drobny, a nie pikselowy.
    */
+  /**
+   * Panel stanu: pasek zycia i trzy ladunki uniku pod nim.
+   *
+   * Wersja z portretem, imieniem, trzema paskami i gniazdami na tekst zostala
+   * ODRZUCONA przez uzytkownika po czterech przebudowach. Wracamy do tego, co
+   * dzialalo od poczatku, z jedyna poprawka, ktorej naprawde brakowalo:
+   * POWIEKSZENIEM i liczba w pasku.
+   *
+   * Lekcja warta zapisania: gdy uzytkownik mowi, ze cos jest za male, to zwykle
+   * znaczy dokladnie tyle. Przebudowa zamiast powiekszenia kosztowala tu kilka
+   * godzin i skonczyla sie powrotem do punktu wyjscia.
+   */
   createHealth() {
-    // Ramka jako sprite dziewięciodzielny — ten sam, którym będą obramowane panel
-    // plecaka i okno opcji. Phaser umie 9-slice sam, więc rozciąganie nie rozmywa
-    // rogów, choćby pasek miał dowolną szerokość.
-    const at = (x, y) => [PANEL_X + x * UI_SCALE, PANEL_Y + y * UI_SCALE];
+    // Ramka rysowana w jednostkach interfejsu i dopiero potem powiekszana,
+    // zeby piksele zostaly ostre.
+    this.healthFrame = this.add.nineslice(
+      PANEL_X, PANEL_Y, 'ui', 'frame_slot', BAR_W, BAR_H, SLICE, SLICE, SLICE, SLICE
+    ).setOrigin(0, 0).setScale(UI_SCALE).setDepth(DEPTH.plate);
 
-    // Portret **pod** panelem: panel ma wycięte okrągłe gniazdo z cieniem
-    // i to ono ma przykryć krawędzie twarzy.
-    this.portrait = this.add.image(...at(PORTRAIT.x + 8, PORTRAIT.y + 6), 'ui', 'face_0')
-      .setOrigin(0, 0).setScale(UI_SCALE).setDepth(DEPTH.plate - 1);
-
-    // Wypełnienie paska też pod panelem — gniazdo ma zaokrąglone końce i cień
-    // od górnej krawędzi, więc nadmiar wypełnienia chowa się pod nimi.
+    // Wypelnienie pod ramka: ramka ma pusty srodek, wiec pasek widac przez nia.
     this.health = this.add.graphics().setDepth(DEPTH.plate - 1);
-
-    this.panel = this.add.image(PANEL_X, PANEL_Y, 'ui', 'player_panel')
-      .setOrigin(0, 0).setScale(UI_SCALE).setDepth(DEPTH.plate);
 
     this.healthShown = 1;
     this.healthGhost = 1;
     this.healthValue = 1;
 
-    const BAR = BAR_SLOTS[0];
-    this.healthLabel = this.add.bitmapText(...at(BAR.x + 8, BAR.y + 7), 'goblin', '', 11)
-      .setScale(UI_SCALE).setTint(TEXT).setDepth(DEPTH.plate + 1);
-    this.nameLabel = this.add.bitmapText(...at(NAME_SLOT.x + 7, NAME_SLOT.y + 5), 'goblin', '', 11)
+    this.healthLabel = this.add.bitmapText(0, 0, 'goblin', '', 11)
       .setScale(UI_SCALE).setTint(TEXT).setDepth(DEPTH.plate + 1);
 
-    // Znaczniki uniku. Pusty i pełny to osobne sprite'y; ładujący się rysujemy
-    // przycięciem pełnego, żeby wypełniał się od dołu.
+    // Znaczniki uniku pod paskiem.
     this.pips = [];
     for (let i = 0; i < DODGE_CHARGES; i++) {
-      const [px, py] = at(PIP_SLOTS[i].x + 2, PIP_SLOTS[i].y + 2);
+      const px = PANEL_X + i * PIP_STEP * UI_SCALE;
+      const py = PANEL_Y + (BAR_H + 4) * UI_SCALE;
       this.pips.push({
+        empty: this.add.image(px, py, 'ui', 'pip_empty')
+          .setOrigin(0, 0).setScale(UI_SCALE).setDepth(DEPTH.plate),
         full: this.add.image(px, py, 'ui', 'pip_full')
           .setOrigin(0, 0).setScale(UI_SCALE).setDepth(DEPTH.plate + 1),
       });
     }
     this.dodgeFuel = DODGE_CHARGES;
-
-    this.zone.setPosition(...at(ZONE_SLOT.x + 6, ZONE_SLOT.y + 6)).setScale(UI_SCALE);
   }
 
-  setPlayerName(name) {
-    this.nameLabel?.setText(name ?? '');
-  }
+  setPlayerName() {}
 
   setHealth(hp, maxHp, safe) {
     this.healthValue = maxHp > 0 ? Math.max(0, Math.min(1, hp / maxHp)) : 0;
-    this.healthText = `${Math.max(0, Math.round(hp))}/${Math.round(maxHp)}`;
+    this.healthText = `\/${Math.round(maxHp)}`;
     this.healthSafe = Boolean(safe);
   }
 
@@ -702,36 +695,38 @@ export class HudScene extends Phaser.Scene {
     if (!this.health) return;
     const dt = Math.min(delta, 60) / 1000;
 
-    // Czerwony pasek dogania szybko, jasny ślad wolno — stąd bierze się „błysk"
-    // pokazujący wielkość ciosu.
+    // Czerwony pasek dogania szybko, jasny slad wolno - stad bierze sie blysk
+    // pokazujacy wielkosc ciosu.
     this.healthShown += (this.healthValue - this.healthShown) * Math.min(1, dt * 14);
     this.healthGhost += (this.healthShown - this.healthGhost) * Math.min(1, dt * 2.6);
     if (this.healthGhost < this.healthShown) this.healthGhost = this.healthShown;
 
-    // Wypelnienie paska zycia. Rysowane pod panelem, ktory ma zaokraglone
-    // gniazdo z cieniem - nadmiar chowa sie pod jego krawedziami.
-    const BAR = BAR_SLOTS[0];
-    const bx = PANEL_X + (BAR.x + 3) * UI_SCALE;
-    const by = PANEL_Y + (BAR.y + 3) * UI_SCALE;
-    const bw = (BAR.w - 6) * UI_SCALE;
-    const bh = (BAR.h - 6) * UI_SCALE;
+    // Wnetrze ramki, liczone w pikselach ekranu.
+    const ix = PANEL_X + SLICE * UI_SCALE;
+    const iy = PANEL_Y + SLICE * UI_SCALE;
+    const iw = (BAR_W - SLICE * 2) * UI_SCALE;
+    const ih = (BAR_H - SLICE * 2) * UI_SCALE;
 
     this.health.clear();
-    // Jasny slad po swiezej stracie - to on pokazuje wielkosc ciosu.
-    this.health.fillStyle(0xc47a74, 0.85);
-    this.health.fillRect(bx, by, Math.round(bw * this.healthGhost), bh);
+    this.health.fillStyle(0x231c15, 1);
+    this.health.fillRect(ix, iy, iw, ih);
+    this.health.fillStyle(0xc47a74, 0.75);
+    this.health.fillRect(ix, iy, Math.round(iw * this.healthGhost), ih);
     // Rampa life z palety: przygaszona czerwien, nie neon.
     const low = this.healthShown < 0.3;
-    const filled = Math.round(bw * this.healthShown);
+    const filled = Math.round(iw * this.healthShown);
     this.health.fillStyle(low ? 0x7a3236 : 0xa04a4a, 1);
-    this.health.fillRect(bx, by, filled, bh);
+    this.health.fillRect(ix, iy, filled, ih);
     this.health.fillStyle(low ? 0xa04a4a : 0xc47a74, 1);
-    this.health.fillRect(bx, by, filled, Math.round(bh * 0.34));
+    this.health.fillRect(ix, iy, filled, Math.round(ih * 0.32));
 
+    // Liczba W pasku, nie obok: obok robi sie z niej osobny element, ktorego oko
+    // musi szukac.
+    this.healthLabel.setPosition(ix + 6 * UI_SCALE, iy + Math.round((ih - 11 * UI_SCALE) / 2));
     this.healthLabel.setText(this.healthText ?? '');
 
-    // Uniki: ladujacy sie znacznik wypelnia sie OD DOLU, wiec widac nie tylko
-    // ile masz, ale ile zaraz bedziesz mial.
+    // Ladujacy sie znacznik wypelnia sie OD DOLU, wiec widac nie tylko ile masz,
+    // ale ile zaraz bedziesz mial.
     this.pips.forEach((pip, i) => {
       const part = Math.max(0, Math.min(1, this.dodgeFuel - i));
       pip.full.setVisible(part > 0);
@@ -741,7 +736,6 @@ export class HudScene extends Phaser.Scene {
       pip.full.setCrop(0, h - shown, pip.full.width, shown);
     });
   }
-
   update(time, delta) {
     this.updateBubbles(time);
     this.updateLog(time);
@@ -764,5 +758,8 @@ export class HudScene extends Phaser.Scene {
     }
   }
 }
+
+
+
 
 
