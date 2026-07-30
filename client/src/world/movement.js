@@ -253,10 +253,15 @@ function slide(world, body, dx, dy) {
   if (dx === 0 && dy === 0) return;
   const nx = body.x + dx;
   const ny = body.y + dy;
+  // W odskoku przelatujemy przez przeciwników. To jest decyzja o walce, nie
+  // o fizyce: bez tego jedyne, co można zrobić z wrogiem stojącym w przejściu,
+  // to go obejść, a odskok ma być wyjściem z zwarcia — także **przez** niego,
+  // na drugą stronę. Ściany i sprzęt zostają twarde.
   const fits = isWalkable(
     world,
     nx - FOOT_HALF_W, ny - FOOT_H,
-    nx + FOOT_HALF_W, ny - 0.5
+    nx + FOOT_HALF_W, ny - 0.5,
+    body.dodge > 0
   );
   if (fits) {
     body.x = nx;

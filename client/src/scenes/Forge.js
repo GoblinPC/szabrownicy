@@ -13,6 +13,7 @@ import { showLogin } from '../ui/login.js';
 import { createTestPanel } from '../ui/testpanel.js';
 import { Critters } from '../render/critters.js';
 import { Rain } from '../render/rain.js';
+import { Grass } from '../render/grass.js';
 import { darkness } from '../world/daylight.js';
 
 // Jak długo trzymamy wciśnięcie ciosu w buforze po puszczeniu klawisza.
@@ -42,6 +43,7 @@ export class ForgeScene extends Phaser.Scene {
     this.lighting = new Lighting(this, this.world, INTERIOR_PX, BUILDING_PX);
     this.critters = new Critters(this, this.world, TILE, BUILDING_PX);
     this.rain = new Rain(this);
+    this.grass = new Grass(this, this.world.tufts, this.tileIndex);
 
     this.setupCamera();
     this.setupInput();
@@ -203,6 +205,22 @@ export class ForgeScene extends Phaser.Scene {
     );
 
     this.others = new Map();
+  }
+
+  /**
+   * Wszystko, co chodzi po świecie i może rozgarnąć trawę: własna postać, inni
+   * gracze i moby. Lista budowana co klatkę, bo jest krótka, a trzymanie jej
+   * w polu wymagałoby sprzątania przy każdym wyjściu gracza.
+   */
+  walkers() {
+    const list = [{ x: this.px, y: this.py, vx: this.net.body?.vx ?? 0 }];
+    for (const other of this.others.values()) {
+      list.push({ x: other.sprite.x, y: other.sprite.y, vx: 0 });
+    }
+    for (const mob of this.mobs.values()) {
+      list.push({ x: mob.sprite.x, y: mob.sprite.y, vx: 0 });
+    }
+    return list;
   }
 
   /** Wywoływane przez HUD, gdy gracz przełączy F1. */
@@ -689,7 +707,9 @@ export class ForgeScene extends Phaser.Scene {
       aleft: Phaser.Input.Keyboard.KeyCodes.LEFT,
       aright: Phaser.Input.Keyboard.KeyCodes.RIGHT,
       attack: Phaser.Input.Keyboard.KeyCodes.SPACE,
-      dodge: Phaser.Input.Keyboard.KeyCodes.C,
+      // CTRL, nie C: unik jest ruchem, więc chce być pod kciukiem obok WASD,
+      // a nie pod palcem, który musi zjechać z klawiszy chodzenia.
+      dodge: Phaser.Input.Keyboard.KeyCodes.CTRL,
       // Drugi argument to przechwytywanie klawiszy. MUSI być `false`.
       //
       // Przy domyślnym `true` Phaser wywołuje `preventDefault()` na każdym
@@ -735,6 +755,9 @@ export class ForgeScene extends Phaser.Scene {
     // a rozjazd o jedną klatkę widać przy zapalaniu się świetlików o zmierzchu.
     this.critters.update(dt, time, darkness(phase), inside);
     this.rain.update(dt, rain, inside);
+    // Trawa reaguje na wszystko, co chodzi po świecie, nie tylko na własną postać —
+    // widok kępek prostujących się za obcym graczem jest połową tego efektu.
+    this.grass.update(dt, time, this.walkers(), 1 + rain * 1.6);
     this.testPanel.follow(this.net.serverPhase(), this.net.rain ?? 0);
     this.updateAmbience(dt);
     this.reportZone();

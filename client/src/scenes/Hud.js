@@ -1,4 +1,4 @@
-// Warstwa interfejsu. Osobna scena, bo kamera świata pracuje w powiększeniu,
+﻿// Warstwa interfejsu. Osobna scena, bo kamera świata pracuje w powiększeniu,
 // a napisy mają być rysowane piksel w piksel.
 //
 // Tu żyje czat — dymki nad głowami i log ostatnich wiadomości w lewym dolnym
@@ -106,7 +106,7 @@ export class HudScene extends Phaser.Scene {
     this.createRoster();
     this.createDiagnostics();
 
-    this.setHint('WASD — ruch    SPACJA — cios    C — odskok    Shift — bieg    Enter — czat    TAB — gracze');
+    this.setHint('WASD — ruch    SPACJA — cios    CTRL — odskok    Shift — bieg    Enter — czat    TAB — gracze');
     this.refreshAudioLabel();
     audio.onChange(() => this.refreshAudioLabel());
 
@@ -439,8 +439,8 @@ export class HudScene extends Phaser.Scene {
   /** Powitanie po wejściu — inne dla nowego konta i dla powrotu. */
   setHello(name, fresh) {
     this.setHint(fresh
-      ? `Witaj, ${name}.    WASD — ruch    SPACJA — cios    C — odskok    Enter — czat`
-      : `Witaj ponownie, ${name}.    WASD — ruch    SPACJA — cios    C — odskok    Enter — czat`);
+      ? `Witaj, ${name}.    WASD — ruch    SPACJA — cios    CTRL — odskok    Enter — czat`
+      : `Witaj ponownie, ${name}.    WASD — ruch    SPACJA — cios    CTRL — odskok    Enter — czat`);
   }
 
   setNet(text) {

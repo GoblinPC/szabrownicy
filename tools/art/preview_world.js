@@ -48,7 +48,9 @@ for (let y = crop.y0; y <= crop.y1; y++) {
     if (tile) canvas.blit(tile, x * TILE - ox, y * TILE - oy + 14);
   }
 }
-for (const d of world.decals) {
+// Kępki trawy są osobną listą, bo w grze gną się pod postacią i muszą być
+// osobnymi obiektami. Na podglądzie stoją prosto — rysujemy je razem z resztą.
+for (const d of [...world.decals, ...world.tufts]) {
   if (d.x < ox || d.y < oy || d.x >= ox + W || d.y >= oy + H) continue;
   const tile = tiles.get(d.key);
   if (tile) canvas.blit(tile, d.x - ox, d.y - oy + 14);

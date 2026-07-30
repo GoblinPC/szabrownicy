@@ -352,16 +352,66 @@ function grassTuft(name) {
   return t;
 }
 
+/**
+ * Postrzępiona obwódka trawy, kładziona na kaflu ZIEMI od strony trawy.
+ *
+ * Bez niej granica trawy z ziemią to prosta linia co szesnaście pikseli i widać
+ * gołe kafle zamiast terenu — przy dużej łacie trawy wygląda to jak szachownica.
+ * Ten sam problem rozwiązuje się zwykle kompletem kafli przejściowych na każdą
+ * kombinację sąsiadów (szesnaście sztuk); tutaj wystarczy **jeden ślad na krawędź**
+ * położony na wierzchu, bo trawa i tak jest nieregularna.
+ *
+ * `side` to strona, po której leży trawa. Zęby są coraz krótsze w głąb ziemi,
+ * a ich długość losowa — prosta obwódka o stałej głębokości czytałaby się jako
+ * druga, równie sztuczna linia.
+ */
+function grassFringe(name, side) {
+  const rng = rngFor(name);
+  const t = new Canvas(TILE, TILE);
+
+  for (let i = 0; i < TILE; i++) {
+    const depth = rng.between(1, 5);
+    for (let d = 0; d < depth; d++) {
+      // Im głębiej w ziemię, tym rzadziej — ząb ma się rozmywać, nie kończyć.
+      if (d > 1 && rng.chance(0.45)) continue;
+      const shade = d === 0 ? 2 : d < 3 ? 1 : 3;
+      if (side === 'up') t.px(i, d, c('foliage', shade));
+      else if (side === 'down') t.px(i, TILE - 1 - d, c('foliage', shade));
+      else if (side === 'left') t.px(d, i, c('foliage', shade));
+      else t.px(TILE - 1 - d, i, c('foliage', shade));
+    }
+  }
+  return t;
+}
+
+/**
+ * Kałuża na ubitej ziemi.
+ *
+ * Pierwsza wersja była wypełniona granatem z rampy `night` i czytała się jako
+ * **kamień albo dziura**, nie jako woda — użytkownik zapytał wprost, co to za
+ * granatowe kawałki. Błąd był w rozumowaniu: woda nie jest niebieska, tylko
+ * **odbija niebo**, a kałuża głęboka na centymetr odbija go tyle, co nic.
+ * Naprawdę widać w niej mokrą ziemię, czyli tę samą ziemię, tylko ciemniejszą.
+ *
+ * Stąd dzisiejszy układ: rampa `earth` na całość, wilgotna obwódka dookoła
+ * (bo grunt przy kałuży też jest mokry i to ona sprzedaje, że coś tam stoi)
+ * i **trzy piksele** refleksu z rampy `night`, nie cała kreska.
+ */
 function puddle(name) {
   const rng = rngFor(name);
   const t = new Canvas(TILE, TILE);
   const rx = rng.between(5, 7);
   const ry = rng.between(3, 4);
-  t.ellipse(8, 9, rx, ry, c('night', 1));
-  t.ellipse(8, 8, rx - 1, ry - 1, c('night', 2));
-  // Refleks nieba na powierzchni.
-  t.hline(6, 9, 7, c('night', 4));
-  t.ellipse(8, 9, rx, ry, c('earth', 0), { fill: false });
+
+  // Wilgotny grunt dookoła — o stopień ciemniejszy od suchej ziemi (earth 2).
+  t.ellipse(8, 9, rx + 1, ry + 1, c('earth', 1));
+  // Sama woda: mokra ziemia widziana przez warstwę wody.
+  t.ellipse(8, 9, rx, ry, c('earth', 0));
+  // Refleks nieba. Trzy piksele przy górnej krawędzi, bo pod takim kątem widać
+  // odbicie tylko na dalszym brzegu.
+  t.px(8 - rng.int(2), 9 - ry + 1, c('night', 3));
+  t.px(9, 9 - ry + 1, c('night', 3));
+  if (rng.chance(0.6)) t.px(10, 9 - ry + 2, c('night', 2));
   return t;
 }
 
@@ -422,6 +472,10 @@ export function buildTiles() {
   add('decal_soot_0', sootSplat('decal_soot_0', 0.6));
   add('decal_soot_1', sootSplat('decal_soot_1', 0.32));
   for (let i = 0; i < 3; i++) add(`decal_tuft_${i}`, grassTuft(`decal_tuft_${i}`));
+  // Po dwa warianty na stronę, żeby dłuższa krawędź nie powtarzała jednego wzoru.
+  for (const side of ['up', 'down', 'left', 'right']) {
+    for (let i = 0; i < 2; i++) add(`decal_fringe_${side}_${i}`, grassFringe(`decal_fringe_${side}_${i}`, side));
+  }
   for (let i = 0; i < 2; i++) add(`decal_puddle_${i}`, puddle(`decal_puddle_${i}`));
   add('decal_rut', wheelRut('decal_rut'));
   for (let i = 0; i < 2; i++) add(`decal_crack_${i}`, crack(`decal_crack_${i}`));

@@ -39,10 +39,18 @@
   "decal_tuft_0": 34,
   "decal_tuft_1": 35,
   "decal_tuft_2": 36,
-  "decal_puddle_0": 37,
-  "decal_puddle_1": 38,
-  "decal_rut": 39,
-  "decal_crack_0": 40,
-  "decal_crack_1": 41
+  "decal_fringe_up_0": 37,
+  "decal_fringe_up_1": 38,
+  "decal_fringe_down_0": 39,
+  "decal_fringe_down_1": 40,
+  "decal_fringe_left_0": 41,
+  "decal_fringe_left_1": 42,
+  "decal_fringe_right_0": 43,
+  "decal_fringe_right_1": 44,
+  "decal_puddle_0": 45,
+  "decal_puddle_1": 46,
+  "decal_rut": 47,
+  "decal_crack_0": 48,
+  "decal_crack_1": 49
  }
 }

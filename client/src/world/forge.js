@@ -86,6 +86,27 @@ export const INTERIOR_PX = {
 
 export const SPAWN = { x: 384, y: 352 };
 
+/**
+ * Drzewa na placu, w pikselach (podstawa pnia).
+ *
+ * Wyniesione tu z `buildProps()`, bo potrzebuje ich też `pickTile()`: **pod
+ * drzewami rośnie trawa**. Bez tego cały plac był ubitą ziemią, kępki trawy stały
+ * na brązowym i nie było ich widać — dokładnie tak, jak zgłosił użytkownik.
+ *
+ * Pnie muszą stać po wewnętrznej stronie skalnej granicy (y < 544, x w 60–706),
+ * inaczej korony wychodzą poza mapę.
+ */
+const TREES = [[78, 392], [64, 470], [698, 404], [700, 488], [110, 534], [664, 536], [432, 538], [300, 532]];
+
+/** Odległość w kaflach do najbliższego drzewa. */
+function nearestTree(x, y) {
+  let best = Infinity;
+  for (const [tx, ty] of TREES) {
+    best = Math.min(best, Math.hypot(x - tx / TILE, y - ty / TILE));
+  }
+  return best;
+}
+
 const SOLID_TILES = new Set(['wall_face', 'wall_window', 'wall_top', 'wall_top_window', 'rock']);
 
 /** Nazwa kafla bez numeru wariantu — po niej rozpoznajemy kolizję. */
@@ -102,7 +123,40 @@ function buildGround() {
     }
     tiles.push(row);
   }
+  smoothGreen(tiles, rng);
   return tiles;
+}
+
+/**
+ * Zasypuje samotne kafle na granicy trawy z ziemią.
+ *
+ * Losowanie kafel po kaflu zostawia pojedyncze brązowe kwadraty w środku trawy
+ * i odwrotnie. Same w sobie nie byłyby groźne, ale każdy taki kafel dostaje
+ * obwódkę z czterech stron i przez to czyta się jako celowa łata, a nie jako
+ * nierówność terenu. Jeden przebieg wystarczy — chodzi o usunięcie osobliwości,
+ * nie o wygładzenie krawędzi, która ma zostać poszarpana.
+ */
+function smoothGreen(tiles, rng) {
+  const isGreen = (x, y) => Boolean(tiles[y]?.[x]?.startsWith('grass'));
+  const changes = [];
+
+  for (let y = 0; y < MAP_H; y++) {
+    for (let x = 0; x < MAP_W; x++) {
+      const tile = tiles[y][x];
+      const grassHere = tile.startsWith('grass');
+      if (!grassHere && !tile.startsWith('dirt')) continue;
+
+      const around = Number(isGreen(x - 1, y)) + Number(isGreen(x + 1, y))
+        + Number(isGreen(x, y - 1)) + Number(isGreen(x, y + 1));
+
+      if (!grassHere && around >= 3) changes.push([x, y, `grass_${rng.int(3)}`]);
+      else if (grassHere && around === 0) changes.push([x, y, `dirt_${rng.int(4)}`]);
+    }
+  }
+
+  // Podmiana dopiero po przejrzeniu całości — inaczej kafel zmieniony na początku
+  // wiersza wpływa na decyzję o kaflu obok i łata się rozlewa.
+  for (const [x, y, tile] of changes) tiles[y][x] = tile;
 }
 
 function pickTile(x, y, rng) {
@@ -169,12 +223,39 @@ function pickTile(x, y, rng) {
   const onPath = Math.abs(x - 23.5) < 3.5 && y >= BUILDING.y1 && y < 28;
   if (onPath) return `path_${rng.int(2)}`;
   if (Math.hypot(x - 24, y - 27) < 4) return `path_${rng.int(2)}`;
+
+  // Trawa tam, gdzie ludzie nie chodzą: pod drzewami i wzdłuż skalnej granicy.
+  //
+  // Środek placu zostaje ubitą ziemią i to jest sens tego układu — plac jest
+  // wydeptany dlatego, że coś go wydeptuje, a pod drzewem i przy skale nikt nie
+  // staje. Granica jest rozmyta losowo, żeby nie było widać okręgu ani paska.
+  const toTree = nearestTree(x, y);
+  const toEdge = Math.min(x - 3, MAP_W - 4 - x, MAP_H - 3 - y);
+  const green = Math.max(
+    1 - toTree / 4.2,
+    y > BUILDING.y1 + 2 ? 1 - toEdge / 3.4 : 0
+  );
+  if (green > 0 && rng.chance(green * 0.92)) return `grass_${rng.int(3)}`;
+
   return `dirt_${rng.int(4)}`;
 }
+
+/**
+ * Ślady na podłożu.
+ *
+ * Zwraca **dwie listy**, i to jest istotne: `decals` wypalamy raz w jedną wielką
+ * teksturę podłoża, a `tufts` zostają osobnymi obiektami, bo kępki trawy gną się
+ * pod przechodzącą postacią. Wypalone w teksturę nie dałyby się ruszyć, a robienie
+ * sprite'a z każdej plamy sadzy byłoby marnotrawstwem — sadza się nie rusza.
+ */
+// Strona sąsiada i przesunięcie do niego. Nazwa opisuje, gdzie leży TRAWA,
+// bo obwódkę rysujemy od tej właśnie strony kafla ziemi.
+const EDGES = [['up', 0, -1], ['down', 0, 1], ['left', -1, 0], ['right', 1, 0]];
 
 function buildDecals(tiles) {
   const rng = makeRng(seedFrom('forge-decals'));
   const decals = [];
+  const tufts = [];
 
   for (let y = 0; y < MAP_H; y++) {
     for (let x = 0; x < MAP_W; x++) {
@@ -197,16 +278,29 @@ function buildDecals(tiles) {
           decals.push({ key: rng.chance(0.5) ? 'decal_soot_0' : 'decal_soot_1', x: px, y: py });
         }
       } else if (tile.startsWith('dirt')) {
-        if (rng.chance(0.07)) decals.push({ key: `decal_tuft_${rng.int(3)}`, x: px, y: py });
+        if (rng.chance(0.07)) tufts.push({ key: `decal_tuft_${rng.int(3)}`, x: px, y: py });
         if (rng.chance(0.02)) decals.push({ key: `decal_puddle_${rng.int(2)}`, x: px, y: py });
+        // Postrzępiona obwódka trawy wchodząca na ziemię od strony sąsiada.
+        //
+        // Kładziemy ją na kaflu ZIEMI, nie trawy — inaczej trzeba by kompletu
+        // kafli przejściowych na każdą kombinację sąsiadów, czyli szesnastu sztuk
+        // zamiast ośmiu śladów. Bez tego łata trawy ma prostą krawędź co
+        // szesnaście pikseli i czyta się jako szachownica, a nie jako teren.
+        for (const [side, dx, dy] of EDGES) {
+          const neighbour = tiles[y + dy]?.[x + dx];
+          if (!neighbour?.startsWith('grass')) continue;
+          decals.push({ key: `decal_fringe_${side}_${rng.int(2)}`, x: px, y: py });
+        }
       } else if (tile.startsWith('path')) {
         if (rng.chance(0.15)) decals.push({ key: 'decal_rut', x: px, y: py });
       } else if (tile.startsWith('grass')) {
-        if (rng.chance(0.25)) decals.push({ key: `decal_tuft_${rng.int(3)}`, x: px, y: py });
+        // Gęsto, bo to jedyne miejsce, gdzie kępki mają się w co wtopić — i to
+        // one, gnąc się pod postacią, robią cały efekt żywej trawy.
+        if (rng.chance(0.55)) tufts.push({ key: `decal_tuft_${rng.int(3)}`, x: px, y: py });
       }
     }
   }
-  return decals;
+  return { decals, tufts };
 }
 
 /**
@@ -262,7 +356,7 @@ function buildProps() {
   // Drzewa i głazy przy krawędziach — domykają kadr. Pnie muszą stać po
   // wewnętrznej stronie skalnej granicy (y < 544, x między 60 a 706), inaczej
   // korony wychodzą poza mapę.
-  for (const [x, y] of [[78, 392], [64, 470], [698, 404], [700, 488], [110, 534], [664, 536], [432, 538], [300, 532]]) {
+  for (const [x, y] of TREES) {
     add('tree', x, y, { w: 8, h: 8 });
   }
   for (const [x, y] of [[140, 500], [640, 380], [340, 476], [470, 396], [560, 520], [220, 528]]) {
@@ -450,11 +544,17 @@ export function buildWorld() {
     x1: TRAINING_DUMMY.x + 7,
     y0: TRAINING_DUMMY.y - 9,
     y1: TRAINING_DUMMY.y,
+    // Zapora żywego celu — odskok przez nią przelatuje. Beczki i kowadło takiego
+    // znacznika nie mają, więc zostają twarde.
+    creature: true,
   });
+
+  const ground = buildDecals(tiles);
 
   return {
     tiles,
-    decals: buildDecals(tiles),
+    decals: ground.decals,
+    tufts: ground.tufts,
     roof: buildRoof(),
     windows: WINDOWS,
     props,
@@ -466,8 +566,14 @@ export function buildWorld() {
   };
 }
 
-/** Czy prostokąt stóp gracza mieści się w przechodnim terenie. */
-export function isWalkable(world, x0, y0, x1, y1) {
+/**
+ * Czy prostokąt stóp gracza mieści się w przechodnim terenie.
+ *
+ * `ghost` znaczy „przelatuj przez żywe" — używane w odskoku. Przez beczkę ani
+ * kowadło przeskoczyć się nie da i nie powinno: to sprzęt, nie przeciwnik.
+ * Rozróżnia je znacznik `creature` na zaporze.
+ */
+export function isWalkable(world, x0, y0, x1, y1, ghost = false) {
   const tx0 = Math.floor(x0 / TILE);
   const tx1 = Math.floor(x1 / TILE);
   const ty0 = Math.floor(y0 / TILE);
@@ -480,6 +586,7 @@ export function isWalkable(world, x0, y0, x1, y1) {
     }
   }
   for (const b of world.bodies) {
+    if (ghost && b.creature) continue;
     if (x1 > b.x0 && x0 < b.x1 && y1 > b.y0 && y0 < b.y1) return false;
   }
   return true;

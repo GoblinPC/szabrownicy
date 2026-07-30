@@ -59,7 +59,7 @@ function drawScene() {
       if (tile) canvas.blit(tile, x * TILE - ox, y * TILE - oy);
     }
   }
-  for (const d of world.decals) {
+  for (const d of [...world.decals, ...world.tufts]) {
     if (d.x < ox || d.y < oy || d.x >= ox + W || d.y >= oy + H) continue;
     const tile = tiles.get(d.key);
     if (tile) canvas.blit(tile, d.x - ox, d.y - oy);
