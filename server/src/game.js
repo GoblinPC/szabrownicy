@@ -522,7 +522,10 @@ export class Game {
     // gdzie idzie.
     if (Math.abs(mob.vx) > Math.abs(mob.vy)) {
       mob.facing = 'side';
-      mob.flip = mob.vx < 0;
+      // **Sprite dzika jest narysowany łbem w lewo**, więc odbijamy go dopiero
+      // przy ruchu w prawo. Odwrotny warunek dawał zwierzę szarżujące tyłem —
+      // biegło we właściwą stronę, ale ryjem do tyłu.
+      mob.flip = mob.vx > 0;
     } else if (Math.abs(mob.vy) > 1) {
       mob.facing = mob.vy < 0 ? 'up' : 'down';
     }

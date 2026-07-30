@@ -586,6 +586,23 @@ export class ForgeScene extends Phaser.Scene {
       // Klatka zależy od tego, ile życia zostało: cała, obita, mocno obita,
       // zwalona. Ten sam podział obsłuży potem moby z kilkoma stanami rannymi.
       const ratio = state.m > 0 ? state.h / state.m : 0;
+
+      // **Martwe zwierzę znika.** Serwer trzyma je dalej na liście, bo za
+      // dwadzieścia pięć sekund ma wstać w tym samym miejscu — ale rysować
+      // go nie ma po co. Wcześniej zostawało widoczne z zerowym życiem
+      // i wyglądało, jakby nie dawało się zabić.
+      //
+      // Zwłoki wrócą razem z oprawianiem: wtedy będzie po co przy nich stać.
+      const dead = state.k === 'boar' && state.h <= 0;
+      mob.sprite.setVisible(!dead);
+      mob.shadow.cast.setVisible(!dead);
+      mob.shadow.contact.setVisible(!dead);
+      if (dead) {
+        mob.lastHp = state.h;
+        mob.hitSeq = state.s;
+        continue;
+      }
+
       let frame;
       if (state.k === 'boar') {
         // Zwierzę: klatka z kierunku i z chodu. Krok liczymy z czasu, bo serwer
