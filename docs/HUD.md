@@ -118,6 +118,16 @@ Ma wyglądać jak wejście do gry, a nie jak formularz. Dziś jest formularzem.
   i plecakiem-siatką nie da się już liczyć na to, że gracz zgadnie.
 - Wersja klienta w rogu, drobnym drukiem — przydaje się przy zgłoszeniach.
 
+## Do dorobienia później
+
+- **Błysk przy naładowaniu uniku** — moment, w którym znacznik dochodzi do pełna,
+  ma być widoczny bez patrzenia na niego. Dziś wypełnia się gładko i nic nie
+  sygnalizuje gotowości.
+- **Dźwięki interfejsu**: naładowany unik, oberwanie, śmierć, przekroczenie
+  granicy PvP. Wszystkie syntezowane, jak reszta.
+- **Menu pod `ESC`** z suwakami głośności, sterowaniem i wyjściem. Suwaki zostały
+  zdjęte z rogu ekranu i czekają na to menu.
+
 ## Kolejność wdrożenia
 
 1. Generator ramek 9-slice i wspólny styl paneli (`tools/art/ui.js`).
