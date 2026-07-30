@@ -70,7 +70,9 @@ for (const p of [...world.props].sort((a, b) => a.y - b.y)) {
 // podchodzi do budynku. To ona pokazuje, czy dach nie wchodzi jej na głowę.
 const probe = goblins.get('g0_up_idle0');
 const PROBE = { x: 384, y: 336 };
-canvas.blit(probe, PROBE.x - 8 - ox, PROBE.y - probe.height - oy + 14);
+// Wyśrodkowana z szerokości sprite'a, nie z wpisanej na sztywno połowy kafla —
+// klatka postaci ma margines na obrys i nie jest już równa szesnastu pikselom.
+canvas.blit(probe, PROBE.x - Math.floor(probe.width / 2) - ox, PROBE.y - probe.height - oy + 14);
 
 // 4. Dach na wierzchu, tak jak w grze.
 for (const t of (noRoof ? [] : world.roof)) {

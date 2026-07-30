@@ -23,6 +23,15 @@ const W = 16;
 const H = 27;
 const OUTLINE = c('soot', 0);
 
+// Margines na obrys. Sylwetka jest składana dalej na 16×27 — wszystkie
+// współrzędne części ciała zostają bez zmian — i dopiero potem przenoszona na
+// płótno większe o ten margines, na którym obrys ma się gdzie zmieścić.
+// Na dole marginesu nie ma: tam stoją stopy.
+const BODY_PAD_X = 2;
+const BODY_PAD_T = 1;
+const BODY_W = W + BODY_PAD_X * 2;
+const BODY_H = H + BODY_PAD_T;
+
 // Klatki ataku są szersze, bo ostrze wychodzi daleko poza sylwetkę. Ciało
 // składamy dalej na 16 pikselach — cały kod części ciała zostaje bez zmian —
 // i przenosimy je na szersze płótno, wyśrodkowane. Zaczepienie sprite'a w grze
@@ -618,6 +627,7 @@ function drawBody(variant, dir, kind, frame, p) {
   const t = new Canvas(W, H);
 
   drawLegs(t, variant, dir, p);
+
   if (dir === 'side') {
     // Kolejność ma znaczenie: dalsza ręka chowa się za tułowiem, bliższa idzie na wierzch.
     if (kind !== 'attack') drawArm(t, variant, 4, p.armA, p);
@@ -637,7 +647,19 @@ function drawBody(variant, dir, kind, frame, p) {
   }
   drawHeadgear(t, variant, dir, p);
 
-  return t.outline(OUTLINE);
+  // Obrys dostaje **własny margines**, i to jest naprawa realnego błędu.
+  //
+  // Sylwetka wypełniała całą szerokość szesnastu pikseli — ucho z profilu sięgało
+  // dokładnie do krawędzi. Obrys rysuje się piksel na zewnątrz kształtu, więc przy
+  // krawędzi po prostu go nie było: ucho zlewało się z tłem i czytało jako **ucięte**.
+  // Widać to było zawsze, ale rzucało się w oczy dopiero po przejściu na celowanie
+  // myszką, bo bok jest teraz na ekranie bez przerwy.
+  //
+  // Margines dokładamy z boków i u góry; **na dole nie**, bo tam stoją stopy
+  // i zaczepienie sprite'a to (0.5, 1) — piksel pod stopami uniósłby postać.
+  const framed = new Canvas(BODY_W, BODY_H);
+  framed.blit(t, BODY_PAD_X, BODY_PAD_T);
+  return framed.outline(OUTLINE);
 }
 
 // Ile pikseli grot dorysowuje za końcem drzewca.
@@ -669,8 +691,10 @@ function fitReach(hand, angle, reach) {
   };
   cap(ATTACK_W - 2 - hx, dx);
   cap(hx - 1, -dx);
+  // W dół granicą jest **linia stóp**, nie dolna krawędź płótna: drzewce wbite
+  // w ziemię przed postacią wygląda jak potknięcie, nie jak pchnięcie.
   cap(H - 2 - hy, dy);
-  cap(hy - 1, -dy);
+  cap(hy + BODY_PAD_T - 1, -dy);
 
   return Math.max(2, Math.round(limit));
 }
@@ -690,14 +714,21 @@ function drawFrame(variant, dir, kind, frame, step = 0, aim = null) {
 
   // Broń rysowana osobno i z własnym obrysem, więc tam, gdzie mija tułów,
   // wyraźnie się od niego odcina — bez tego drzewce zlewa się z ubraniem w plamę.
-  const blade = new Canvas(ATTACK_W, H);
+  // Broń i ciało dzielą to samo płótno co do wiersza, więc górny margines na obrys
+  // obowiązuje też tutaj — inaczej drzewce siedziałoby o piksel wyżej niż garść,
+  // która je trzyma.
+  const blade = new Canvas(ATTACK_W, BODY_H);
   // Ramię wychodzi z barku, a bark jedzie razem z odchyleniem tułowia.
   const shoulderX = ATTACK_OX + (dir === 'up' ? 5 : 10) + (p.lean ?? 0);
-  drawArmTo(blade, variant, shoulderX, 18 + p.bodyY, ATTACK_OX + p.hand[0], p.hand[1]);
-  drawSpear(blade, ATTACK_OX + p.hand[0], p.hand[1], p.angle, p.reach);
+  const handX = ATTACK_OX + p.hand[0];
+  const handY = p.hand[1] + BODY_PAD_T;
+  drawArmTo(blade, variant, shoulderX, 18 + p.bodyY + BODY_PAD_T, handX, handY);
+  drawSpear(blade, handX, handY, p.angle, p.reach);
   const bladeArt = blade.outline(OUTLINE);
 
-  const sheet = new Canvas(ATTACK_W, H);
+  const sheet = new Canvas(ATTACK_W, BODY_H);
+  // Ciało przyszło już z własnym marginesem, więc przesuwamy je o tyle mniej.
+  const bodyX = ATTACK_OX - BODY_PAD_X;
 
   if (dir === 'up') {
     // Widok z tyłu: patrzymy postaci w plecy, więc miecz i trzymająca go ręka są
@@ -705,9 +736,9 @@ function drawFrame(variant, dir, kind, frame, step = 0, aim = null) {
     // wierzchu wyglądały jak broń przypięta do pleców — było widać ten kawałek
     // ostrza, który powinien być zasłonięty przez goblina.
     sheet.blit(bladeArt, 0, 0);
-    sheet.blit(body, ATTACK_OX, 0);
+    sheet.blit(body, bodyX, 0);
   } else {
-    sheet.blit(body, ATTACK_OX, 0);
+    sheet.blit(body, bodyX, 0);
     sheet.blit(bladeArt, 0, 0);
   }
 
