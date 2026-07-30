@@ -5,7 +5,7 @@
 // się rozjeżdżać i gracz widziałby, jak jego postać "cofa się" po każdej korekcie.
 // Dlatego kod jest czystym JS-em bez Phasera i bez niczego z przeglądarki.
 
-import { isWalkable } from './forge.js';
+import { isWalkable, creatureAt } from './forge.js';
 
 export const WALK_SPEED = 74;
 export const RUN_SPEED = 112;
@@ -248,6 +248,60 @@ function aimOf(keys, body) {
   return { dx, dy, facing, flip: dx < 0 };
 }
 
+/** Zapora żywego celu, w której stoją stopy — albo `null`. */
+function insideCreature(world, body) {
+  return creatureAt(
+    world,
+    body.x - FOOT_HALF_W, body.y - FOOT_H,
+    body.x + FOOT_HALF_W, body.y - 0.5
+  );
+}
+
+// Jak szybko postać wypycha się z przeciwnika, w pikselach na sekundę. Dość, żeby
+// wyjść w ćwierć sekundy, i za mało, żeby wyglądało to jak odrzucenie — wypchnięcie
+// ma być niezauważalne, bo gracz i tak zwykle w tej chwili sam ucieka.
+const PUSH_OUT_SPEED = 70;
+
+/**
+ * Wypycha postać stojącą w zaporze przeciwnika najkrótszą drogą na zewnątrz.
+ *
+ * Potrzebne, bo samo przepuszczanie ruchu nie wystarcza: gracz, który odskoczył
+ * w środek celu i **puścił klawisze**, zostałby w nim na zawsze. Wypychanie działa
+ * także wtedy, gdy nikt nic nie wciska.
+ *
+ * Kierunek liczony jest z najkrótszego wyjścia, a nie z kierunku odskoku — dzięki
+ * temu z rogu zapory wychodzi się w bok, a nie po skosie przez całą jej długość.
+ * Ściany dalej obowiązują: gdy najkrótsze wyjście prowadzi w mur, próbujemy dalej.
+ */
+function pushOut(world, body, dt) {
+  const box = insideCreature(world, body);
+  if (!box) return;
+
+  const x0 = body.x - FOOT_HALF_W;
+  const x1 = body.x + FOOT_HALF_W;
+  const y0 = body.y - FOOT_H;
+  const y1 = body.y - 0.5;
+
+  const ways = [
+    { dx: -1, dy: 0, gap: x1 - box.x0 },
+    { dx: 1, dy: 0, gap: box.x1 - x0 },
+    { dx: 0, dy: -1, gap: y1 - box.y0 },
+    { dx: 0, dy: 1, gap: box.y1 - y0 },
+  ].sort((a, b) => a.gap - b.gap);
+
+  const step = PUSH_OUT_SPEED * dt;
+  for (const way of ways) {
+    const nx = body.x + way.dx * step;
+    const ny = body.y + way.dy * step;
+    // `true`, czyli duchem: wypychamy się **z** przeciwnika, więc jego własna
+    // zapora nie może nas przy tym zatrzymać. Ściany i sprzęt owszem.
+    if (!isWalkable(world, nx - FOOT_HALF_W, ny - FOOT_H, nx + FOOT_HALF_W, ny - 0.5, true)) continue;
+    body.x = nx;
+    body.y = ny;
+    return;
+  }
+}
+
 /** Ruch osobno w poziomie i pionie — dzięki temu postać ślizga się po ścianach. */
 function slide(world, body, dx, dy) {
   if (dx === 0 && dy === 0) return;
@@ -257,11 +311,16 @@ function slide(world, body, dx, dy) {
   // o fizyce: bez tego jedyne, co można zrobić z wrogiem stojącym w przejściu,
   // to go obejść, a odskok ma być wyjściem z zwarcia — także **przez** niego,
   // na drugą stronę. Ściany i sprzęt zostają twarde.
+  //
+  // Drugi przypadek jest ważniejszy: kto **już stoi** w zaporze przeciwnika, ten
+  // ma się ruszać swobodnie. Inaczej odskok w sam środek celu kończy się tym, że
+  // kolizja wraca, każdy kierunek jest zablokowany i postać utyka na dobre.
+  const ghost = body.dodge > 0 || insideCreature(world, body);
   const fits = isWalkable(
     world,
     nx - FOOT_HALF_W, ny - FOOT_H,
     nx + FOOT_HALF_W, ny - 0.5,
-    body.dodge > 0
+    ghost
   );
   if (fits) {
     body.x = nx;
@@ -397,6 +456,11 @@ export function advance(world, body, keys, dt) {
 
   slide(world, body, body.vx * dt, 0);
   slide(world, body, 0, body.vy * dt);
+
+  // Po ruchu, nie przed: wypychamy z tego, w czym postać naprawdę stoi. W trakcie
+  // odskoku nie wypychamy — skok ma dolecieć tam, gdzie celował, a nie zostać
+  // zepchnięty w połowie drogi przez cel, przez który właśnie przelatuje.
+  if (!(body.dodge > 0)) pushOut(world, body, dt);
 
   // Kierunek patrzenia trzymamy w ciele, bo cios musi z czegoś wziąć cel, gdy
   // postać stoi. Podczas ciosu jest zamrożony.

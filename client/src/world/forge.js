@@ -279,7 +279,12 @@ function buildDecals(tiles) {
         }
       } else if (tile.startsWith('dirt')) {
         if (rng.chance(0.07)) tufts.push({ key: `decal_tuft_${rng.int(3)}`, x: px, y: py });
-        if (rng.chance(0.02)) decals.push({ key: `decal_puddle_${rng.int(2)}`, x: px, y: py });
+        // Małe kałuże są częstsze od dużych — rozlewisko na pół kafla jest
+        // wydarzeniem, zastoina w kolenie nie.
+        if (rng.chance(0.035)) {
+          const size = rng.chance(0.55) ? rng.int(2) : 2 + rng.int(2);
+          decals.push({ key: `decal_puddle_${size}`, x: px, y: py });
+        }
         // Postrzępiona obwódka trawy wchodząca na ziemię od strony sąsiada.
         //
         // Kładziemy ją na kaflu ZIEMI, nie trawy — inaczej trzeba by kompletu
@@ -365,10 +370,9 @@ function buildProps() {
   for (let x = 60; x < 200; x += 16) add('fence', x, 356, { w: 16, h: 5 });
   for (let x = 600; x < 720; x += 16) add('fence', x, 356, { w: 16, h: 5 });
 
-  // --- Portale (na razie wygaszone) ---
-  add('portal_off', 120, 512, { w: 26, h: 10 }, { portal: 'Arena', noShadow: true });
-  add('portal_off', 384, 528, { w: 26, h: 10 }, { portal: 'Wyprawa', noShadow: true });
-  add('portal_off', 652, 512, { w: 26, h: 10 }, { portal: 'Sklep', noShadow: true });
+  // Portali tu nie ma i nie będzie. Decyzja z 2026-07-30: jedna wielka otwarta
+  // mapa jak w Tibii, wszystko do przejścia na piechotę. Stojące tu wcześniej
+  // słupki były zaszłością po pomyśle osobnych stref za przejściami.
 
   return p;
 }
@@ -387,9 +391,9 @@ function buildLights() {
     { x: 90, y: 183, radius: 72, color: [255, 165, 60], intensity: 0.75, flicker: 0.2, phase: 0.9 },
     { x: 678, y: 223, radius: 72, color: [255, 165, 60], intensity: 0.75, flicker: 0.2, phase: 4.4 },
     { x: 384, y: 426, radius: 104, color: [255, 158, 55], intensity: 0.95, flicker: 0.26, phase: 2.8 },
-    { x: 120, y: 496, radius: 42, color: [79, 195, 247], intensity: 0.45, flicker: 0.1, phase: 1.1 },
-    { x: 384, y: 512, radius: 42, color: [79, 195, 247], intensity: 0.45, flicker: 0.1, phase: 3.3 },
-    { x: 652, y: 496, radius: 42, color: [79, 195, 247], intensity: 0.45, flicker: 0.1, phase: 5.5 },
+    // Trzy niebieskie światła przy portalach zeszły razem z nimi. Jedynym źródłem
+    // światła na placu jest teraz ognisko — i tak ma zostać, dopóki nie stanie tam
+    // coś, co naprawdę świeci.
   ];
 }
 
@@ -590,4 +594,20 @@ export function isWalkable(world, x0, y0, x1, y1, ghost = false) {
     if (x1 > b.x0 && x0 < b.x1 && y1 > b.y0 && y0 < b.y1) return false;
   }
   return true;
+}
+
+/**
+ * Zapora żywego celu, w której stoi ten prostokąt — albo `null`.
+ *
+ * Potrzebna, odkąd odskok przelatuje przez przeciwników: skacząc **w** kogoś
+ * lądujesz w środku jego zapory, a gdy odskok się kończy, kolizja wraca i każdy
+ * ruch jest zablokowany. Postać utyka. Rozwiązanie wymaga najpierw wiedzy o tym,
+ * że w ogóle w czymś stoimy.
+ */
+export function creatureAt(world, x0, y0, x1, y1) {
+  for (const b of world.bodies) {
+    if (!b.creature) continue;
+    if (x1 > b.x0 && x0 < b.x1 && y1 > b.y0 && y0 < b.y1) return b;
+  }
+  return null;
 }

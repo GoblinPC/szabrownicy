@@ -1,4 +1,4 @@
-// Obiekty świata. Każdy ma punkt zaczepienia na dole pośrodku, żeby sortowanie
+﻿// Obiekty świata. Każdy ma punkt zaczepienia na dole pośrodku, żeby sortowanie
 // po osi Y odpowiadało temu, co gracz widzi: kto stoi niżej, ten jest z przodu.
 //
 // Wspólne zasady: górna płaszczyzna dostaje najjaśniejszy odcień rampy, front
@@ -608,45 +608,6 @@ function gateArch() {
   return finish(t);
 }
 
-/** Portal do przyszłych minigierek — na razie wygaszony, z pustym łukiem. */
-function portal(active) {
-  const name = active ? 'portal_on' : 'portal_off';
-  const rng = rngFor(name);
-  const t = new Canvas(28, 40);
-  // Kamienny łuk.
-  t.rect(0, 10, 5, 29, c('stone', 1));
-  t.rect(23, 10, 5, 29, c('stone', 1));
-  t.rect(0, 10, 5, 2, c('stone', 3));
-  t.rect(23, 10, 5, 2, c('stone', 3));
-  for (let x = 0; x < 28; x++) {
-    const dx = (x - 13.5) / 14;
-    const top = 12 - Math.round(Math.sqrt(Math.max(0, 1 - dx * dx)) * 11);
-    t.vline(x, top, top + 4, c('stone', 1));
-    t.hline(x, x, top, c('stone', 3));
-  }
-  for (let row = 0; row < 5; row++) {
-    t.hline(0, 4, 14 + row * 5, c('stone', 0));
-    t.hline(23, 27, 14 + row * 5, c('stone', 0));
-  }
-
-  // Wnętrze: pustka albo wir energii.
-  for (let y = 8; y < 39; y++) {
-    for (let x = 5; x < 23; x++) {
-      const dx = (x - 14) / 9;
-      const dy = (y - 24) / 16;
-      if (dx * dx + dy * dy > 1) continue;
-      if (!active) {
-        t.px(x, y, rng.chance(0.15) ? c('soot', 1) : c('soot', 0));
-      } else {
-        const swirl = Math.sin((x * 0.7 + y * 0.4)) * 0.5 + 0.5;
-        t.px(x, y, swirl > 0.6 ? c('magic') : c('night', swirl > 0.3 ? 3 : 1));
-      }
-    }
-  }
-  t.speckle(rng, c('stone', 2), 0.06, { x: 0, y: 10, w: 28, h: 29 });
-  return finish(t);
-}
-
 // --- Ogień (klatki animacji) --------------------------------------------------
 
 /**
@@ -714,8 +675,6 @@ export function buildProps() {
   add('fence', fence());
   add('campfire', campfire());
   add('gate', gateArch());
-  add('portal_off', portal(false));
-  add('portal_on', portal(true));
 
   for (let f = 0; f < 4; f++) {
     add(`flame_small_${f}`, flame(6, 9, f, 'small'));

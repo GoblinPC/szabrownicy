@@ -397,21 +397,73 @@ function grassFringe(name, side) {
  * (bo grunt przy kałuży też jest mokry i to ona sprzedaje, że coś tam stoi)
  * i **trzy piksele** refleksu z rampy `night`, nie cała kreska.
  */
-function puddle(name) {
+function puddle(name, { rx, ry }) {
   const rng = rngFor(name);
   const t = new Canvas(TILE, TILE);
-  const rx = rng.between(5, 7);
-  const ry = rng.between(3, 4);
+  const cx = 8;
+  const cy = 9;
 
-  // Wilgotny grunt dookoła — o stopień ciemniejszy od suchej ziemi (earth 2).
-  t.ellipse(8, 9, rx + 1, ry + 1, c('earth', 1));
-  // Sama woda: mokra ziemia widziana przez warstwę wody.
-  t.ellipse(8, 9, rx, ry, c('earth', 0));
-  // Refleks nieba. Trzy piksele przy górnej krawędzi, bo pod takim kątem widać
-  // odbicie tylko na dalszym brzegu.
-  t.px(8 - rng.int(2), 9 - ry + 1, c('night', 3));
-  t.px(9, 9 - ry + 1, c('night', 3));
-  if (rng.chance(0.6)) t.px(10, 9 - ry + 2, c('night', 2));
+  // Kształt: elipsa z trzema falami doklejonymi do promienia. Czysta elipsa czyta
+  // się jako narysowany owal — woda rozlewa się nierówno, bo grunt jest nierówny.
+  const lobes = [
+    { k: 2, amp: rng.range(0.06, 0.16), ph: rng.range(0, 6.28) },
+    { k: 3, amp: rng.range(0.04, 0.12), ph: rng.range(0, 6.28) },
+    { k: 5, amp: rng.range(0.02, 0.07), ph: rng.range(0, 6.28) },
+  ];
+  const edgeAt = (angle) =>
+    1 + lobes.reduce((sum, l) => sum + l.amp * Math.sin(l.k * angle + l.ph), 0);
+
+  for (let y = 0; y < TILE; y++) {
+    for (let x = 0; x < TILE; x++) {
+      const dx = (x + 0.5 - cx) / rx;
+      const dy = (y + 0.5 - cy) / ry;
+      const d = Math.hypot(dx, dy);
+      const edge = edgeAt(Math.atan2(dy, dx));
+
+      // Wilgotny grunt dookoła — **szeroki i wyraźnie ciemniejszy** od suchej
+      // ziemi. To on decyduje o tym, czy plama czyta się jako woda w gruncie,
+      // czy jako niebieski kamień położony na nim. Wersja z wąską obwódką dała
+      // dokładnie ten drugi efekt: kształt z objętością, ale bez związku z ziemią.
+      // Krawędź obwódki jest rozsypana losowo, bo wilgoć nie ma konturu.
+      if (d > edge) {
+        const wet = (d - edge) / 0.75;
+        if (wet < 1 && rng.chance(1 - wet * 0.8)) {
+          t.px(x, y, c('earth', wet < 0.45 ? 0 : 1));
+        }
+        continue;
+      }
+
+      // Powierzchnia to **pionowe przejście**, nie jednolita plama.
+      //
+      // Pod kątem 3/4 patrzymy w wodę od strony bliższego brzegu: dalsza krawędź
+      // odbija niebo i jest najjaśniejsza, bliższa pokazuje dno i jest ciemna.
+      // Pierwsza wersja miała jeden kolor na całość i przez to czytała się jako
+      // kamień — płaska plama nie ma się jak ułożyć w wodę, choćby była niebieska.
+      //
+      // Ale **niebieska jest tylko dalsza krawędź**. Woda głęboka na centymetr
+      // pokazuje głównie błoto pod sobą, więc środek i bliższa połowa idą z rampy
+      // `earth`. Wersja cała z rampy `night` miała objętość i dalej czytała się
+      // jako niebieski kamień: różnica barwy względem brązowego placu była tak
+      // duża, że plama odklejała się od podłoża.
+      const far = -dy;   // 1 przy dalszej krawędzi, -1 przy bliższej
+      let col;
+      if (far > 0.66) col = c('night', 3);
+      else if (far > 0.34) col = c('night', 2);
+      else if (far > -0.1) col = rng.chance(0.4) ? c('night', 1) : c('earth', 0);
+      else col = c('earth', 0);
+      t.px(x, y, col);
+    }
+  }
+
+  // Refleks: jeden krótki poziomy błysk. Poziomy, bo odbicie rozciąga się wzdłuż
+  // powierzchni; jeden, bo to on ma być najjaśniejszym punktem kałuży — kilka
+  // rozprasza uwagę i znowu robi z niej ozdobny kamyk.
+  const gx = cx + rng.between(-Math.round(rx * 0.4), Math.round(rx * 0.2));
+  const gy = cy - Math.max(1, Math.round(ry * 0.45));
+  t.px(gx, gy, c('night', 4));
+  t.px(gx + 1, gy, c('night', 4));
+  if (rx > 5) t.px(gx + 2, gy, c('night', 3));
+
   return t;
 }
 
@@ -476,7 +528,17 @@ export function buildTiles() {
   for (const side of ['up', 'down', 'left', 'right']) {
     for (let i = 0; i < 2; i++) add(`decal_fringe_${side}_${i}`, grassFringe(`decal_fringe_${side}_${i}`, side));
   }
-  for (let i = 0; i < 2; i++) add(`decal_puddle_${i}`, puddle(`decal_puddle_${i}`));
+  // Cztery rozmiary, od zastoiny w koleinie po rozlewisko. Jeden rozmiar
+  // powtórzony po całym placu widać od razu jako ten sam obrazek.
+  // Stosunek osi trzymany blisko 1:1,7. Płaskie kałuże nie mają gdzie zmieścić
+  // przejścia od nieba do dna i czytają się jako kreska.
+  const PUDDLES = [
+    { rx: 3.0, ry: 2.0 },
+    { rx: 4.6, ry: 2.8 },
+    { rx: 6.0, ry: 3.5 },
+    { rx: 7.2, ry: 4.2 },
+  ];
+  PUDDLES.forEach((size, i) => add(`decal_puddle_${i}`, puddle(`decal_puddle_${i}`, size)));
   add('decal_rut', wheelRut('decal_rut'));
   for (let i = 0; i < 2; i++) add(`decal_crack_${i}`, crack(`decal_crack_${i}`));
 

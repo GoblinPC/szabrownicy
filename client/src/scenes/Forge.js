@@ -132,16 +132,6 @@ export class ForgeScene extends Phaser.Scene {
         });
       }
 
-      if (prop.portal) {
-        this.add.bitmapText(prop.x, prop.y - sprite.height - 8, 'goblin', prop.portal, 11)
-          .setOrigin(0.5, 1)
-          .setTint(0x4fc3f7)
-          .setDepth(prop.y);
-        this.add.bitmapText(prop.x, prop.y - sprite.height + 3, 'goblin', 'wkrótce', 11)
-          .setOrigin(0.5, 1)
-          .setTint(0x6b5d54)
-          .setDepth(prop.y);
-      }
     }
   }
 
