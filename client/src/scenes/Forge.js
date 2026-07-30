@@ -171,6 +171,16 @@ export class ForgeScene extends Phaser.Scene {
     // ani do kogo pisać, ani kogo wypisywać.
     this.net.onChat((entry) => this.scene.get('Hud')?.addMessage(entry));
 
+    // Własne oberwanie. Czerwony błysk na całym kadrze, bo gracz patrzy na
+    // przeciwnika, a nie na swój pasek — informacja musi trafić tam, gdzie
+    // akurat są oczy.
+    this.net.onHurtSelf = () => {
+      this.cameras.main.flash(140, 120, 18, 10, true);
+      this.kickX = (this.kickX ?? 0) + (Math.random() - 0.5) * 3;
+      this.kickY = (this.kickY ?? 0) + 2;
+      audio.hit(1.1);
+    };
+
     // O tym, czy pokazać formularz, decyduje serwer, nie klient — dzięki temu
     // wyłączenie logowania na czas testów nie da się włączyć podmianą pliku
     // w przeglądarce.
@@ -435,6 +445,27 @@ export class ForgeScene extends Phaser.Scene {
       entry.label.setAlpha(k > 0.65 ? 1 - (k - 0.65) / 0.35 : 1);
       return true;
     });
+  }
+
+  /**
+   * Reakcja na oberwanie **gracza** — lżejsza niż przy celach do bicia.
+   *
+   * Świadomie bez hitstopu i bez wstrząsu kamery: te dwa należą do ciosu, który
+   * sam wyprowadzasz. Zatrzymywanie obrazu za każdym razem, gdy dwóch obcych
+   * graczy okłada się na drugim końcu placu, zamieniłoby grę w pokaz slajdów.
+   */
+  reactToPlayerHit(other, sample, lost) {
+    const x = sample.x;
+    const y = sample.y - 12;
+
+    this.spawnDamageNumber(x, y - 8, lost, sample.h <= 0);
+
+    const angle = Math.atan2(sample.hy ?? 0, sample.hx ?? 1) * (180 / Math.PI);
+    this.bloodBurst.setConfig({ angle: { min: angle - 42, max: angle + 42 } });
+    this.bloodBurst.emitParticleAt(x, y, 12);
+
+    other.sprite.setTintFill(0xfffaf0);
+    this.time.delayedCall(70, () => other.sprite.clearTint());
   }
 
   reactToHit(mob, state, time, { lost, killing, step = ATTACK_STEPS[0] }) {
@@ -1028,6 +1059,18 @@ export class ForgeScene extends Phaser.Scene {
       const struck = seq !== (other.atkSeq ?? 0);
       if (struck) other.atkSeq = seq;
 
+      // Oberwanie poznajemy po własnym znaczniku, tak samo jak cios. Pierwsza
+      // migawka po wejściu gracza go tylko zapamiętuje — inaczej każdy wchodzący
+      // bryzgałby krwią na dzień dobry.
+      const hurt = sample.hs ?? 0;
+      if (other.hurtSeq === undefined) other.hurtSeq = hurt;
+      else if (hurt !== other.hurtSeq) {
+        const lost = Math.max(0, (other.shownHp ?? sample.h) - sample.h);
+        other.hurtSeq = hurt;
+        if (lost > 0) this.reactToPlayerHit(other, sample, lost);
+      }
+      other.shownHp = sample.h;
+
       // Cios po kierunku celowania, chód i spoczynek po sylwetce — tak samo jak
       // u własnej postaci.
       const aim = sample.k ?? sample.f;
@@ -1045,6 +1088,15 @@ export class ForgeScene extends Phaser.Scene {
         if (other.sprite.anims.currentAnim?.key !== key) other.sprite.play(key);
       }
       if (sample.f === 'side') other.sprite.setFlipX(Boolean(sample.l));
+
+      // Trup leży przygaszony i nie animuje się. Bez tego zabity gracz dalej
+      // biega w miejscu, dopóki nie wstanie.
+      const dead = (sample.h ?? 1) <= 0;
+      if (dead !== other.dead) {
+        other.dead = dead;
+        other.sprite.setAlpha(dead ? 0.4 : 1);
+        if (dead) other.sprite.anims.stop();
+      }
 
       other.sprite.setPosition(Math.round(sample.x), Math.round(sample.y));
       other.sprite.setDepth(sample.y);
@@ -1082,6 +1134,8 @@ export class ForgeScene extends Phaser.Scene {
           admin: this.net.admin,
           x: this.drawX ?? this.px,
           y: this.drawY ?? this.py,
+          h: this.net.hp,
+          mh: this.net.maxHp,
         }]
       : samples;
 
@@ -1089,6 +1143,10 @@ export class ForgeScene extends Phaser.Scene {
       id: sample.id,
       name: sample.name,
       admin: sample.admin,
+      // Życie leci razem z plakietką, bo pasek ma wisieć dokładnie pod nickiem
+      // i przeliczenie świata na ekran zna tylko ta scena.
+      hp: sample.h,
+      maxHp: sample.mh,
       // Przeliczenie świata na ekran musi iść przez `worldView`, a NIE przez
       // `scrollX`/`scrollY`. Przy powiększeniu kamery te dwie wartości to nie to
       // samo: `worldView` uwzględnia zoom, `scroll` nie. Z `scroll` plakietki

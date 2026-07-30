@@ -498,6 +498,8 @@ export class HudScene extends Phaser.Scene {
   setNameplates(list) {
     const seen = new Set();
     this.plateAt.clear();
+    if (!this.plateBars) this.plateBars = this.add.graphics().setDepth(DEPTH.plate - 1);
+    this.plateBars.clear();
 
     for (const entry of list) {
       seen.add(entry.id);
@@ -522,6 +524,19 @@ export class HudScene extends Phaser.Scene {
       plate.setVisible(true);
       // Dymek wisi nad plakietką, a przeliczenie na ekran zna tylko scena świata.
       this.plateAt.set(entry.id, { x, y });
+
+      // Pasek życia **tylko u rannych**. Nad każdym z osobna wisiałby zawsze
+      // i zamieniłby plac w tablicę wyników; pojawiający się dopiero po trafieniu
+      // sam z siebie mówi „ten jest ranny, można go dogonić".
+      const ratio = entry.maxHp > 0 ? entry.hp / entry.maxHp : 1;
+      if (!(ratio < 0.999)) continue;
+      const w = 26;
+      const bx = x - w / 2;
+      const by = y + 2;
+      this.plateBars.fillStyle(0x14100f, 0.85);
+      this.plateBars.fillRect(bx - 1, by - 1, w + 2, 5);
+      this.plateBars.fillStyle(ratio < 0.3 ? 0xc43a0d : 0x66913f, 1);
+      this.plateBars.fillRect(bx, by, Math.max(1, Math.round(w * Math.max(0, ratio))), 3);
     }
 
     for (const [id, plate] of this.plates) {
