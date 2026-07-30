@@ -216,17 +216,21 @@ export const ATTACK_FRAMES = ATTACK_POSES.side[0].length;
  * Lewa strona powstaje z odbicia lustrzanego, więc pięć wpisów daje osiem
  * kierunków w grze.
  *
- * `reach` to mnożnik zasięgu, a nie ozdoba:
- * - **w górę i w dół włócznia jest skrócona perspektywą** — celuje w kamerę;
- * - **ukos w dół musi być najkrótszy**, bo grot schodzi poniżej stóp, a niżej
- *   niż stopy nie ma klatki: zaczepienie sprite'a to (0.5, 1), więc miejsce
- *   dodane u dołu przesunęłoby całą postać nad ziemię. U góry jest za darmo.
+ * `reach` to mnożnik zasięgu: w górę i w dół włócznia jest **skrócona
+ * perspektywą**, bo celuje w kamerę. O to, żeby grot zmieścił się w klatce, dba
+ * już `fitReach()` — tutaj chodzi wyłącznie o to, jak cios ma wyglądać.
+ *
+ * Ukos w dół jest rysowany **płycej niż 45 stopni** (34, nie 46). Powód jest
+ * fizyczny: pod stopami nie ma klatki, więc strome pchnięcie w dół trzeba by
+ * skrócić do kikuta. Płytszy kąt daje ten sam czytelny ukos przy pełnej długości
+ * drzewca — a trafienie i tak liczy się pod dokładnym kątem kursora, więc gracz
+ * nie traci na celności ani piksela.
  */
 export const ATTACK_AIMS = [
   { name: 'up', body: 'up', turn: 0, reach: 1 },
-  { name: 'upside', body: 'side', turn: -46, reach: 0.86 },
+  { name: 'upside', body: 'side', turn: -46, reach: 0.9 },
   { name: 'side', body: 'side', turn: 0, reach: 1 },
-  { name: 'downside', body: 'side', turn: 46, reach: 0.6 },
+  { name: 'downside', body: 'side', turn: 34, reach: 0.9 },
   { name: 'down', body: 'down', turn: 0, reach: 1 },
 ];
 
@@ -636,15 +640,50 @@ function drawBody(variant, dir, kind, frame, p) {
   return t.outline(OUTLINE);
 }
 
+// Ile pikseli grot dorysowuje za końcem drzewca.
+const SPEAR_TIP = 3;
+
+/**
+ * Skraca zasięg tak, żeby grot **zmieścił się w klatce**.
+ *
+ * Liczone, a nie dobierane ręcznie, i to jest tu sedno. Zasięgi wpisywane na oko
+ * dwa razy dały ucięte drzewce, za każdym razem niewidoczne na arkuszu kontrolnym:
+ * najpierw w bok przy mocnym pchnięciu, potem **w dół przy ukosie** — siedem
+ * pikseli grotu ścinała dolna krawędź.
+ *
+ * Dół jest najciaśniejszy i nie da się tego obejść: zaczepienie sprite'a to
+ * (0.5, 1), więc każdy piksel dodany pod stopami podniósłby całą postać nad ziemię.
+ * U góry miejsce jest za darmo, dlatego ukos w górę może być znacznie dłuższy niż
+ * w dół — i tak właśnie ma być, bo to samo robi perspektywa.
+ */
+function fitReach(hand, angle, reach) {
+  const radians = (angle * Math.PI) / 180;
+  const dx = Math.cos(radians);
+  const dy = Math.sin(radians);
+  const hx = ATTACK_OX + hand[0];
+  const hy = hand[1];
+
+  let limit = reach;
+  const cap = (available, component) => {
+    if (component > 0.001) limit = Math.min(limit, available / component - SPEAR_TIP);
+  };
+  cap(ATTACK_W - 2 - hx, dx);
+  cap(hx - 1, -dx);
+  cap(H - 2 - hy, dy);
+  cap(hy - 1, -dy);
+
+  return Math.max(2, Math.round(limit));
+}
+
 /**
  * @param dir sylwetka ciała: `down`, `up` albo `side`
  * @param aim kierunek ciosu z `ATTACK_AIMS` — obraca samo drzewce i skraca zasięg
  */
 function drawFrame(variant, dir, kind, frame, step = 0, aim = null) {
   const p = pose(kind, frame, dir, step);
-  if (aim) {
-    p.angle += aim.turn;
-    p.reach = Math.round(p.reach * aim.reach);
+  if (kind === 'attack') {
+    if (aim) p.angle += aim.turn;
+    p.reach = fitReach(p.hand, p.angle, p.reach * (aim?.reach ?? 1));
   }
   const body = drawBody(variant, dir, kind, frame, p);
   if (kind !== 'attack') return body;
