@@ -197,6 +197,115 @@ export function barSlice(name, ramp) {
   return t;
 }
 
+// --- Panel w skali wzoru -------------------------------------------------------
+//
+// **HUD nie jest związany z siatką 16 pikseli.** Świat rysuje się w powiększeniu
+// całkowitym, ale interfejs leci w rozdzielczości ekranu — może więc mieć tyle
+// szczegółu, ile ma odniesienie. Pierwsza wersja tego nie wykorzystywała: ramka
+// miała brzeg szeroki na sześć pikseli, bo tak wyszło z myślenia o kaflach, i przy
+// zestawieniu z obrazkiem wzorcowym wyglądała jak jego pomniejszony szkic.
+//
+// Tu brzeg ma osiemnaście pikseli i mieści to samo, co wzór: fazę, słoje, ciemny
+// spód i okucie narożne z wąsami.
+export const PANEL_SLICE = 18;
+
+export function panelBig(name) {
+  const rng = rngFor(name);
+  const s = PANEL_SLICE;
+  const size = s * 3;
+  const t = new Canvas(size, size);
+
+  const edge = c('soot', 0);
+  const dark = c('wood', 0);
+  const body = c('wood', 2);
+  const lit = c('wood', 3);
+  const hot = c('wood', 4);
+  const brass = c('stone', 3);
+  const brassLit = c('stone', 4);
+
+  t.rect(0, 0, size, size, c('soot', 1));
+
+  // Brzeg warstwami. Wartości grubości wzięte z przekroju przez wzór:
+  // czarny, ciemne drewno, jasna listwa, korpus, ciemny spód, czarna kreska.
+  const ring = (inset, col) => t.frame(inset, inset, size - inset * 2, size - inset * 2, col);
+  ring(0, edge);
+  ring(1, dark);
+  for (let i = 2; i <= 5; i++) ring(i, body);
+  ring(6, dark);
+  ring(7, edge);
+
+  // Faza: światło od góry i z lewej, cień od dołu i z prawej. To ona daje grubość.
+  for (let i = 2; i <= 4; i++) {
+    t.hline(i, size - 1 - i, i, i === 2 ? lit : hot);
+    t.vline(i, i, size - 1 - i, i === 2 ? lit : lit);
+    t.hline(i, size - 1 - i, size - 1 - i, dark);
+    t.vline(size - 1 - i, i, size - 1 - i, dark);
+  }
+
+  // Słoje: krótkie ciemniejsze kreski wzdłuż listwy. Gładkie drewno wygląda
+  // jak plastik — to one robią materiał.
+  for (let i = 0; i < 26; i++) {
+    const along = rng.between(6, size - 7);
+    const len = rng.between(2, 5);
+    if (rng.chance(0.5)) t.hline(along, Math.min(size - 7, along + len), rng.between(3, 5), dark);
+    else t.vline(rng.between(3, 5), along, Math.min(size - 7, along + len), dark);
+  }
+
+  // Okucie narożne: mosiężna płytka z nitem i wąsami wchodzącymi na oba boki.
+  const fitting = (cx, cy, sx, sy) => {
+    t.rect(Math.min(cx, cx + sx * 8), Math.min(cy, cy + sy * 8), 9, 9, brass);
+    t.frame(Math.min(cx, cx + sx * 8), Math.min(cy, cy + sy * 8), 9, 9, edge);
+    // Nit i błysk na płytce.
+    t.rect(cx + sx * 3, cy + sy * 3, 2, 2, brassLit);
+    t.px(cx + sx * 2, cy + sy * 2, brassLit);
+    // Wąsy wzdłuż obu krawędzi.
+    for (let i = 9; i < 15; i++) {
+      if (i % 2 === 0) continue;
+      t.px(cx + sx * i, cy + sy * 2, brass);
+      t.px(cx + sx * 2, cy + sy * i, brass);
+    }
+  };
+  fitting(2, 2, 1, 1);
+  fitting(size - 3, 2, -1, 1);
+  fitting(2, size - 3, 1, -1);
+  fitting(size - 3, size - 3, -1, -1);
+
+  return t;
+}
+
+/**
+ * Pasek w kształcie pigułki — zaokrąglone końce, połysk i ciemny spód.
+ *
+ * Zwraca komplet: tło (puste) i wypełnienie. Oba w pełnej wysokości wzoru, więc
+ * gra rozciąga je wyłącznie w poziomie.
+ */
+export function pillBar(name, ramp, { height = 20, filled = true } = {}) {
+  const w = 24;
+  const t = new Canvas(w, height);
+  const edge = c('soot', 0);
+
+  for (let y = 0; y < height; y++) {
+    // Zaokrąglenie: przy górnej i dolnej krawędzi pasek jest węższy.
+    const fromEdge = Math.min(y, height - 1 - y);
+    const inset = fromEdge === 0 ? 3 : fromEdge === 1 ? 1 : 0;
+    const k = y / (height - 1);
+
+    let shade;
+    if (k < 0.10) shade = 2;
+    else if (k < 0.34) shade = 4;   // połysk
+    else if (k < 0.62) shade = 3;
+    else if (k < 0.86) shade = 2;
+    else shade = 1;                 // spód w cieniu
+
+    for (let x = inset; x < w - inset; x++) {
+      const onEdge = x === inset || x === w - 1 - inset || fromEdge === 0;
+      if (onEdge) t.px(x, y, edge);
+      else t.px(x, y, filled ? c(ramp, shade) : c('soot', shade > 2 ? 2 : 1));
+    }
+  }
+  return t;
+}
+
 export function buildUi() {
   const entries = [];
   const add = (name, canvas) => entries.push({ name, canvas });
@@ -212,6 +321,13 @@ export function buildUi() {
   add('bar_life', barSlice('bar_life', 'goblin'));
   add('bar_hurt', barSlice('bar_hurt', 'ember'));
   add('bar_empty', barSlice('bar_empty', 'soot'));
+
+  // Panel w skali wzoru — do HUD-u, który nie jest związany siatką kafli.
+  add('panel', panelBig('panel'));
+  add('pill_life', pillBar('pill_life', 'ember'));
+  add('pill_stam', pillBar('pill_stam', 'night'));
+  add('pill_food', pillBar('pill_food', 'wood'));
+  add('pill_empty', pillBar('pill_empty', 'soot', { filled: false }));
 
   add('pip_empty', dodgePip('pip_empty', { filled: false }));
   add('pip_full', dodgePip('pip_full', { filled: true }));

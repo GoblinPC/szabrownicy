@@ -418,8 +418,8 @@ function drawProfileHead(t, v, p) {
   }
 
   t.hline(8 + lean, 11 + lean, y + 3, dark);      // brew
-  t.rect(9 + lean, y + 4, 2, 2, c('ember', 2));   // świecące oko za nasadą nosa
-  px(10, y + 4, c('ember', 4));
+  t.rect(9 + lean, y + 4, 2, 2, c('parchment'));  // oko tuż za nasadą nosa
+  px(10, y + 4, c('soot', 0));
   px(12, y + 6, c('soot', 0));                    // nozdrze
   t.hline(8 + lean, 10 + lean, y + 7, c('soot', 1)); // usta
   px(10, y + 7, c('bone'));                       // kieł wystający do przodu
@@ -451,16 +451,10 @@ function drawHead(t, v, dir, p) {
 
   t.hline(x + 1, x + 4, y + 4, dark);      // brwi
   t.hline(x + 5, x + 8, y + 4, dark);
-  // **Oczy świecą na pomarańczowo**, a nie są białe z czarną źrenicą.
-  //
-  // Wzięte z odniesienia podesłanego przez użytkownika i jest to najtańsza
-  // zmiana o największym efekcie w całej sylwetce: dwa piksele żaru zamieniają
-  // ludzką twarz w goblina. Przy szesnastopikselowej postaci oczy to i tak
-  // jedyny szczegół twarzy, który da się przeczytać z odległości gry.
-  t.rect(x + 1, y + 5, 2, 2, c('ember', 2));
-  t.rect(x + 7, y + 5, 2, 2, c('ember', 2));
-  t.px(x + 2, y + 5, c('ember', 4));
-  t.px(x + 7, y + 5, c('ember', 4));
+  t.rect(x + 1, y + 5, 2, 2, c('parchment'));
+  t.rect(x + 7, y + 5, 2, 2, c('parchment'));
+  t.px(x + 2, y + 6, c('soot', 0));
+  t.px(x + 7, y + 6, c('soot', 0));
   t.rect(x + 4, y + 5, 2, 3, dark);        // nos
   t.px(x + 4, y + 6, mid);
   t.hline(x + 3, x + 6, y + 8, c('soot', 1)); // usta

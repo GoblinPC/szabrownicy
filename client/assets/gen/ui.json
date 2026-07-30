@@ -1,9 +1,109 @@
 {
  "frames": {
-  "pip_empty": {
+  "panel": {
    "frame": {
     "x": 0,
     "y": 0,
+    "w": 54,
+    "h": 54
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 54,
+    "h": 54
+   },
+   "sourceSize": {
+    "w": 54,
+    "h": 54
+   }
+  },
+  "pill_life": {
+   "frame": {
+    "x": 55,
+    "y": 0,
+    "w": 24,
+    "h": 20
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 24,
+    "h": 20
+   },
+   "sourceSize": {
+    "w": 24,
+    "h": 20
+   }
+  },
+  "pill_stam": {
+   "frame": {
+    "x": 80,
+    "y": 0,
+    "w": 24,
+    "h": 20
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 24,
+    "h": 20
+   },
+   "sourceSize": {
+    "w": 24,
+    "h": 20
+   }
+  },
+  "pill_food": {
+   "frame": {
+    "x": 0,
+    "y": 55,
+    "w": 24,
+    "h": 20
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 24,
+    "h": 20
+   },
+   "sourceSize": {
+    "w": 24,
+    "h": 20
+   }
+  },
+  "pill_empty": {
+   "frame": {
+    "x": 25,
+    "y": 55,
+    "w": 24,
+    "h": 20
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 24,
+    "h": 20
+   },
+   "sourceSize": {
+    "w": 24,
+    "h": 20
+   }
+  },
+  "pip_empty": {
+   "frame": {
+    "x": 50,
+    "y": 55,
     "w": 19,
     "h": 19
    },
@@ -22,8 +122,8 @@
   },
   "pip_full": {
    "frame": {
-    "x": 20,
-    "y": 0,
+    "x": 70,
+    "y": 55,
     "w": 19,
     "h": 19
    },
@@ -42,8 +142,8 @@
   },
   "frame_panel": {
    "frame": {
-    "x": 40,
-    "y": 0,
+    "x": 90,
+    "y": 55,
     "w": 18,
     "h": 18
    },
@@ -62,8 +162,8 @@
   },
   "frame_slot": {
    "frame": {
-    "x": 59,
-    "y": 0,
+    "x": 109,
+    "y": 55,
     "w": 18,
     "h": 18
    },
@@ -82,8 +182,8 @@
   },
   "bar_life": {
    "frame": {
-    "x": 78,
-    "y": 0,
+    "x": 0,
+    "y": 76,
     "w": 1,
     "h": 10
    },
@@ -102,8 +202,8 @@
   },
   "bar_hurt": {
    "frame": {
-    "x": 80,
-    "y": 0,
+    "x": 2,
+    "y": 76,
     "w": 1,
     "h": 10
    },
@@ -122,8 +222,8 @@
   },
   "bar_empty": {
    "frame": {
-    "x": 82,
-    "y": 0,
+    "x": 4,
+    "y": 76,
     "w": 1,
     "h": 10
    },
@@ -142,8 +242,8 @@
   },
   "bar_cap_life": {
    "frame": {
-    "x": 84,
-    "y": 0,
+    "x": 6,
+    "y": 76,
     "w": 3,
     "h": 9
    },
@@ -162,8 +262,8 @@
   },
   "bar_cap_low": {
    "frame": {
-    "x": 88,
-    "y": 0,
+    "x": 10,
+    "y": 76,
     "w": 3,
     "h": 9
    },
@@ -186,8 +286,8 @@
   "image": "ui.png",
   "format": "RGBA8888",
   "size": {
-   "w": 91,
-   "h": 19
+   "w": 127,
+   "h": 86
   },
   "scale": "1"
  }
