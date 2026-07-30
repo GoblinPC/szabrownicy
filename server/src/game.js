@@ -346,7 +346,11 @@ export class Game {
         mob.hitDx = player.atkDx;
         mob.hitDy = player.atkDy;
         mob.hitSeq++;
-        if (mob.hp === 0) mob.deadUntil = now + RESPAWN_MS;
+        // Zwierzę leży dłużej niż kukła: kukła jest przyrządem i ma wstawać od
+        // razu, zwierzę jest zdobyczą i las ma się z niego wyczerpywać.
+        if (mob.hp === 0) {
+          mob.deadUntil = now + (mob.kind === 'boar' ? BOAR.respawnMs : RESPAWN_MS);
+        }
       }
 
       // Zasoby: drzewa i glazy sa celami jak kazdy inny.
@@ -528,13 +532,30 @@ export class Game {
   /** Odrzut wygasa, a kukła wraca na swój słupek. */
   stepMobs(now, dt) {
     for (const mob of this.mobs.values()) {
-      if (mob.hp <= 0 && now >= mob.deadUntil) {
+      if (mob.hp <= 0) {
+        // **Martwy leży, dopóki nie minie czas odrodzenia.**
+        //
+        // Poprzednia wersja miała warunek `hp <= 0 && now >= deadUntil`, a zwierzę
+        // rodziło się z `deadUntil: 0` — więc w tym samym tiku, w którym padło,
+        // warunek był spełniony i wstawało z pełnym życiem. Objawiało się to
+        // dokładnie tak, jak zgłosił użytkownik: „nie chce umrzeć".
+        if (now < mob.deadUntil) continue;
         mob.hp = mob.maxHp;
         mob.x = mob.homeX;
         mob.y = mob.homeY;
         mob.vx = 0;
         mob.vy = 0;
-        mob.hitSeq++;   // klient po tym pozna, że kukła wstała
+        mob.state = 'wander';
+        mob.hitSeq++;   // klient po tym pozna, że cel wstał
+      }
+
+      // Zwierzęta mają własne zachowanie — chodzą, zauważają i szarżują.
+      // Ta linia była w poprzedniej wersji **zgubiona**: podmiana tekstu nie
+      // trafiła w komentarz z myślnikiem, więc `stepBoar` istniało i nigdy nie
+      // było wołane. Dzik stał w miejscu i nic nie robił.
+      if (mob.kind === 'boar') {
+        this.stepBoar(mob, now, dt);
+        continue;
       }
 
       // Przywiązany cel nie rusza się w ogóle — jego reakcję rysuje klient.
