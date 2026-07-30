@@ -77,6 +77,24 @@ export const WINDOWS = WINDOW_TILES.map((w) => {
   return { a: { x, y: w.y * TILE + 2 }, b: { x, y: w.y * TILE + 14 } };
 });
 
+/**
+ * Miasto — **cała strefa bezpieczna**: hala kuźni razem z placem.
+ *
+ * Decyzja z 2026-07-30: PvP zaczyna się dopiero **za murami**, po wyjściu jedną
+ * z trzech bram (południe, wschód, zachód). Miasto jest miejscem, do którego się
+ * wraca: handel, odpoczynek, pokój w karczmie.
+ *
+ * Prostokąt obejmuje dziś cały grywalny teren, bo cały grywalny teren to na razie
+ * miasto. Gdy dojdzie świat za bramami, znajdzie się **poza** tym prostokątem
+ * i stanie się wrogi bez zmiany choćby jednej linii — o to w tym opisie chodzi.
+ */
+export const CITY_PX = {
+  x: 3 * TILE,
+  y: 2 * TILE,
+  w: (MAP_W - 6) * TILE,
+  h: (MAP_H - 4) * TILE,
+};
+
 export const INTERIOR_PX = {
   x: (BUILDING.x0 + 1) * TILE,
   y: (BUILDING.y0 + 2) * TILE,

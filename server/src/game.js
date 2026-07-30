@@ -9,7 +9,7 @@
 // Świat i kolizje pochodzą z tego samego pliku co u klienta.
 
 import {
-  buildWorld, SPAWN, WORLD_W, WORLD_H, TRAINING_DUMMY, BUILDING_PX,
+  buildWorld, SPAWN, WORLD_W, WORLD_H, TRAINING_DUMMY, CITY_PX,
 } from '../../client/src/world/forge.js';
 import {
   advance, poseOf, KEY_MASK, inAttackArc, ATTACK_STEPS,
@@ -91,15 +91,19 @@ const PLAYER_HP = 100;
 const RESPAWN_HP = 0.5;
 
 /**
- * Czy punkt leży w strefie bezpiecznej.
+ * Czy punkt leży w strefie bezpiecznej, czyli **w mieście**.
  *
- * Dziś to wnętrze kuźni i to jest **cała definicja** — jedna reguła, z której sam
- * z siebie bierze się napięcie przy bramie: krok w tę stronę i można cię zabić.
- * Docelowo strefa obejmie też plac, gdy plac przestanie być całym światem.
+ * Miasto to hala kuźni razem z placem. PvP zaczyna się dopiero za murami, po
+ * wyjściu jedną z trzech bram — i wtedy przekroczenie bramy jest **decyzją**,
+ * a nie przypadkiem. Wcześniejsza wersja robiła strefę tylko z hali i to było
+ * za wcześnie: plac jest częścią miasta, a nie dziczy.
+ *
+ * Uwaga na czas testów: dopóki nie ma świata za bramami, **cała mapa jest
+ * bezpieczna** i graczy nie da się bić nigdzie. To jest poprawne, nie zepsute.
  */
 export function inSafeZone(x, y) {
-  return x >= BUILDING_PX.x && x <= BUILDING_PX.x + BUILDING_PX.w
-    && y >= BUILDING_PX.y && y <= BUILDING_PX.y + BUILDING_PX.h;
+  return x >= CITY_PX.x && x <= CITY_PX.x + CITY_PX.w
+    && y >= CITY_PX.y && y <= CITY_PX.y + CITY_PX.h;
 }
 
 // Worek do bicia ma **wytrzymywać** — służy do strojenia odczucia ciosu, a nie
