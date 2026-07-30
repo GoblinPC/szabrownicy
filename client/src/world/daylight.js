@@ -122,6 +122,32 @@ export function darkness(phase) {
   return Math.max(0, Math.min(1, 1 - (light - min) / (max - min)));
 }
 
+/**
+ * Cień od słońca: w którą stronę pada i jak mocno.
+ *
+ * Słońce wschodzi na wschodzie i zachodzi na zachodzie, więc **cień wędruje przez
+ * cały dzień** — rano długi w lewo, w południe krótki, wieczorem długi w prawo.
+ * To jest ta rzecz, która najtaniej pokazuje, że czas płynie: nikt nie patrzy na
+ * zegar, ale każdy zauważy, że cienie się przesunęły.
+ *
+ * W nocy zostaje słaby cień od księżyca — nie zero, bo świat bez żadnych cieni
+ * spłaszcza się do wycinanki, a przy zapalonych ogniskach i tak rządzą one.
+ *
+ * @returns `{ angle, power }` — kąt **w stronę cienia**, nie w stronę słońca.
+ */
+export function sunShadow(phase) {
+  const p = ((phase % 1) + 1) % 1;
+  // Doba na kącie: świt (0,24) daje cień w lewo, zachód (0,87) w prawo.
+  // Poza dniem obracamy dalej, żeby przejście przez noc było ciągłe.
+  const dayPart = (p - 0.24) / (0.87 - 0.24);
+  const angle = Math.PI * (1 - dayPart);
+
+  // Siła: najdłuższe cienie przy horyzoncie, najkrótsze w południe.
+  const noon = 1 - Math.abs(dayPart - 0.5) * 2;   // 0 na krańcach dnia, 1 w południe
+  if (p < 0.2 || p > 0.93) return { angle, power: 0.12 };   // księżyc
+  return { angle, power: 0.25 + (1 - noon) * 0.5 };
+}
+
 /** Nazwa pory dnia — do panelu diagnostycznego i na przyszłość do interfejsu. */
 export function partOfDay(phase) {
   const p = ((phase % 1) + 1) % 1;

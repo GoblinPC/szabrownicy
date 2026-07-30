@@ -1,4 +1,4 @@
-// Stan świata po stronie serwera.
+﻿// Stan świata po stronie serwera.
 //
 // Zasada, na której stoi cała reszta: **klient nigdy nie podaje swojej pozycji**.
 // Wysyła wyłącznie to, które klawisze trzyma wciśnięte, a serwer sam liczy, dokąd
@@ -14,6 +14,7 @@ import {
 import {
   advance, poseOf, KEY_MASK, inAttackArc, ATTACK_STEPS,
 } from '../../client/src/world/movement.js';
+import { buildNodes, NODE_KINDS } from '../../client/src/world/nodes.js';
 
 export const TICK_HZ = 20;
 const TICK_MS = 1000 / TICK_HZ;
@@ -148,6 +149,79 @@ export class Game {
 
     const dummy = makeDummy(1);
     this.mobs.set(dummy.id, dummy);
+
+    // Zasoby: pełna lista jest deterministyczna i klient zna ją z tego samego
+    // kodu. Trzymamy **tylko odstępstwa od pełnego stanu** — uszkodzone i ścięte.
+    // Przy nietkniętym lesie to pusta mapa i zero bajtów na migawkę.
+    this.nodes = buildNodes(this.world);
+    this.hurtNodes = new Map();   // id → { hp, downUntil }
+    // Rzeczy leżące na ziemi. Numerowane rosnąco, bo klient rozpoznaje je po
+    // identyfikatorze, a nie po pozycji.
+    this.drops = new Map();
+    this.nextDrop = 1;
+  }
+
+  /** Bieżący stan zasobu — z mapy odstępstw albo pełny. */
+  nodeState(node) {
+    return this.hurtNodes.get(node.id) ?? { hp: node.maxHp, downUntil: 0 };
+  }
+
+  /**
+   * Cios gracza w zasób.
+   *
+   * Zasoby są **celami jak każdy inny** — ten sam łuk trafienia, ten sam znacznik
+   * cięcia. Rąbanie drzewa nie ma osobnego przycisku i to jest świadome: jedno
+   * uderzenie ma działać na wszystko, w co się trafi.
+   */
+  chopNodes(player, step, now) {
+    for (const node of this.nodes) {
+      const state = this.nodeState(node);
+      if (state.hp <= 0) continue;
+      if (!this.reaches(player, node)) continue;
+
+      const hp = Math.max(0, state.hp - 1);
+      this.hurtNodes.set(node.id, { hp, downUntil: 0, at: now });
+
+      if (hp === 0) {
+        const spec = NODE_KINDS[node.kind];
+        this.hurtNodes.set(node.id, { hp: 0, downUntil: now + spec.respawn, at: now });
+        // Kierunek ciosu leci razem ze zdarzeniem: drzewo ma się przewrócić
+        // **w tę stronę, w którą je uderzono**.
+        this.hurtNodes.get(node.id).dx = Math.round(player.atkDx * 100) / 100;
+        this.hurtNodes.get(node.id).dy = Math.round(player.atkDy * 100) / 100;
+        this.spawnDrop(node, spec, now);
+      }
+    }
+  }
+
+  /** Rzeczy wypadające ze ściętego zasobu — rozrzucone wokół jego podstawy. */
+  spawnDrop(node, spec, now) {
+    const [lo, hi] = spec.dropCount;
+    const count = lo + Math.floor(Math.random() * (hi - lo + 1));
+    for (let i = 0; i < count; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const d = 6 + Math.random() * 14;
+      const id = this.nextDrop++;
+      this.drops.set(id, {
+        id,
+        item: spec.drop,
+        x: Math.round(node.x + Math.cos(a) * d),
+        y: Math.round(node.y + Math.sin(a) * d * 0.6),
+        // Rzeczy na ziemi znikają po chwili, żeby las nie zarósł drewnem
+        // po godzinie rąbania.
+        until: now + 120_000,
+      });
+    }
+  }
+
+  /** Odrastanie i sprzątanie tego, czego nikt nie podniósł. */
+  stepNodes(now) {
+    for (const [id, state] of this.hurtNodes) {
+      if (state.hp <= 0 && now >= state.downUntil) this.hurtNodes.delete(id);
+    }
+    for (const [id, drop] of this.drops) {
+      if (now >= drop.until) this.drops.delete(id);
+    }
   }
 
   /**
@@ -202,6 +276,9 @@ export class Game {
         mob.hitSeq++;
         if (mob.hp === 0) mob.deadUntil = now + RESPAWN_MS;
       }
+
+      // Zasoby: drzewa i glazy sa celami jak kazdy inny.
+      this.chopNodes(player, step, now);
 
       // Gracz na gracza.
       //
@@ -481,6 +558,7 @@ export class Game {
     this.resolveHits(now);
     this.stepMobs(now, TICK_MS / 1000);
     this.stepPlayers();
+    this.stepNodes(now);
   }
 
   /** Opis gracza dla innych — bez prędkości, bo jej nie potrzebują do rysowania. */
@@ -522,3 +600,4 @@ export class Game {
     return list;
   }
 }
+

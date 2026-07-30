@@ -14,7 +14,8 @@ import { createTestPanel } from '../ui/testpanel.js';
 import { Critters } from '../render/critters.js';
 import { Rain } from '../render/rain.js';
 import { Grass } from '../render/grass.js';
-import { darkness } from '../world/daylight.js';
+import { darkness, sunShadow } from '../world/daylight.js';
+import { Wind } from '../render/wind.js';
 
 // Jak długo trzymamy wciśnięcie ciosu w buforze po puszczeniu klawisza.
 const ATTACK_BUFFER_MS = 140;
@@ -30,6 +31,7 @@ export class ForgeScene extends Phaser.Scene {
     this.variants = this.cache.json.get('variants');
 
     this.drawGround();
+    this.wind = new Wind(this);
     this.shadows = new ShadowCaster(this, this.world.lights);
     this.spawnProps();
     this.spawnFlames();
@@ -44,6 +46,10 @@ export class ForgeScene extends Phaser.Scene {
     this.critters = new Critters(this, this.world, TILE, BUILDING_PX);
     this.rain = new Rain(this);
     this.grass = new Grass(this, this.world.tufts, this.tileIndex);
+
+    // Slonce ustawiamy raz na starcie, zeby cienie nie mrugnely w pierwszej klatce.
+    const start = sunShadow(0.5);
+    this.shadows.setSun(start.angle, start.power);
 
     this.setupCamera();
     this.setupInput();
@@ -124,14 +130,21 @@ export class ForgeScene extends Phaser.Scene {
         .setOrigin(0.5, 1)
         .setDepth(prop.y);
 
-      // Płaskie drobiazgi nie rzucają cienia — tylko to, co faktycznie stoi.
-      if (sprite.height >= 12 && !prop.noShadow) {
+      // Roślinność kołysze się na wietrze. To ona odpowiada za to, czy las jest
+      // lasem, czy tapetą — sama liczba drzew nie wystarcza.
+      if (prop.key === 'tree') this.wind.add(sprite, 'tree');
+      else if (prop.key.startsWith('bush')) this.wind.add(sprite, 'bush');
+      else if (prop.key.startsWith('flowers')) this.wind.add(sprite, 'flowers');
+
+      // Próg obniżony z 12 na 7 pikseli: **krzaki też mają się przyklejać do
+      // ziemi**. Bez plamy kontaktowej drobne rośliny wyglądają, jakby unosiły
+      // się nad trawą — a to właśnie one leżą najgęściej i najbardziej to widać.
+      if (sprite.height >= 7 && !prop.noShadow) {
         this.shadows.add(prop.x, prop.y, 'props', prop.key, {
           squash: 0.42,
           width: Math.min(34, sprite.width + 4),
         });
       }
-
     }
   }
 
@@ -802,6 +815,18 @@ export class ForgeScene extends Phaser.Scene {
     // Trawa reaguje na wszystko, co chodzi po świecie, nie tylko na własną postać —
     // widok kępek prostujących się za obcym graczem jest połową tego efektu.
     this.grass.update(dt, time, this.walkers(), 1 + rain * 1.6);
+    // Wiatr w roslinnosci. Deszcz go wzmacnia - burza ma wygladac na burze.
+    this.wind.update(time, 1 + rain * 1.4);
+
+    // Slonce wedruje, wiec cienie stojacych obiektow trzeba odswiezac. Co cwierc
+    // sekundy i tylko w kadrze: co klatke byloby to najdrozsza rzecza w grze,
+    // a skoku przy tym tempie nie widac.
+    const sun = sunShadow(phase);
+    this.shadows.setSun(sun.angle, sun.power);
+    if (time - (this.lastShadowSweep ?? 0) > 250) {
+      this.lastShadowSweep = time;
+      this.shadows.refreshStatics(this.cameras.main.worldView);
+    }
     this.testPanel.follow(this.net.serverPhase(), this.net.rain ?? 0);
     this.updateAmbience(dt);
     this.reportZone();
@@ -1181,4 +1206,5 @@ export class ForgeScene extends Phaser.Scene {
     this.lastSafe = safe;
   }
 }
+
 

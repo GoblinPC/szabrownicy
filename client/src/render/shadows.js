@@ -52,6 +52,10 @@ export class ShadowCaster {
   constructor(scene, lights) {
     this.scene = scene;
     this.lights = lights;
+    this.statics = [];
+    this.sunDx = 0;
+    this.sunDy = 1;
+    this.sunPower = 0;
     ensureContactTexture(scene);
   }
 
@@ -71,16 +75,56 @@ export class ShadowCaster {
       .setDepth(-59)
       .setTint(0x000000);
 
-    const shadow = { contact, cast, squash };
+    const shadow = { contact, cast, squash, x, y };
+    // Cienie obiektów **stojących** trzymamy na liście, bo słońce wędruje i trzeba
+    // je odświeżać. Przy dwóch tysiącach roślin robimy to rzadko i tylko w kadrze —
+    // co ćwierć sekundy nikt nie zauważy skoku, a co klatkę byłoby to najdroższą
+    // rzeczą w grze.
+    this.statics.push(shadow);
     this.refresh(shadow, x, y);
     return shadow;
+  }
+
+  /** Odświeża cienie stojących obiektów w kadrze. Wołane rzadko, nie co klatkę. */
+  refreshStatics(view, margin = 64) {
+    for (const shadow of this.statics) {
+      if (shadow.x < view.x - margin || shadow.x > view.right + margin
+        || shadow.y < view.y - margin || shadow.y > view.bottom + margin) continue;
+      this.refresh(shadow, shadow.x, shadow.y);
+    }
+  }
+
+  /**
+   * Kierunek i siła słońca. Ustawiane raz na klatkę przez scenę, z pory dnia.
+   *
+   * Bez tego **cały świat poza zasięgiem ognisk nie ma cieni** — a to jest cały
+   * las. Ogniska stoją wyłącznie w mieście, więc pierwszy las po powiększeniu
+   * mapy stał w płaskim, bezcieniowym świetle i wyglądał jak wycinanka.
+   * Użytkownik zgłosił to od razu i miał rację.
+   */
+  setSun(angle, power) {
+    this.sunDx = Math.cos(angle);
+    this.sunDy = Math.sin(angle);
+    this.sunPower = power;
   }
 
   refresh(shadow, x, y) {
     const { cast, contact } = shadow;
     contact.setPosition(x, y);
+    // Plama kontaktowa jest **zawsze**: to ona przykleja obiekt do ziemi i to
+    // ona jest tym „ambient occlusion", którego brakowało. Rzucony cień może
+    // zniknąć w nocy, plama nie.
+    contact.setAlpha(0.5 + 0.2 * (this.sunPower ?? 0));
 
-    const { dx, dy, weight } = lightAt(this.lights, x, y);
+    let { dx, dy, weight } = lightAt(this.lights, x, y);
+    // Poza zasięgiem ognia rządzi słońce. Dokładamy je zawsze, więc obiekt przy
+    // ognisku ma cień od ognia, a dziesięć kroków dalej płynnie od słońca.
+    if (this.sunPower > 0) {
+      dx += this.sunDx * this.sunPower;
+      dy += this.sunDy * this.sunPower;
+      weight += this.sunPower;
+    }
+
     const length = Math.hypot(dx, dy);
     if (weight < 0.06 || length < 0.001) {
       cast.setVisible(false);

@@ -662,13 +662,28 @@ function carveGates(tiles, rng) {
  * a nie w losowy krzak.
  */
 function onRoad(x, y) {
-  // Południowa: prosto w dół od bramy, z lekkim wężykiem.
-  const southX = CITY_OX + 24 + Math.round(Math.sin(y * 0.09) * 4);
-  if (y > CITY_OY + CITY_H - 2 && Math.abs(x - southX) < 2) return true;
-  // Zachodnia i wschodnia: w bok od bramy, też wężykiem.
-  const sideY = CITY_OY + 27 + Math.round(Math.sin(x * 0.08) * 3);
-  if (x < CITY_OX && Math.abs(y - sideY) < 2) return true;
-  if (x > CITY_OX + CITY_W - 1 && Math.abs(y - sideY) < 2) return true;
+  // Droga musi **wychodzić dokładnie z bramy**, a nie obok niej.
+  //
+  // Pierwsza wersja liczyła wężyk od zera na całej długości, więc już przy samym
+  // murze potrafił odbić o cztery kafle — brama była w jednym miejscu, a droga
+  // zaczynała się w drugim. Wężyk **narasta z odległością**: przy bramie jest
+  // zerowy, dalej pełny. Ta sama poprawka na wszystkich trzech drogach.
+  const wobble = (odleglosc, faza, amplituda) =>
+    Math.round(Math.sin(faza) * amplituda * Math.min(1, odleglosc / 10));
+
+  for (const gate of GATES) {
+    if (gate.key === 'south') {
+      const d = y - (gate.y + gate.h - 1);
+      if (d < 0) continue;
+      const cx = gate.x + gate.w / 2 + wobble(d, y * 0.09, 4);
+      if (Math.abs(x + 0.5 - cx) < gate.w / 2 + 0.5) return true;
+    } else {
+      const d = gate.key === 'west' ? gate.x - x : x - (gate.x + gate.w - 1);
+      if (d < 0) continue;
+      const cy = gate.y + gate.h / 2 + wobble(d, x * 0.08, 3);
+      if (Math.abs(y + 0.5 - cy) < gate.h / 2 + 0.5) return true;
+    }
+  }
   return false;
 }
 
