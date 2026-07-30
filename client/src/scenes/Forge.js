@@ -598,8 +598,18 @@ export class ForgeScene extends Phaser.Scene {
       mob.shadow.cast.setVisible(!dead);
       mob.shadow.contact.setVisible(!dead);
       if (dead) {
+        // **Stan zapisujemy także dla martwego.**
+        //
+        // Poprzednia wersja wychodziła z pętli przed tym przypisaniem, więc
+        // `mob.state` zostawał ostatni żywy — z życiem powyżej zera. Pasek nad
+        // trupem rysował się dalej, bo patrzył właśnie na ten stary stan, i całość
+        // wyglądała, jakby zwierzę dało się bić po śmierci.
+        mob.state = state;
         mob.lastHp = state.h;
         mob.hitSeq = state.s;
+        // Pozycja też, bo po odrodzeniu ma się pojawić tam, gdzie serwer je
+        // postawił, a nie tam, gdzie padło.
+        mob.sprite.setPosition(Math.round(state.x), Math.round(state.y));
         continue;
       }
 
