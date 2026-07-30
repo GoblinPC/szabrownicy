@@ -161,6 +161,25 @@ class GameAudio {
   step(surface) {
     this.sfx?.step(surface);
   }
+
+  /** Świst ostrza — odpalany w chwili cięcia, nie przy wciśnięciu klawisza. */
+  swing(power) {
+    this.sfx?.swing(power);
+  }
+
+  /**
+   * Trafienie. Świst, stuk i krew idą razem, bo ucho czyta uderzenie jako jedno
+   * zdarzenie złożone z warstw, a nie jako trzy osobne dźwięki.
+   */
+  hit(power = 1) {
+    this.sfx?.hit(power);
+    this.sfx?.blood(power);
+  }
+
+  /** Cios wyprowadzony w powietrze. */
+  miss() {
+    this.sfx?.miss();
+  }
 }
 
 export const audio = new GameAudio();

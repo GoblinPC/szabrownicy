@@ -5,9 +5,16 @@ Przeglądarkowa gra 2D w rzucie 3/4 z góry, podpięta docelowo pod sklep Goblin
 ani jednego rysunku czy pliku audio zrobionego ręcznie albo pobranego.
 
 Obecny zakres to **lobby**: wspólny świat, po którym gracze biegają, widzą się
-nawzajem i rozmawiają dymkami nad głowami. Docelowo świat ma się rozrastać
-o kolejne strefy za portalami (wyprawa, arena, sklep, kopalnia, survival
-z budowaniem baz) — ale **po kolei**, bez budowania wszystkiego naraz.
+nawzajem i rozmawiają dymkami nad głowami. Świat ma się rozrastać **po kolei**,
+bez budowania wszystkiego naraz.
+
+**Jedna wielka otwarta mapa, jak w Tibii — bez portali i bez teleportów.**
+Decyzja z 2026-07-30, zastępuje wcześniejszy pomysł osobnych stref za portalami.
+Kuźnia, las, skalisko i wszystko dalej mają leżeć na tej samej mapie i dawać się
+przejść na piechotę. Jeśli jedna ciągła mapa okaże się problemem technicznym,
+dopuszczalne jest **szybkie przeładowanie na przejściach** — ale nie teleport
+i nie osobne światy. Stojące na placu słupki portali są więc **zaszłością**
+i zejdą z mapy.
 
 To osobny, nowy projekt. Nie jest kontynuacją `C:\Users\Goblin\Documents\Nibylandia`.
 Pierwotnie miała to być gra typu extraction; ten prototyp leży w `legacy/`
@@ -50,9 +57,9 @@ client/
     main.js         start Phasera
     scenes/         Boot, Forge, Hud
     world/forge.js  definicja mapy, świateł, dźwięków otoczenia
-    render/         lighting.js, shadows.js
+    render/         lighting.js, shadows.js, bubble.js (kształt dymka czatu)
     audio/          waveforms, tracker, songs, ambience, sfx, audio
-    ui/mixer.js     suwaki głośności (zwykły HTML nad kanwą)
+    ui/             mixer.js, login.js, chat.js — zwykły HTML nad kanwą
 server/src/index.js serwer statyczny + przeładowywanie na żywo
 legacy/             stary prototyp ekstrakcji — baza pod pierwszą minigierkę
 docs/DESIGN.md      projekt całości
@@ -95,7 +102,7 @@ całkowitym 2–4×. Phaser 3.80 z CDN, `pixelArt: true`, bez kroku budowania.
 `client/src/render/lighting.js` — maska światła rysowana co klatkę na małym
 płótnie 2D (1 piksel maski = 2 piksele świata) i rozciągana na widok kamery
 w trybie mnożenia. Kolor otoczenia zależy od miejsca: wnętrze hali ciepły mrok
-`[122, 96, 84]`, plac chłodny zmierzch `[86, 100, 140]`. Migotanie to suma dwóch
+`[122, 96, 84]`, plac barwa nieba o danej porze doby. Migotanie to suma dwóch
 niewspółmiernych sinusoid, więc ogień nie łapie słyszalnego rytmu.
 
 `client/src/render/shadows.js` — cień to sylwetka obiektu położona na ziemi
@@ -108,6 +115,44 @@ Dwie reguły wyniesione z błędów:
 
 **Znana wada:** granica między ciepłym wnętrzem a chłodnym placem to na razie
 ostry prostokąt. Przy bramie widać szew — do rozmycia.
+
+## Doba
+
+`client/src/world/daylight.js` — wspólny dla klienta i serwera, tak samo jak
+fizyka ruchu. **Zegar prowadzi serwer** i wysyła w migawce pole `d` (ułamek doby);
+klient posuwa go między migawkami sam, bo dwadzieścia skoków na sekundę widać jako
+drganie światła. Wysyłamy **czas, nie policzony kolor** — jedna liczba zamiast
+trzech, a przeliczyć i tak musi klient.
+
+- Doba trwa **16 minut**. Przy dobie godzinnej nikt nie zobaczy nocy w trakcie
+  sesji, przy pięciu minutach światło miga jak stroboskop.
+- `FOLLOW_REAL_CLOCK = false` — świadomie. Świat jest wspólny, więc gracze z różnych
+  stref widzieliby o tej samej chwili inną porę dnia; grywa się wieczorami, więc
+  prawie każda sesja wypadałaby w nocy; i przede wszystkim znika rytm, o który
+  chodziło. Przełącznik zostaje, reszta kodu liczy z ułamka doby.
+- `darkness(phase)` (0 w południe, 1 w nocy) to **jedna liczba, po której mają się
+  sterować wszystkie nocne rzeczy** — świetliki, ćmy, głośniejsze cykanie. Liczona
+  z jasności nieba, więc nie da się jej rozjechać z kolorem.
+- Punktem odniesienia dla palety jest `[86, 100, 140]` — dawny stały kolor placu.
+  Wypada między zmierzchem a nocą: gra przez cały czas wyglądała na „po zachodzie".
+- W dzień przygasają **pochodnie na dworze** (`TORCH_DAY`) i **winieta**
+  (`VIGNETTE_DAY`). Ognie pod dachem zostają na pełnej mocy — hala jest ciemna całą
+  dobę, a przygaszone palenisko robiło z niej płaską szarość.
+- **Suwak pory dnia pod `F1`** (`client/src/ui/clock.js`) — do oglądania świateł bez
+  czekania. Przestawia **wyłącznie widok u siebie**, zegar dalej prowadzi serwer;
+  guzik „auto" oddaje sterowanie. Nie ma tu czego oszukiwać, bo nocne potwory i głód
+  i tak będzie liczył serwer, dla którego ten suwak nie istnieje.
+
+Dwie rzeczy wyszły dopiero z podglądu i obie były niewidoczne w liczbach: **południe
+było za ciemne**, bo winieta pełną mocą zjadała jasność dodaną przez niebo, a pierwsza
+wersja nocy schodziła tak nisko, że plac przestawał być czytelny. Obie poprawki wzięły
+się z arkusza, na którym obok pór doby stoi ten sam kadr **bez światła**.
+
+Trzecia rzecz wyszła dopiero z gry: **wieczór był ściśnięty**. Zachód wypadał na 0,76
+doby, czyli o 18:00 świat był już pomarańczowy. Punkty kluczowe rozłożono na nowo —
+dzień trzyma pełne światło do ~17:45, złota godzina wypada koło 20:00, właściwy zachód
+koło 21:00. Przy dobie 16-minutowej łatwo o taki błąd, bo różnica „18:00 czy 20:00" to
+w czasie rzeczywistym dwadzieścia sekund.
 
 ## Dźwięk
 
@@ -157,6 +202,7 @@ na goblinpc.pl (`app/gra/page.tsx` w repo `goblin-shop` — iframe na tę subdom
 - **drewniana karczma**: bale, deski, wrota, gont, dach znikający po wejściu,
 - **ograniczona widoczność**: z hali nie widać placu i odwrotnie,
 - **okna z klinem widoczności** — ile widać przez okno, zależy od tego, gdzie stoisz,
+- **czat z dymkami** nad głowami, log ostatnich wiadomości i **tabela graczy pod TAB-em**,
 - panel diagnostyczny pod `F1` (wersja klienta, fps, ping, korekta pozycji).
 
 ## Konta i logowanie
@@ -227,6 +273,47 @@ maskę dawało się tylko dokładać ciemność, nie odejmować jej wybiórczo.
 - Klin nie zatrzymuje się na przeszkodach i liczy się od stóp, nie od oczu.
   Świadomy skrót — do poprawy tylko jeśli będzie widać.
 
+## Czat i tabela graczy
+
+Enter otwiera pole, Enter wysyła, Escape zamyka. TAB przytrzymany pokazuje listę
+graczy ze strefą, w której stoją. `M`, `N`, `F1` i TAB milczą, gdy kursor jest
+w polu tekstowym.
+
+- **Protokołu czatu nie było**, mimo że `docs/DESIGN.md` go opisuje — ten plik jest
+  projektem całości, nie stanem kodu. Doszły `chat` w obie strony i `system`
+  (wejścia i wyjścia graczy).
+- **Sanityzacja po stronie serwera** (`cleanChat`): znaki sterujące, znaczniki
+  kierunku pisma i niewidzialne wypełniacze na spację, zwinięcie białych znaków,
+  obcięcie do 120 znaków. Odstęp 1,5 s liczy serwer — cicho odrzuca; klient pilnuje
+  tego samego i to on tłumaczy graczowi, dlaczego wiadomość nie wyszła.
+- Serwer rozgłasza wiadomość **także do autora**. Bez tego każdy widziałby swój
+  dymek w innej chwili niż pozostali.
+- **Kształt dymka to `client/src/render/bubble.js`** — sama geometria, lista
+  prostokątów, bez Phasera i bez płótna. Tego samego pliku używa gra i generator
+  podglądu, więc podgląd nie może pokazać czegoś innego, niż widzi gracz.
+- Pole do pisania to `<input>` (`client/src/ui/chat.js`), nie napis w Phaserze —
+  za darmo daje polskie znaki, wklejanie i klawiatury mobilne. Zamknięte jest
+  zdejmowane z drzewa dokumentu; ukryte, ale zaznaczone, zjadałoby klawisze ruchu.
+
+### Pułapki, które już kosztowały czas
+
+- **Obrys dymka musi być z sadzy (`soot 0`), nie z najciemniejszego drewna.**
+  `wood 0` to `#2a1d15`, a ciepły mrok wnętrza kuźni `#2a1c14` — obrys po prostu
+  znikał w hali. Widać to było tylko na podglądzie z dwoma tłami.
+- **Klawisz trzymany w chwili otwarcia czatu nigdy nie dostaje `keyup`**, bo pole
+  tekstowe zatrzymuje zdarzenia, żeby litery nie sterowały postacią. Bez
+  `resetKeys()` przy wyjściu z pisania postać sama ruszała w stronę, w którą szła
+  przed otwarciem czatu.
+- **Cienki obrys i mały ogonek czytają się jako okienko interfejsu, nie mowa.**
+  Pierwsza wersja miała 1 px ramki i 5-pikselowy trójkąt w kolorze tła i została
+  odrzucona. Dziś: obrys 2 px, narożniki ścięte po 2 px, ogonek schodkowy.
+- Własna plakietka musi mieć **prawdziwy numer gracza z serwera**. Przy zastępniku
+  (było tam zero) własna wiadomość wracała z numerem, którego nie ma na liście
+  plakietek, i autor jako jedyny nie widział swojego dymka.
+- Kolejność rysowania dymka: **najpierw cały obrys, potem całe wypełnienie.**
+  Rysowane po kolei „ramka i tło dymka, ramka i tło ogonka" zostawia ciemną kreskę
+  dokładnie w miejscu połączenia.
+
 ## Narzędzia do sprawdzania (używać, nie zgadywać)
 
 Kilka błędów w układzie mapy dało się zauważyć dopiero w grze. Stąd:
@@ -234,6 +321,16 @@ Kilka błędów w układzie mapy dało się zauważyć dopiero w grze. Stąd:
 - `node tools/art/preview_world.js [x0 y0 x1 y1] [--bez-dachu]` — render wycinka
   mapy do `docs/preview/swiat.png`, dokładnie tak jak widzi gracz. Stawia też
   postać przy murze, żeby było widać, czy dach nie wchodzi jej na głowę.
+- `node tools/art/preview_doba.js [--bez-dachu]` — ten sam kadr o sześciu porach doby
+  do `docs/preview/doba.png`, plus **ten sam kadr bez światła** jako pierwsza kratka.
+  Ta jedna kratka jest tu najważniejsza: bez niej nie da się odróżnić „południe jest
+  za ciemne" od „ziemia po prostu ma ciemną teksturę". Stałe bierze z `daylight.js`
+  i `lighting.js`, więc nie pokaże czegoś innego niż gra; reimplementowane jest samo
+  składanie maski, bo płótna 2D przeglądarki w Node nie ma.
+- `node tools/art/preview_bubble.js` — arkusz dymków czatu do `docs/preview/dymek.png`,
+  na dwóch tłach: ciepły mrok hali i chłodna trawa placu. Geometria pochodzi
+  z `client/src/render/bubble.js`, czyli z kodu gry. **Dwa tła są tu po coś** —
+  to na nich wyszło, że obrys zlewa się z podłogą kuźni.
 - `npm run art` produkuje arkusze kontrolne w `docs/preview/`. **Obejrzeć je
   narzędziem Read przed powiedzeniem, że gotowe.**
 - Panel `F1` w grze: wersja klienta, fps, najdłuższa klatka, trzy źródła czasu,
@@ -242,14 +339,22 @@ Kilka błędów w układzie mapy dało się zauważyć dopiero w grze. Stąd:
 
 **Kolejka, w tej kolejności:**
 
-1. **Czat z dymkami** nad głowami — protokół to przewiduje (`chat`), dochodzi pole
-   tekstowe, limity antyspamowe (1 wiadomość / 1,5 s, 120 znaków) i rysowanie dymka.
-2. **Tabela graczy pod TAB-em** — kto jest online i ilu ich jest. TAB zwolnił się
-   po usunięciu przełączania wariantów postaci.
-3. Dalej survival, w tej kolejności: chunki generowane z ziarna → ekwipunek →
-   zbieranie → crafting → walka i zwierzęta → bazy → PvP i rajdy.
-   Uzgodnione zasady: mały świat (nie otwarty — przy kilkunastu graczach nikogo
-   się nie spotyka), cykliczne wipe'y, pionowy plasterek zamiast szerokiego frontu.
+Lobby jest domknięte. Dalej **walka przed mapą** — kolejność ustalona 2026-07-30
+i świadomie odwrócona względem poprzedniej (najpierw był teren, potem walka).
+Powód: walka jest tym, co gracz robi bez przerwy, więc musi być przyjemna, zanim
+powstanie cokolwiek, po czym się chodzi.
+
+1. **Miecz i atak.** Zamach, uderzenie, odrzut. Cel jest jeden: żeby chciało się
+   uderzać dalej. To znaczy zapas przed ciosem (widać, że zaraz padnie), krótkie
+   zatrzymanie klatki w chwili trafienia, odrzut celu i wstrząs obrazu.
+2. **Odskok** (prostszy od turlania) — żeby walka była dynamiczna, nie wymianą ciosów
+   na stojąco.
+3. **Potworki.**
+4. **Nowe bronie:** łuk, potem magia.
+5. Dopiero potem mapa, survival, zbieranie surowców, crafting, budowanie.
+
+Uzgodnione wcześniej i wciąż obowiązujące: cykliczne wipe'y, pionowy plasterek
+zamiast szerokiego frontu.
 
 ## Wdrożenie
 
@@ -271,5 +376,14 @@ Ten sam VPS, na którym stoją Goblin i Nibylandia. Sprawdzone połączeniem 202
   doinstalować przy pierwszym wdrożeniu.
 - Wdrożenie to `git pull` + restart usługi. Żadnego budowania ani eksportu.
 
-**Znane słabe punkty:** aktywny portal wygląda jak słupek fryzjerski, studnia
-jest mętna, kilka drobnych obiektów to poziom wypełniacza.
+**Znane słabe punkty:** aktywny portal wygląda jak słupek fryzjerski (i tak zejdzie
+z mapy — portali nie będzie), studnia jest mętna, kilka drobnych obiektów to poziom
+wypełniacza.
+
+**Cios do góry idzie w bok, nie w przód.** Postać odwrócona plecami wyprowadza cios
+„w głąb ekranu", a na to nie ma miejsca: nad głową zostaje 5 pikseli w klatce wysokiej
+na 27, bo wiersze 0–5 to zapas na nakrycie głowy. Ostrze nie miało gdzie pójść w górę
+i położyło się w poziomie. Poprawka nie polega na zmianie kątów — klatki ataku muszą
+dostać **własną, wyższą klatkę** (zaczepienie to (0.5, 1), więc miejsce dodane u góry
+jest darmowe) i cały łuk trzeba przenieść nad głowę. Świadomie odłożone: walka ma
+najpierw działać, a potem wyglądać.

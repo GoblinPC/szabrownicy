@@ -20,6 +20,16 @@ const DATA_DIR = path.join(ROOT, 'server', 'data');
 const PORT = Number(process.env.PORT ?? 8080);
 const PRODUCTION = process.env.NODE_ENV === 'production';
 
+// Tryb testowy: wejście do gry bez logowania, na losowym nicku. Wpisywanie nicku
+// i hasła przy każdym przeładowaniu strony — a serwer deweloperski przeładowuje ją
+// po każdym zapisie pliku — jest nie do wytrzymania podczas pracy nad grą.
+//
+// Flaga wiersza poleceń, nie zmienna środowiskowa, bo działa tak samo na Windowsie
+// i na macOS. Domyślnie logowanie **jest** wymagane, więc wdrożenie na VPS nie
+// stanie otwarte przez przeoczenie.
+const GUESTS_REQUESTED = process.argv.includes('--bez-logowania');
+const GUESTS = GUESTS_REQUESTED && !PRODUCTION;
+
 const app = express();
 app.disable('x-powered-by');
 
@@ -68,7 +78,13 @@ try {
   console.warn('  nie udało się odczytać variants.json — przyjmuję 6 wariantów');
 }
 
-const game = attachGame(sockets, DATA_DIR, variantCount);
+const game = attachGame(sockets, DATA_DIR, variantCount, { guests: GUESTS });
+
+// Druga blokada, obok samego `PRODUCTION`: gdyby flaga kiedyś trafiła do pliku
+// usługi na serwerze, ma być o tym głośno w logu, a nie po cichu.
+if (GUESTS_REQUESTED && PRODUCTION) {
+  console.warn('  UWAGA: --bez-logowania ZIGNOROWANE, bo NODE_ENV=production');
+}
 
 if (!PRODUCTION) {
   let reloadTimer = null;
@@ -91,4 +107,7 @@ if (!PRODUCTION) {
 server.listen(PORT, () => {
   console.log(`Kuźnia stoi na http://localhost:${PORT}  (${PRODUCTION ? 'produkcja' : 'development'})`);
   if (!PRODUCTION) console.log('Podgląd odświeża się sam po zapisie pliku w client/.');
+  console.log(GUESTS
+    ? 'LOGOWANIE WYŁĄCZONE — wejście na losowym nicku. Włączasz: npm start'
+    : 'Logowanie włączone. Wyłączasz na czas testów: npm run start:bez-logowania');
 });

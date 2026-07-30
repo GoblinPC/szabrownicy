@@ -1,0 +1,39 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(node tools/check.mjs)",
+      "PowerShell(node --check *)",
+      "PowerShell(npm run art)",
+      "PowerShell(npm run art *)",
+      "PowerShell(npm start)",
+      "PowerShell(npm run start:bez-logowania)",
+      "PowerShell(node server/src/index.js)",
+      "PowerShell(node server/src/index.js *)",
+      "PowerShell(node server/src/admin.js *)",
+      "PowerShell(node tools/art/build.js)",
+      "PowerShell(node tools/art/preview_world.js *)",
+      "PowerShell(node tools/art/preview_bubble.js)",
+      "PowerShell(node tools/art/preview_attack.js)",
+      "PowerShell(Get-Content *)",
+      "PowerShell(Get-ChildItem *)",
+      "PowerShell(Select-String *)",
+      "PowerShell(Test-Path *)",
+      "PowerShell(Measure-Object *)",
+      "PowerShell(Resolve-Path *)",
+      "PowerShell(git status *)",
+      "PowerShell(git status)",
+      "PowerShell(git diff *)",
+      "PowerShell(git log *)",
+      "PowerShell(git show *)",
+      "PowerShell(git branch *)",
+      "PowerShell(git check-ignore *)",
+      "PowerShell(git pull)",
+      "Bash(node tools/check.mjs)",
+      "Bash(node --check *)",
+      "Bash(npm run art)",
+      "Bash(npm run start:bez-logowania)",
+      "Bash(node server/src/index.js)",
+      "Bash(node tools/art/*)"
+    ]
+  }
+}

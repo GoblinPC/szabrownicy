@@ -23,6 +23,19 @@ const W = 16;
 const H = 27;
 const OUTLINE = c('soot', 0);
 
+// Klatki ataku są szersze, bo ostrze wychodzi daleko poza sylwetkę. Ciało
+// składamy dalej na 16 pikselach — cały kod części ciała zostaje bez zmian —
+// i przenosimy je na szersze płótno, wyśrodkowane. Zaczepienie sprite'a w grze
+// to (0.5, 1), więc stopy zostają na miejscu niezależnie od szerokości klatki.
+// Szerokie, bo włócznia przy mocnym pchnięciu wychodzi daleko poza sylwetkę.
+//
+// Liczba wzięta z rachunku, nie z oka: najdalsza garść to `hand.x = 14`, zasięg
+// mocnego pchnięcia 21, a grot rysuje się jeszcze 3 piksele za końcem drzewca.
+// Trzeba więc `ATTACK_OX + 14 + 21 < ATTACK_W`. Przy 48 grot był ucinany o cztery
+// piksele — widać to było dopiero na wypisie sylwetki, nie na arkuszu.
+const ATTACK_W = 60;
+const ATTACK_OX = Math.floor((ATTACK_W - W) / 2);
+
 /** [ciemny, średni, jasny] — każda część ciała używa tej trójki. */
 const shades = (ramp, [a, b, d]) => [c(ramp, a), c(ramp, b), c(ramp, d)];
 
@@ -43,14 +56,181 @@ export const VARIANTS = [
 // --- Pozy ---------------------------------------------------------------------
 
 /**
+ * Cztery klatki ciosu: **zamach → uderzenie → wyprowadzenie → powrót**.
+ *
+ * Zamach jest tu najważniejszy i dlatego odchyla całą postać do tyłu (`lean`
+ * ujemny): gracz musi widzieć, że cios zaraz padnie, zanim padnie. Bez tej jednej
+ * klatki uderzenie pojawia się z niczego i nie ma w nim żadnej wagi.
+ *
+ * Kolejna zasada: klatka uderzenia **wypycha postać do przodu** (`lean` dodatni).
+ * To ten wypad, a nie sam miecz, sprawia, że cios wygląda jak włożenie w niego siły.
+ *
+ * `hand` to punkt garści w układzie 16-pikselowego ciała, `angle` to kąt ostrza
+ * w stopniach (0 w prawo, wartości dodatnie w dół — jak na ekranie), `reach` to
+ * długość ostrza. Jedna klatka to więc trzy liczby, a nie osobny rysunek.
+ */
+// Trzy komplety na kierunek, po jednym na każdy cios łańcucha.
+//
+// Bronią jest **włócznia**, więc wszystkie trzy ciosy to pchnięcia i różni je
+// przede wszystkim zasięg oraz wysokość:
+//
+//   0 — szybkie dźgnięcie, trochę w górę,
+//   1 — szybkie dźgnięcie, trochę w dół (stąd widać, że to inny cios, mimo
+//       że ruch jest tego samego rodzaju),
+//   2 — mocne pchnięcie: drzewce cofnięte przy tułowiu, potem wyrzucone
+//       daleko w przód.
+//
+// To najprostszy do narysowania układ, jaki mogliśmy dostać: włócznia powstaje
+// z punktu garści, kąta i długości, więc pchnięcie jest **rosnącą długością przy
+// stałym kącie**. Trzy cięcia mieczem wymagałyby trzech osobnych trajektorii.
+const ATTACK_POSES = {
+  // Wysokość chwytu: **16–19, czyli tułów**. Głowa zajmuje wiersze 6–14, więc
+  // dłoń postawiona wyżej sprawiała, że drzewce wychodziło goblinowi z czaszki.
+  // Pierwsza wersja miała tu 14–15 i wyglądało to dokładnie tak.
+  side: [
+    [
+      { lean: -2, hand: [6, 17], angle: -12, reach: 8, legA: -1, legB: 1, bodyY: 0 },
+      { lean: 3, hand: [12, 16], angle: -9, reach: 15, legA: 3, legB: -2, bodyY: 0 },
+      { lean: 2, hand: [11, 16], angle: -7, reach: 14, legA: 2, legB: -1, bodyY: 0 },
+      { lean: 0, hand: [9, 17], angle: -2, reach: 10, legA: 0, legB: 0, bodyY: 1 },
+    ],
+    [
+      { lean: -2, hand: [6, 18], angle: 14, reach: 8, legA: 1, legB: -1, bodyY: 1 },
+      { lean: 3, hand: [12, 19], angle: 11, reach: 15, legA: 3, legB: -2, bodyY: 0 },
+      { lean: 2, hand: [11, 19], angle: 9, reach: 14, legA: 2, legB: -1, bodyY: 0 },
+      { lean: 0, hand: [9, 18], angle: 5, reach: 10, legA: 0, legB: 0, bodyY: 1 },
+    ],
+    [
+      { lean: -4, hand: [3, 18], angle: 0, reach: 7, legA: -2, legB: 2, bodyY: 0 },
+      { lean: 5, hand: [14, 18], angle: -2, reach: 21, legA: 4, legB: -3, bodyY: 0 },
+      { lean: 4, hand: [13, 18], angle: 0, reach: 20, legA: 3, legB: -2, bodyY: 0 },
+      { lean: 1, hand: [10, 18], angle: 5, reach: 12, legA: 1, legB: 0, bodyY: 1 },
+    ],
+  ],
+  // Widok z przodu: pchnięcie idzie w stronę widza, więc drzewce jest mocno
+  // skrócone perspektywą. Lekki skos ratuje czytelność — dokładnie w pionie
+  // włócznia zasłaniałaby całą postać.
+  // Zasięgi są tu **krótsze niż z boku i to jest poprawne**: włócznia wymierzona
+  // w stronę kamery jest skrócona perspektywą. Dodatkowo grot musi zmieścić się
+  // w wysokości sprite'a (27 wierszy) — przy dłuższych wartościach był ucinany
+  // na dolnej krawędzi, co widać było dopiero na wypisie sylwetki.
+  down: [
+    [
+      { lean: -1, hand: [12, 15], angle: 76, reach: 6, legA: 0, legB: 0, bodyY: 0 },
+      { lean: 1, hand: [12, 16], angle: 80, reach: 11, legA: 1, legB: 0, bodyY: 1 },
+      { lean: 1, hand: [12, 16], angle: 80, reach: 10, legA: 1, legB: 0, bodyY: 1 },
+      { lean: 0, hand: [11, 15], angle: 74, reach: 8, legA: 0, legB: 0, bodyY: 0 },
+    ],
+    [
+      { lean: 1, hand: [4, 15], angle: 104, reach: 6, legA: 0, legB: 0, bodyY: 0 },
+      { lean: -1, hand: [4, 16], angle: 100, reach: 11, legA: 0, legB: 1, bodyY: 1 },
+      { lean: -1, hand: [4, 16], angle: 100, reach: 10, legA: 0, legB: 1, bodyY: 1 },
+      { lean: 0, hand: [5, 15], angle: 106, reach: 8, legA: 0, legB: 0, bodyY: 0 },
+    ],
+    [
+      { lean: 0, hand: [12, 14], angle: 88, reach: 5, legA: -1, legB: 1, bodyY: 0 },
+      { lean: 0, hand: [12, 16], angle: 90, reach: 12, legA: 2, legB: -1, bodyY: 1 },
+      { lean: 0, hand: [12, 16], angle: 90, reach: 11, legA: 1, legB: 0, bodyY: 1 },
+      { lean: 0, hand: [12, 15], angle: 84, reach: 8, legA: 0, legB: 0, bodyY: 0 },
+    ],
+  ],
+  // Widok z tyłu: włócznia wychodzi w głąb kadru, po lewej stronie sylwetki.
+  up: [
+    [
+      { lean: 1, hand: [4, 18], angle: -104, reach: 7, legA: 0, legB: 0, bodyY: 0 },
+      { lean: -1, hand: [4, 17], angle: -100, reach: 13, legA: 0, legB: 1, bodyY: 0 },
+      { lean: -1, hand: [4, 17], angle: -100, reach: 12, legA: 0, legB: 1, bodyY: 0 },
+      { lean: 0, hand: [5, 18], angle: -106, reach: 9, legA: 0, legB: 0, bodyY: 1 },
+    ],
+    [
+      { lean: -1, hand: [12, 18], angle: -76, reach: 7, legA: 0, legB: 0, bodyY: 0 },
+      { lean: 1, hand: [12, 17], angle: -80, reach: 13, legA: 1, legB: 0, bodyY: 0 },
+      { lean: 1, hand: [12, 17], angle: -80, reach: 12, legA: 1, legB: 0, bodyY: 0 },
+      { lean: 0, hand: [11, 18], angle: -74, reach: 9, legA: 0, legB: 0, bodyY: 1 },
+    ],
+    [
+      { lean: 0, hand: [4, 19], angle: -92, reach: 6, legA: 1, legB: -1, bodyY: 0 },
+      // Zasięg 18 wypychał grot ponad górną krawędź klatki. Sprawdzone wypisem
+      // sylwetki, nie okiem — na arkuszu ucięty czubek jest niewidoczny.
+      { lean: 0, hand: [4, 18], angle: -90, reach: 15, legA: -2, legB: 1, bodyY: 0 },
+      { lean: 0, hand: [4, 18], angle: -90, reach: 14, legA: -1, legB: 0, bodyY: 0 },
+      { lean: 0, hand: [4, 18], angle: -96, reach: 10, legA: 0, legB: 0, bodyY: 1 },
+    ],
+  ],
+};
+
+/**
+ * Ślad cięcia — łuk pokrywający **cały zasięg ciosu**.
+ *
+ * To najważniejsza rzecz w całej walce, bo gracz celuje tym, co widzi. Smuga
+ * musi więc pokrywać dokładnie ten obszar, który serwer sprawdza przy trafieniu:
+ * stożek `ATTACK_ARC_DEG` o promieniu `ATTACK_RANGE` z `world/movement.js`.
+ *
+ * Dwie poprzednie wersje były złe i warto pamiętać dlaczego:
+ *
+ * 1. łuki wpisane na wyczucie dawały 292 stopnie owinięte wokół głowy;
+ * 2. łuki dopasowane do czubka ostrza w kolejnych klatkach były **poprawne, ale
+ *    bezużyteczne** — miały promień 16 px przy zasięgu ciosu 34 px i wisiały
+ *    z boku postaci. Gracz widział wąską kreskę obok siebie, a trafiał w szeroki
+ *    stożek przed sobą. Bicie zamieniało się w zgadywanie.
+ *
+ * Dlatego smuga jest teraz **osobnym, dużym sprite'em wyśrodkowanym na tułowiu**,
+ * a nie ozdobą doklejoną do klatki postaci. Nie jest już ograniczona rozmiarem
+ * sylwetki, więc przy ciosie w górę ma gdzie się zmieścić.
+ */
+const SLASH_W = 96;
+const SLASH_C = SLASH_W / 2;
+
+// Kierunek pchnięcia. Bok rysujemy w prawo i odbijamy lustrzanie w grze.
+const SLASH_AIM = { side: 0, down: 90, up: -90 };
+
+/**
+ * Trzy klatki śladu: `[od, do, grubość u nasady]` w pikselach od środka postaci.
+ *
+ * Ślad wystrzeliwuje w przód i cofa się, zamiast rozjeżdżać się w bok — bo
+ * włócznia dźga, a nie tnie. Wcześniej był tu szeroki łuk, właściwy dla miecza,
+ * i po zmianie broni przestałby zgadzać się z tym, co robi postać **i** z tym,
+ * co sprawdza serwer przy trafieniu.
+ */
+const SLASH_SWEEPS = [
+  [15, 42, 4],
+  [20, 46, 3],
+  [30, 48, 2],
+];
+
+const SLASH_TONES = [c('bone'), c('parchment'), c('stone', 4)];
+export const SLASH_FRAMES = SLASH_SWEEPS.length;
+
+export const ATTACK_STEPS = ATTACK_POSES.side.length;
+export const ATTACK_FRAMES = ATTACK_POSES.side[0].length;
+
+/**
  * Poza dla danej klatki. W widoku z przodu i tyłu nogi unoszą się w pionie,
  * z boku przesuwają w przód i w tył — inaczej bieg wyglądałby jak dreptanie.
  */
-function pose(kind, frame, side) {
+function pose(kind, frame, dir, step = 0) {
+  const side = dir === 'side';
+
+  if (kind === 'attack') {
+    const a = ATTACK_POSES[dir][step][frame];
+    return {
+      bodyY: a.bodyY,
+      legA: a.legA,
+      legB: a.legB,
+      armA: 0,
+      armB: 0,
+      lift: side ? 0 : 1,
+      lean: a.lean,
+      hand: a.hand,
+      angle: a.angle,
+      reach: a.reach,
+    };
+  }
+
   if (kind === 'idle') {
     // Ledwie zauważalny oddech: co drugą klatkę tułów opada o piksel.
     const breath = frame === 1 ? 1 : 0;
-    return { bodyY: breath, legA: 0, legB: 0, armA: breath, armB: breath, lift: 0 };
+    return { bodyY: breath, legA: 0, legB: 0, armA: breath, armB: breath, lift: 0, lean: 0 };
   }
   const p = (frame / 6) * Math.PI * 2;
   const swing = (phase) => Math.round(Math.sin(phase) * 2);
@@ -61,13 +241,16 @@ function pose(kind, frame, side) {
     armA: swing(p + Math.PI),
     armB: swing(p),
     lift: side ? 0 : 1,
+    lean: 0,
   };
 }
 
 // --- Części ciała -------------------------------------------------------------
 
 /** Ramka czaszki. Z profilu jest węższa, bo nos wychodzi poza nią osobno. */
-const headBox = (dir) => (dir === 'side' ? { x: 3, w: 9 } : { x: 3, w: 10 });
+const headBox = (dir, p) => (dir === 'side'
+  ? { x: 3 + (p?.lean ?? 0), w: 9 }
+  : { x: 3 + (p?.lean ?? 0), w: 10 });
 
 function drawLegs(t, v, dir, p) {
   const [dark, mid] = v.skin;
@@ -78,8 +261,17 @@ function drawLegs(t, v, dir, p) {
     const dy = side ? 0 : Math.max(0, -offset) * p.lift;
     t.rect(x + dx, 21 - dy, 3, 4, mid);
     t.vline(x + dx, 21 - dy, 24 - dy, dark);
-    t.rect(x + dx - 1, 25 - dy, 4, 2, v.boot);
-    t.hline(x + dx - 1, x + dx + 2, 26 - dy, c('soot', 0));
+
+    // Stopa z profilu jest wysunięta **do przodu**, czyli w prawo — profil patrzy
+    // w prawo, a w grze odbijamy go lustrzanie przy chodzeniu w lewo.
+    //
+    // Wcześniej but wystawał w lewo, tak samo jak w widoku z przodu, gdzie jest
+    // to poprawne (stopa szeroka po obu stronach nogi). Z profilu dawało to
+    // czubek buta skierowany do tyłu i cała postać czytała się jako skręcona:
+    // nogi w jedną stronę, głowa w drugą.
+    const bootX = side ? x + dx : x + dx - 1;
+    t.rect(bootX, 25 - dy, 4, 2, v.boot);
+    t.hline(bootX, bootX + 3, 26 - dy, c('soot', 0));
   };
 
   if (side) {
@@ -95,7 +287,9 @@ function drawTorso(t, v, dir, p) {
   const [dark, mid, light] = v.cloth;
   const y = 15 + p.bodyY;
   const narrow = dir === 'side';
-  const x = narrow ? 5 : 4;
+  // `lean` odchyla górę postaci przy zamachu i wypycha ją przy ciosie. Nogi
+  // zostają na miejscu — to one trzymają postać na ziemi.
+  const x = (narrow ? 5 : 4) + (p.lean ?? 0);
   const w = narrow ? 7 : 9;
 
   t.rect(x, y, w, 7, mid);
@@ -158,11 +352,13 @@ const PROFILE_SPANS = [
 function drawProfileHead(t, v, p) {
   const [dark, mid, light] = v.skin;
   const y = 6 + p.bodyY;
+  const lean = p.lean ?? 0;
+  const px = (x, yy, col) => t.px(x + lean, yy, col);
 
   // Ucho siedzi przy tyle czaszki i odchyla się w tył — z profilu nigdy z boku twarzy.
-  t.px(1, y + 2, mid); t.px(2, y + 2, light);
-  t.px(0, y + 3, dark); t.px(1, y + 3, mid); t.px(2, y + 3, light);
-  t.px(2, y + 4, mid);
+  px(1, y + 2, mid); px(2, y + 2, light);
+  px(0, y + 3, dark); px(1, y + 3, mid); px(2, y + 3, light);
+  px(2, y + 4, mid);
 
   PROFILE_SPANS.forEach(([a, b], row) => {
     for (let x = a; x <= b; x++) {
@@ -172,22 +368,22 @@ function drawProfileHead(t, v, p) {
       else if (row === 5 && x >= 12) col = x >= 14 ? mid : light;  // grzbiet nosa
       else if (row === 6 && x >= 11) col = dark;                   // spód nosa
       else if (x <= 5 && row <= 3) col = light;                    // czoło
-      t.px(x, y + row, col);
+      px(x, y + row, col);
     }
   });
 
   if (v.beard) {
-    t.rect(4, y + 7, 7, 2, c('stone', 2));
-    t.hline(4, 9, y + 8, c('stone', 1));
-    t.px(3, y + 8, c('stone', 1));
+    t.rect(4 + lean, y + 7, 7, 2, c('stone', 2));
+    t.hline(4 + lean, 9 + lean, y + 8, c('stone', 1));
+    px(3, y + 8, c('stone', 1));
   }
 
-  t.hline(8, 11, y + 3, dark);            // brew
-  t.rect(9, y + 4, 2, 2, c('parchment')); // oko tuż za nasadą nosa
-  t.px(10, y + 4, c('soot', 0));
-  t.px(12, y + 6, c('soot', 0));          // nozdrze
-  t.hline(8, 10, y + 7, c('soot', 1));    // usta
-  t.px(10, y + 7, c('bone'));             // kieł wystający do przodu
+  t.hline(8 + lean, 11 + lean, y + 3, dark);      // brew
+  t.rect(9 + lean, y + 4, 2, 2, c('parchment'));  // oko tuż za nasadą nosa
+  px(10, y + 4, c('soot', 0));
+  px(12, y + 6, c('soot', 0));                    // nozdrze
+  t.hline(8 + lean, 10 + lean, y + 7, c('soot', 1)); // usta
+  px(10, y + 7, c('bone'));                       // kieł wystający do przodu
 }
 
 function drawHead(t, v, dir, p) {
@@ -195,7 +391,7 @@ function drawHead(t, v, dir, p) {
 
   const [dark, mid, light] = v.skin;
   const y = 6 + p.bodyY;
-  const { x, w } = headBox(dir);
+  const { x, w } = headBox(dir, p);
 
   drawFrontEars(t, v, x, x + w - 1, y + 3);
 
@@ -233,7 +429,7 @@ function drawHead(t, v, dir, p) {
 
 function drawHeadgear(t, v, dir, p) {
   const y = 6 + p.bodyY;
-  const { x, w } = headBox(dir);
+  const { x, w } = headBox(dir, p);
 
   if (v.head === 'helmet') {
     t.rect(x - 1, y - 2, w + 2, 4, c('iron', 2));
@@ -258,28 +454,191 @@ function drawHeadgear(t, v, dir, p) {
   }
 }
 
+// --- Miecz --------------------------------------------------------------------
+
+/**
+ * Miecz rysowany od garści na zewnątrz, pod zadanym kątem.
+ *
+ * Dzięki temu jedna klatka zamachu to trzy liczby (punkt garści, kąt, długość),
+ * a nie osobny rysunek — i kąty da się poprawiać po obejrzeniu podglądu, bez
+ * przerysowywania czegokolwiek.
+ *
+ * Ostrze ma jasne pasmo i ciemniejszy grzbiet po jednej stronie. Bez tego jest
+ * jednolitą kreską i nie widać, że to płaskie ostrze, a nie pręt.
+ */
+function drawSpear(t, hx, hy, degrees, reach, butt = 6) {
+  const angle = (degrees * Math.PI) / 180;
+  const dx = Math.cos(angle);
+  const dy = Math.sin(angle);
+  // Prostopadła do drzewca — po niej odkładamy grubość i grot.
+  const nx = -dy;
+  const ny = dx;
+
+  const put = (along, across, col) => {
+    t.px(Math.round(hx + dx * along + nx * across), Math.round(hy + dy * along + ny * across), col);
+  };
+
+  // Drzewce: jasne od góry, ciemniejsze od spodu — bez tego jest płaską kreską.
+  const shaftEnd = Math.max(1, reach - 4);
+  for (let i = -butt; i <= shaftEnd; i++) {
+    put(i, 0, c('wood', 3));
+    put(i, 1, c('wood', 1));
+  }
+
+  // Owinięcie w miejscu chwytu — po nim widać, gdzie włócznia jest trzymana,
+  // i dzięki niemu drzewce nie czyta się jako patyk.
+  put(-1, 0, c('copper'));
+  put(0, 0, c('copper'));
+  put(1, 0, c('copper'));
+  put(0, 1, c('wood', 0));
+
+  // Grot w kształcie liścia: rozszerza się, potem zbiega do czubka.
+  put(shaftEnd, -1, c('iron', 1));
+  put(shaftEnd, 0, c('iron', 2));
+  put(shaftEnd, 1, c('iron', 1));
+  put(shaftEnd + 1, -1, c('iron', 2));
+  put(shaftEnd + 1, 0, c('iron', 4));
+  put(shaftEnd + 1, 1, c('iron', 2));
+  put(shaftEnd + 2, 0, c('iron', 4));
+  put(shaftEnd + 2, 1, c('iron', 2));
+  put(shaftEnd + 3, 0, c('iron', 3));
+}
+
+/**
+ * Łuk śladu cięcia. Grubość jest największa w środku łuku i schodzi do jednego
+ * piksela na końcach — równa kreska wygląda jak wycinek obręczy, a nie jak ślad
+ * ostrza, które gdzieś zaczyna i gdzieś kończy.
+ */
+function drawArc(t, cx, cy, radius, fromDeg, toDeg, thickness, col) {
+  const steps = Math.max(8, Math.round(Math.abs(toDeg - fromDeg) * 1.4));
+  for (let i = 0; i <= steps; i++) {
+    const k = i / steps;
+    const angle = ((fromDeg + (toDeg - fromDeg) * k) * Math.PI) / 180;
+    const thick = Math.max(1, Math.round(thickness * Math.sin(Math.PI * k)));
+    for (let r = 0; r < thick; r++) {
+      t.px(
+        Math.round(cx + Math.cos(angle) * (radius - r)),
+        Math.round(cy + Math.sin(angle) * (radius - r)),
+        col,
+      );
+    }
+  }
+}
+
+/**
+ * Ślad pchnięcia: klin zwężający się ku czubkowi plus dwie kreski prędkości
+ * po bokach. Sam klin czyta się jak przedmiot — dopiero kreski robią z niego ruch.
+ */
+function drawSlash(dir, frame) {
+  const t = new Canvas(SLASH_W, SLASH_W);
+  const angle = (SLASH_AIM[dir] * Math.PI) / 180;
+  const dx = Math.cos(angle);
+  const dy = Math.sin(angle);
+  const nx = -dy;
+  const ny = dx;
+  const [from, to, width] = SLASH_SWEEPS[frame];
+  const col = SLASH_TONES[frame];
+
+  const put = (along, across) => {
+    t.px(
+      Math.round(SLASH_C + dx * along + nx * across),
+      Math.round(SLASH_C + dy * along + ny * across),
+      col,
+    );
+  };
+
+  // Rdzeń: wąska smuga zwężająca się ku czubkowi. Szerokość liczona **od osi**,
+  // więc `width` to połowa grubości u nasady. Pierwsza wersja brała ją jako pełną
+  // grubość i przy siedmiu pikselach ślad czytał się jak biała belka przecinająca
+  // postać, a nie jak pchnięcie.
+  for (let i = from; i <= to; i++) {
+    const k = (i - from) / Math.max(1, to - from);
+    const half = Math.max(0, Math.round(width * (1 - k) * 0.5));
+    for (let a = -half; a <= half; a++) put(i, a);
+  }
+
+  // Dwie kreski prędkości tuż obok osi, cofnięte względem czubka. To one robią
+  // z kształtu ruch — sam klin czyta się jak przedmiot.
+  const trail = Math.round((to - from) * 0.4);
+  for (let i = from + 2; i < from + 2 + trail; i++) {
+    put(i, width);
+    put(i, -width);
+  }
+
+  return t;
+}
+
+/**
+ * Ręka prowadzona do wskazanego punktu — przy zamachu dłoń wędruje razem
+ * z mieczem, więc nie da się jej narysować na stałej pozycji jak w biegu.
+ */
+function drawArmTo(t, v, shoulderX, shoulderY, handX, handY) {
+  const [skinDark, skinMid] = v.skin;
+  const [clothDark, clothMid] = v.cloth;
+
+  t.line(shoulderX, shoulderY, handX, handY, clothMid);
+  t.line(shoulderX, shoulderY + 1, handX, handY + 1, clothDark);
+  t.rect(handX - 1, handY, 2, 2, skinMid);
+  t.px(handX - 1, handY + 1, skinDark);
+}
+
 // --- Składanie klatki ---------------------------------------------------------
 
-function drawFrame(variant, dir, kind, frame) {
+function drawBody(variant, dir, kind, frame, p) {
   const t = new Canvas(W, H);
-  const p = pose(kind, frame, dir === 'side');
 
   drawLegs(t, variant, dir, p);
   if (dir === 'side') {
     // Kolejność ma znaczenie: dalsza ręka chowa się za tułowiem, bliższa idzie na wierzch.
-    drawArm(t, variant, 4, p.armA, p);
+    if (kind !== 'attack') drawArm(t, variant, 4, p.armA, p);
     drawTorso(t, variant, dir, p);
     drawHead(t, variant, dir, p);
-    drawArm(t, variant, 9, p.armB, p);
+    if (kind !== 'attack') drawArm(t, variant, 9, p.armB, p);
   } else {
     drawTorso(t, variant, dir, p);
     drawHead(t, variant, dir, p);
-    drawArm(t, variant, 2, p.armA, p);
-    drawArm(t, variant, 12, p.armB, p);
+    // Przy ciosie ręka z mieczem **zastępuje** jedną z rąk spoczynkowych, więc tę
+    // jedną trzeba pominąć. Z przodu miecz idzie po prawej stronie kadru (garść
+    // przy x≈13), z tyłu po lewej (x≈3) — pomijamy odpowiednio prawą albo lewą.
+    // Odwrotnie postawiony warunek dawał dwie ręce po jednej stronie i żadnej
+    // po drugiej.
+    if (kind !== 'attack' || dir !== 'up') drawArm(t, variant, 2 + (p.lean ?? 0), p.armA, p);
+    if (kind !== 'attack' || dir !== 'down') drawArm(t, variant, 12 + (p.lean ?? 0), p.armB, p);
   }
   drawHeadgear(t, variant, dir, p);
 
   return t.outline(OUTLINE);
+}
+
+function drawFrame(variant, dir, kind, frame, step = 0) {
+  const p = pose(kind, frame, dir, step);
+  const body = drawBody(variant, dir, kind, frame, p);
+  if (kind !== 'attack') return body;
+
+  // Broń rysowana osobno i z własnym obrysem, więc tam, gdzie mija tułów,
+  // wyraźnie się od niego odcina — bez tego drzewce zlewa się z ubraniem w plamę.
+  const blade = new Canvas(ATTACK_W, H);
+  // Ramię wychodzi z barku, a bark jedzie razem z odchyleniem tułowia.
+  const shoulderX = ATTACK_OX + (dir === 'up' ? 5 : 10) + (p.lean ?? 0);
+  drawArmTo(blade, variant, shoulderX, 18 + p.bodyY, ATTACK_OX + p.hand[0], p.hand[1]);
+  drawSpear(blade, ATTACK_OX + p.hand[0], p.hand[1], p.angle, p.reach);
+  const bladeArt = blade.outline(OUTLINE);
+
+  const sheet = new Canvas(ATTACK_W, H);
+
+  if (dir === 'up') {
+    // Widok z tyłu: patrzymy postaci w plecy, więc miecz i trzymająca go ręka są
+    // po **drugiej stronie** ciała niż kamera i muszą iść POD nie. Rysowane na
+    // wierzchu wyglądały jak broń przypięta do pleców — było widać ten kawałek
+    // ostrza, który powinien być zasłonięty przez goblina.
+    sheet.blit(bladeArt, 0, 0);
+    sheet.blit(body, ATTACK_OX, 0);
+  } else {
+    sheet.blit(body, ATTACK_OX, 0);
+    sheet.blit(bladeArt, 0, 0);
+  }
+
+  return sheet;
 }
 
 export const DIRECTIONS = ['down', 'up', 'side'];
@@ -296,7 +655,25 @@ export function buildGoblins() {
       for (let f = 0; f < RUN_FRAMES; f++) {
         entries.push({ name: `g${variant.id}_${dir}_run${f}`, canvas: drawFrame(variant, dir, 'run', f) });
       }
+      // Trzy ciosy łańcucha po cztery klatki. Nazwa: `a<ogniwo>f<klatka>`.
+      for (let s = 0; s < ATTACK_STEPS; s++) {
+        for (let f = 0; f < ATTACK_FRAMES; f++) {
+          entries.push({
+            name: `g${variant.id}_${dir}_a${s}f${f}`,
+            canvas: drawFrame(variant, dir, 'attack', f, s),
+          });
+        }
+      }
     }
   }
+
+  // Ślad cięcia jest wspólny dla wszystkich wariantów postaci — to efekt broni,
+  // nie części ciała.
+  for (const dir of DIRECTIONS) {
+    for (let f = 0; f < SLASH_FRAMES; f++) {
+      entries.push({ name: `slash_${dir}${f}`, canvas: drawSlash(dir, f) });
+    }
+  }
+
   return entries;
 }

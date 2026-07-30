@@ -10,19 +10,100 @@
 // wejście to dwa pola i jedno kliknięcie.
 
 import { Game, TICK_HZ } from './game.js';
-import { Accounts } from './accounts.js';
+import { Accounts, checkName, isReserved } from './accounts.js';
+import { phaseOf } from '../../client/src/world/daylight.js';
 
 const MAX_MESSAGE_BYTES = 1024;      // najdłuższa sensowna wiadomość to kilkadziesiąt bajtów
 const MAX_MESSAGES_PER_SECOND = 90;  // wejście leci ~30 Hz, zapas na skoki
 const JOIN_TIMEOUT_MS = 60_000;      // tyle czasu na wpisanie nicku i hasła
 const HEARTBEAT_MS = 30_000;
 const MAX_AUTH_ATTEMPTS = 8;         // na jedno połączenie
+const MAX_CHAT_CHARS = 120;
+const CHAT_INTERVAL_MS = 1500;       // jedna wiadomość na tyle — liczone tutaj, nie u klienta
 
-export function attachGame(sockets, dataDir, variantCount = 6) {
+/**
+ * Czyszczenie wiadomości czatu.
+ *
+ * Wszystko, co nie jest zwykłym tekstem, zamieniamy na spację: znaki sterujące,
+ * znaczniki kierunku pisma i niewidzialne wypełniacze. Nie chodzi o estetykę —
+ * tym da się rozwalić układ dymka nad głową albo wpisać w wiadomość coś, co
+ * wygląda jak cudza plakietka. Na koniec zwijamy białe znaki, więc sto spacji
+ * i pusta wiadomość to to samo, czyli nic.
+ */
+/**
+ * Nicki dla trybu bez logowania. Lista jest zamknięta i dobrana tak, żeby żaden
+ * z tych nicków nie był zastrzeżony — losowanie nie może wypuścić na mapę kogoś
+ * o nicku „Goblin" albo „Admin".
+ */
+const GUEST_NAMES = [
+  'Kopec', 'Zgrzyt', 'Smoluch', 'Ryjek', 'Kudlacz', 'Obdartus', 'Chrust', 'Lupacz',
+  'Cwaniak', 'Piszczel', 'Zebacz', 'Kikut', 'Grzechotka', 'Chytrus', 'Slepiec',
+  'Karczoch', 'Szpon', 'Kolczuga', 'Wywloka', 'Smarkacz',
+];
+
+function cleanChat(raw) {
+  if (typeof raw !== 'string') return '';
+
+  // Znaki podajemy numerami, a nie w nawiasie kwadratowym wyrażenia. Są
+  // niewidzialne, więc wpisane dosłownie w źródło byłyby nie do odczytania —
+  // a dwa z nich (0x2028 i 0x2029) JavaScript liczy jako koniec linii, czyli
+  // rozwaliłyby ten plik w miejscu, w którym niczego nie widać.
+  let out = '';
+  for (const character of raw) {
+    const code = character.codePointAt(0);
+    const invisible = code < 0x20                        // znaki sterujące
+      || (code >= 0x7f && code <= 0x9f)                   // usuwanie i sterowanie C1
+      || code === 0xad                                    // miękki dywiz
+      || (code >= 0x200b && code <= 0x200f)               // zerowej szerokości, kierunek pisma
+      || (code >= 0x2028 && code <= 0x202e)               // separatory linii i przestawianie stron
+      || code === 0x2060 || code === 0xfeff;              // łącznik słów, znacznik kolejności bajtów
+    out += invisible ? ' ' : character;
+  }
+
+  return out.replace(/\s+/g, ' ').trim().slice(0, MAX_CHAT_CHARS);
+}
+
+export function attachGame(sockets, dataDir, variantCount = 6, { guests = false } = {}) {
   const game = new Game();
   const accounts = new Accounts(dataDir);
   const sessions = new Map();   // socket → sesja
   let nextId = 1;
+
+  /**
+   * Wolny nick dla gościa. Sprawdzamy i konta, i graczy obecnie na mapie: gość
+   * nie może dostać nicku zarejestrowanego gracza, bo wtedy tryb testowy byłby
+   * darmową drogą do podszycia się pod kogokolwiek.
+   */
+  const freeGuestName = () => {
+    const taken = (name) => {
+      const key = Accounts.keyOf(name);
+      if (accounts.has(key)) return true;
+      for (const player of game.players.values()) {
+        if (Accounts.keyOf(player.name) === key) return true;
+      }
+      return false;
+    };
+
+    for (let attempt = 0; attempt < 60; attempt++) {
+      const base = GUEST_NAMES[Math.floor(Math.random() * GUEST_NAMES.length)];
+      const name = `${base}${10 + Math.floor(Math.random() * 90)}`;
+      if (!taken(name)) return name;
+    }
+    // Awaryjnie numer sesji — brzydki, ale zawsze wolny.
+    return `Gosc${nextId}`;
+  };
+
+  /** Czy gość może dostać nick, o który prosi (przy powrocie po zerwaniu sieci). */
+  const guestNameAllowed = (name) => {
+    if (typeof name !== 'string') return false;
+    if (checkName(name) || isReserved(name)) return false;
+    const key = Accounts.keyOf(name);
+    if (accounts.has(key)) return false;
+    for (const player of game.players.values()) {
+      if (Accounts.keyOf(player.name) === key) return false;
+    }
+    return true;
+  };
 
   const send = (socket, message) => {
     if (socket.readyState === 1) socket.send(JSON.stringify(message));
@@ -59,6 +140,50 @@ export function attachGame(sockets, dataDir, variantCount = 6) {
    * `await`, a nie wersja synchroniczna — ta zatrzymałaby na ten czas pętlę
    * świata i wszyscy gracze by przystanęli.
    */
+  /**
+   * Wejście bez logowania — tryb testowy, włączany flagą `--bez-logowania`.
+   *
+   * Gość **nie trafia do pliku z kontami**. Inaczej po godzinie testów leżałoby
+   * tam kilkaset losowych nicków, a jeden z nich mógłby kiedyś zablokować komuś
+   * prawdziwy nick.
+   *
+   * Nick da się poprosić przy powrocie i to jest celowe: serwer deweloperski
+   * przeładowuje przeglądarkę po każdym zapisie pliku, a zmieniający się przy tym
+   * nick byłby nie do wytrzymania. Prośba jest sprawdzana tak samo jak wszystko
+   * inne z sieci — nick zajęty, zarejestrowany albo zastrzeżony jest odrzucany.
+   */
+  function enterAsGuest(socket, session, message, request) {
+    const wanted = message.name;
+    const name = guestNameAllowed(wanted) ? wanted.trim() : freeGuestName();
+
+    const id = nextId++;
+    const player = game.add(id, { name, variant: 0, admin: false });
+    session.player = player;
+    session.guest = true;
+    session.joining = false;
+    clearTimeout(session.joinTimer);
+
+    const { browser, version } = describeClient(request, message);
+    session.version = version;
+    player.version = version;
+
+    send(socket, {
+      t: 'welcome',
+      id,
+      hz: TICK_HZ,
+      name,
+      fresh: false,
+      admin: false,
+      guest: true,
+      you: { x: player.x, y: player.y },
+      players: game.snapshot(),
+    });
+    broadcast({ t: 'spawn', p: game.describe(player) }, socket);
+    broadcast({ t: 'system', m: `${name} wchodzi do kuźni` }, socket);
+    console.log(`  + ${name} (#${id}) — GOSC (bez logowania), klient v${version}, ${browser}`
+      + ` — graczy: ${game.players.size}`);
+  }
+
   async function enter(socket, session, message, request) {
     session.attempts = (session.attempts ?? 0) + 1;
     if (session.attempts > MAX_AUTH_ATTEMPTS) {
@@ -114,6 +239,9 @@ export function attachGame(sockets, dataDir, variantCount = 6) {
       players: game.snapshot(),
     });
     broadcast({ t: 'spawn', p: game.describe(player) }, socket);
+    // Wejścia i wyjścia idą na czat, ale nie do samego wchodzącego — ten dostaje
+    // powitanie. Bez tego log czatu na spokojnym serwerze jest pustym paskiem.
+    broadcast({ t: 'system', m: `${account.name} wchodzi do kuźni` }, socket);
     console.log(`  + ${account.name}${account.admin ? ' [ADMIN]' : ''} (#${id}) — ${exists ? 'logowanie' : 'NOWE KONTO'}`
       + `, klient v${version}, ${browser} — graczy: ${game.players.size}`);
   }
@@ -129,6 +257,11 @@ export function attachGame(sockets, dataDir, variantCount = 6) {
       alive: true,
     };
     sessions.set(socket, session);
+
+    // Klient musi wiedzieć, czy pokazywać formularz, **zanim** go pokaże. Decyzja
+    // należy do serwera: gdyby zależała od kodu klienta, wystarczyłoby podmienić
+    // plik w przeglądarce, żeby ominąć logowanie.
+    send(socket, { t: 'gate', guests });
 
     session.joinTimer = setTimeout(() => {
       if (!session.player) kick(socket, 'brak logowania');
@@ -161,6 +294,16 @@ export function attachGame(sockets, dataDir, variantCount = 6) {
       if (message.t === 'join') {
         if (session.player || session.joining) return;
         if (game.full) return kick(socket, 'serwer pełny');
+
+        // W trybie testowym wchodzi się bez hasła. Zwykłe logowanie dalej działa,
+        // więc konto właściciela nadal wpuszcza z odznaką admina — wystarczy podać
+        // nick i hasło zamiast prosić o wejście jako gość.
+        if (guests && message.guest) {
+          session.joining = true;
+          enterAsGuest(socket, session, message, request);
+          return;
+        }
+
         session.joining = true;
         // Błąd logowania wraca komunikatem, nie zerwaniem połączenia — gracz ma
         // móc poprawić hasło bez przeładowywania strony.
@@ -176,6 +319,30 @@ export function attachGame(sockets, dataDir, variantCount = 6) {
 
       if (message.t === 'in') {
         game.pushCommands(session.player.id, message.c);
+        return;
+      }
+
+      if (message.t === 'chat') {
+        const text = cleanChat(message.m);
+        if (!text) return;
+
+        // Odstęp pilnowany tutaj, bo klient da się przerobić. Wiadomość wysłana
+        // za szybko przepada w ciszy — u siebie klient pilnuje tego samego
+        // odstępu i to on tłumaczy graczowi, dlaczego nic nie wyszło.
+        const stamp = Date.now();
+        if (stamp - (session.lastChat ?? 0) < CHAT_INTERVAL_MS) return;
+        session.lastChat = stamp;
+
+        // Rozgłaszamy też do autora. Nie robimy odbicia u klienta, bo wtedy
+        // każdy widziałby swój dymek w innym momencie niż wszyscy pozostali.
+        broadcast({
+          t: 'chat',
+          id: session.player.id,
+          n: session.player.name,
+          a: session.player.admin ? 1 : 0,
+          m: text,
+        });
+        console.log(`  ${session.player.name}: ${text}`);
         return;
       }
 
@@ -195,6 +362,7 @@ export function attachGame(sockets, dataDir, variantCount = 6) {
       if (session.player) {
         game.remove(session.player.id);
         broadcast({ t: 'bye', id: session.player.id });
+        broadcast({ t: 'system', m: `${session.player.name} wychodzi` });
         console.log(`  - ${session.player.name} (#${session.player.id}) — graczy: ${game.players.size}`);
       }
     });
@@ -230,15 +398,44 @@ export function attachGame(sockets, dataDir, variantCount = 6) {
     if (sessions.size === 0) return;
 
     const all = game.snapshot();
+    const mobs = game.mobSnapshot();
     for (const [socket, session] of sessions) {
       const me = session.player;
       if (!me || socket.readyState !== 1) continue;
       socket.send(JSON.stringify({
         t: 'state',
         ts: Date.now(),
+        // Pora dnia jako ułamek doby. Wysyłamy **czas, nie policzony kolor** —
+        // to jedna liczba zamiast trzech na klatkę, a przeliczeniem i tak musi
+        // zająć się klient, bo to on rysuje.
+        d: Math.round(phaseOf(Date.now()) * 10000) / 10000,
         ack: me.seq,
-        you: { x: me.x, y: me.y, vx: me.vx, vy: me.vy },
+        // Stan ciosu należy do serwera dokładnie tak samo jak pozycja.
+        //
+        // Bez niego klient, odtwarzając niepotwierdzone komendy po każdej korekcie,
+        // przewijał swój własny cios **drugi raz** — dwadzieścia razy na sekundę.
+        // Licznik ciosu biegł u niego szybciej niż na serwerze, przez co uderzenia
+        // wypadały w innych momentach i część z nich gubiła się albo dublowała.
+        you: {
+          x: me.x, y: me.y, vx: me.vx, vy: me.vy,
+          a: Math.round(me.atk ?? 0),
+          aw: Math.round(me.atkWait ?? 0),
+          as: me.atkSeq ?? 0,
+          ak: me.atkStrike ?? 0,
+          adx: Math.round((me.atkDx ?? 0) * 1000) / 1000,
+          ady: Math.round((me.atkDy ?? 0) * 1000) / 1000,
+          af: me.atkFacing ?? 'down',
+          al: me.atkFlip ? 1 : 0,
+          // Odskok tak samo jak cios — jest stanem fizyki, więc odtwarzanie
+          // komend po korekcie przewijałoby go drugi raz.
+          d: Math.round(me.dodge ?? 0),
+          dw: Math.round(me.dodgeWait ?? 0),
+          ds: me.dodgeSeq ?? 0,
+          ddx: Math.round((me.dodgeDx ?? 0) * 1000) / 1000,
+          ddy: Math.round((me.dodgeDy ?? 0) * 1000) / 1000,
+        },
         ps: all.filter((p) => p.id !== me.id),
+        ms: mobs,
       }));
     }
   }, 1000 / TICK_HZ);

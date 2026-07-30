@@ -1,5 +1,7 @@
 // Wczytanie assetów i przygotowanie animacji.
 
+import { ATTACK_STEPS } from '../world/movement.js';
+
 export class BootScene extends Phaser.Scene {
   constructor() {
     super('Boot');
@@ -44,7 +46,38 @@ export class BootScene extends Phaser.Scene {
           frameRate: 12,
           repeat: -1,
         });
+
+        // Cios ma **nierówne czasy klatek** i to jest sedno odczucia. Zamach trwa
+        // najdłużej, bo to on ostrzega, że cios zaraz padnie; samo uderzenie jest
+        // najkrótsze — ostrze ma przemknąć, nie przejechać. Przy równych czasach
+        // całość czyta się jak powolne machanie.
+        //
+        // Czasy bierzemy wprost z faz w `world/movement.js`, po jednym zestawie na
+        // każdy cios łańcucha. Dzięki temu **animacja nie może rozjechać się
+        // z fizyką**: gdy zmieni się czas zamachu, obraz zmienia się razem z nim.
+        ATTACK_STEPS.forEach((step, index) => {
+          this.anims.create({
+            key: `g${variant.id}_${dir}_atk${index}`,
+            frames: step.phases.map((phase, frame) => ({
+              key: 'goblins',
+              frame: `g${variant.id}_${dir}_a${index}f${frame}`,
+              duration: phase.ms,
+            })),
+            repeat: 0,
+          });
+        });
       }
+    }
+
+    // Ślad cięcia: startuje razem z klatką uderzenia, więc jest krótszy niż cios.
+    for (const dir of ['down', 'up', 'side']) {
+      this.anims.create({
+        key: `slash_${dir}`,
+        frames: [0, 1, 2].map((i) => ({ key: 'goblins', frame: `slash_${dir}${i}` })),
+        frameRate: 18,
+        repeat: 0,
+        hideOnComplete: true,
+      });
     }
   }
 }

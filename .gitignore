@@ -2,6 +2,11 @@ node_modules/
 server/data/
 *.log
 
+# Uprawnienia Claude'a nadane na tej jednej maszynie. `.claude/settings.json`
+# (wspolny dla projektu) owszem, ale `settings.local.json` to zapis pojedynczych
+# klikniec "zgoda" i na innym komputerze nie znaczy nic.
+.claude/settings.local.json
+
 # Pobrane paczki grafiki z czasów prototypu. Nic ich już nie używa — cała
 # grafika powstaje w tools/art/ — a mają obcą licencję, więc nie trafiają do repo.
 #

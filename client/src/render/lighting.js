@@ -6,13 +6,28 @@
 // daje miękki spadek światła, którego nie da się uzyskać samymi pikselami.
 //
 // Kolor otoczenia zależy od tego, gdzie patrzy kamera: wnętrze hali dostaje
-// ciepły mrok, plac chłodny zmierzch. Kontrast między nimi jest tym, co sprzedaje
-// przejście przez bramę.
+// ciepły mrok, plac barwę nieba o danej porze doby. Kontrast między nimi jest tym,
+// co sprzedaje przejście przez bramę.
+
+import { skyColor, darkness } from '../world/daylight.js';
 
 const RESOLUTION = 2; // piksele świata na jeden piksel maski
 
-const AMBIENT_FORGE = [122, 96, 84];
-const AMBIENT_YARD = [86, 100, 140];
+// Ciepły mrok hali — wartość dzienna. Wnętrze zmienia się z dobą znacznie mniej
+// niż plac, bo oświetla je palenisko, a nie niebo: przez bramę i okna wpada tyle
+// światła, żeby było widać różnicę, ale hala nigdy nie robi się jasna.
+export const AMBIENT_FORGE = [122, 96, 84];
+export const FORGE_NIGHT = 0.74; // ile zostaje z tej jasności w środku nocy
+
+// Ile mocy zostaje pochodni w samo południe. Zero wygląda źle — pochodnia jednak
+// się pali i widać ją po ciepłym odcieniu na murze; pełna moc w dzień wygląda
+// jeszcze gorzej, bo płomień świeci mocniej niż słońce.
+export const TORCH_DAY = 0.34;
+
+// Ile zostaje z winiety w samo południe. Zero jest kuszące, ale wtedy kadr traci
+// obramowanie i robi się płaski — chodzi o to, żeby w dzień nie było widać, że
+// rogi są przygaszone, a nie żeby ich nie przygaszać wcale.
+export const VIGNETTE_DAY = 0.3;
 
 export class Lighting {
   constructor(scene, world, interior, building = interior) {
@@ -143,7 +158,7 @@ export class Lighting {
     ctx.drawImage(this.occlusion, 0, 0);
   }
 
-  update(time, inside = false, player = null) {
+  update(time, inside = false, player = null, phase = 0.5) {
     const view = this.scene.cameras.main.worldView;
     const w = Math.ceil(view.width / RESOLUTION) + 2;
     const h = Math.ceil(view.height / RESOLUTION) + 2;
@@ -154,25 +169,40 @@ export class Lighting {
     const toMaskY = (y) => (y - view.y) / RESOLUTION;
 
     // 1. Światło otoczenia — plac na całości, wnętrze hali nadpisane cieplejszym.
+    const night = darkness(phase);
+    const yard = skyColor(phase);
+    const forgeDim = 1 - (1 - FORGE_NIGHT) * night;
+    const forge = AMBIENT_FORGE.map((c) => Math.round(c * forgeDim));
+
     ctx.globalCompositeOperation = 'source-over';
-    ctx.fillStyle = `rgb(${AMBIENT_YARD.join(',')})`;
+    ctx.fillStyle = `rgb(${yard.join(',')})`;
     ctx.fillRect(0, 0, w, h);
-    ctx.fillStyle = `rgb(${AMBIENT_FORGE.join(',')})`;
+    ctx.fillStyle = `rgb(${forge.join(',')})`;
     ctx.fillRect(
       toMaskX(this.interior.x), toMaskY(this.interior.y),
       this.interior.w / RESOLUTION, this.interior.h / RESOLUTION
     );
 
     // 2. Źródła światła, dodawane do maski.
+    //
+    // W dzień pochodnie na placu przygasają. Nie dlatego, że mniej się palą, tylko
+    // dlatego, że maska jest już prawie biała i dokładanie do niej pełnej mocy daje
+    // przepalone plamy. Ognie **w hali** zostają na pełnej mocy niezależnie od pory:
+    // wnętrze jest ciemne przez całą dobę, a przygaszone palenisko robiło z niego
+    // płaską szarość.
+    const outdoorDim = TORCH_DAY + (1 - TORCH_DAY) * night;
+
     ctx.globalCompositeOperation = 'lighter';
     for (const light of this.world.lights) {
+      const sheltered = this.isInterior(light.x, light.y);
+      const dim = sheltered ? 1 : outdoorDim;
       const flicker = this.flickerAt(light, time);
-      const radius = (light.radius * (0.92 + flicker * 0.16)) / RESOLUTION;
+      const radius = (light.radius * (0.92 + flicker * 0.16) * (0.7 + 0.3 * dim)) / RESOLUTION;
       const x = toMaskX(light.x);
       const y = toMaskY(light.y);
       if (x < -radius || y < -radius || x > w + radius || y > h + radius) continue;
 
-      const strength = light.intensity * flicker;
+      const strength = light.intensity * flicker * dim;
       const [r, g, b] = light.color;
       const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
       gradient.addColorStop(0, `rgba(${r},${g},${b},${Math.min(1, strength)})`);
@@ -195,15 +225,27 @@ export class Lighting {
     }, this.hidden, player, toMaskX, toMaskY);
 
     // 4. Winieta — przygasza rogi kadru i zbiera uwagę na środku.
+    //
+    // W dzień musi zelżeć. Winieta pełną mocą w południe zjadała całą jasność,
+    // którą właśnie dodało niebo, i południe wyglądało jak popołudnie w chmurach —
+    // widać to było dopiero na arkuszu obok kadru bez światła.
+    const vignetteAlpha = (VIGNETTE_DAY + (1 - VIGNETTE_DAY) * night) * 0.55;
     ctx.globalCompositeOperation = 'source-over';
     const vignette = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.32, w / 2, h / 2, Math.max(w, h) * 0.72);
     vignette.addColorStop(0, 'rgba(0,0,0,0)');
-    vignette.addColorStop(1, 'rgba(6,4,8,0.55)');
+    vignette.addColorStop(1, `rgba(6,4,8,${vignetteAlpha.toFixed(3)})`);
     ctx.fillStyle = vignette;
     ctx.fillRect(0, 0, w, h);
 
     this.texture.refresh();
     this.image.setPosition(view.x, view.y).setDisplaySize(w * RESOLUTION, h * RESOLUTION);
+  }
+
+  /** Czy punkt leży na podłodze hali — po tym poznajemy ogień pod dachem. */
+  isInterior(x, y) {
+    const box = this.interior;
+    if (!box) return false;
+    return x >= box.x && x <= box.x + box.w && y >= box.y && y <= box.y + box.h;
   }
 
   /**

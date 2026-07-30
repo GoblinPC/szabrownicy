@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "art": "node tools/art/build.js",
-    "start": "npm --prefix server start"
+    "start": "node server/src/index.js",
+    "start:bez-logowania": "node server/src/index.js --bez-logowania"
   }
 }

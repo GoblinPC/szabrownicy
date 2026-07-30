@@ -98,6 +98,35 @@
   .login-msg--bad { color: #c43a0d; }
   .login-hint { margin: 0; font-size: 10px; color: #5c4f49; text-align: center; line-height: 1.4; }
 
+  /* Czat: linijka, w której gracz właśnie pisze. Siedzi nad paskiem podpowiedzi
+     w lewym dolnym rogu, a log wiadomości Phaser rysuje nad nią. */
+  #chat-input {
+    position: fixed;
+    left: 10px;
+    bottom: 72px;
+    z-index: 9;
+  }
+  #chat-input form {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 7px;
+    background: rgba(20, 16, 15, .9);
+    border: 1px solid #f2700f;
+    border-radius: 3px;
+  }
+  .chat-prompt { color: #f2700f; font-size: 12px; }
+  #chat-input input {
+    width: min(46vw, 320px);
+    background: none;
+    border: 0;
+    outline: none;
+    color: #e8dcc0;
+    font: inherit;
+    font-size: 12px;
+  }
+  .chat-left { min-width: 18px; text-align: right; font-size: 10px; color: #6b5d54; }
+
   #mixer {
     position: fixed;
     top: 10px;
@@ -156,6 +185,42 @@
     border-radius: 1px;
     cursor: pointer;
   }
+
+  /* Suwak pory dnia — przyrząd testowy, chodzi pod F1 razem z panelem
+     diagnostycznym. Siedzi pod mikserem, żeby nie zasłaniać rogu z nickami. */
+  #clock {
+    position: fixed;
+    top: 152px;
+    right: 10px;
+    width: 226px;
+    padding: 6px 8px 7px;
+    background: rgba(20, 16, 15, .82);
+    border: 1px solid #453b37;
+    border-radius: 4px;
+    font-size: 11px;
+    user-select: none;
+  }
+  .clock-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: #f2700f;
+    margin-bottom: 5px;
+  }
+  .clock-auto {
+    background: none;
+    border: 1px solid #453b37;
+    border-radius: 3px;
+    color: #6b5d54;
+    font: inherit;
+    font-size: 10px;
+    padding: 1px 6px;
+    cursor: pointer;
+  }
+  .clock-auto--on { border-color: #6b9c45; color: #6b9c45; }
+  #clock .mixer-row { grid-template-columns: 1fr 38px; }
+  .clock-caption { margin-top: 4px; color: #5c4f49; font-size: 10px; }
+  .clock-caption--manual { color: #f2700f; }
 </style>
 </head>
 <body>

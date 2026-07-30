@@ -319,6 +319,136 @@ function noticeBoard() {
   return finish(t);
 }
 
+/**
+ * Kukła treningowa: słup wbity w ziemię, snopek siana przewiązany powrozem,
+ * worek zamiast głowy i poprzeczka udająca ramiona.
+ *
+ * Siano nie ma własnej rampy w palecie — bierzemy je z drewna od najjaśniejszej
+ * strony (`wood 3` i `wood 4`), bo to najbliższy suchej trawie odcień, jaki mamy.
+ * Sam snopek rysujemy krótkimi kreskami pod kątem, nie plamą: jednolity prostokąt
+ * czyta się jak worek z piaskiem, a nie jak wiązka słomy.
+ *
+ * `damage` od 0 do 2 — im wyżej, tym więcej wyrwanych kłaków i tym mocniej kukła
+ * przekrzywiona. Stan trzeci to kukła zwalona na ziemię.
+ */
+function dummy(damage = 0) {
+  const rng = rngFor(`dummy${damage}`);
+  const t = new Canvas(20, 32);
+  const fallen = damage >= 3;
+
+  const straw = [c('wood', 3), c('wood', 4)];
+  const rope = c('copper');
+  const sack = c('stone', 3);
+
+  // Przekrzywienie rośnie z obiciem — kukła po kilku ciosach nie stoi już prosto.
+  const tilt = fallen ? 0 : damage;
+
+  if (fallen) {
+    // Zwalona: słup leży na skos, snopek obok niego, worek z głową na końcu.
+    // Rysowana nisko i szeroko, bo leżący obiekt musi się od stojącego różnić
+    // sylwetką, a nie tylko szczegółem — sama deska w poprzek czytała się jak
+    // porzucony bal drewna.
+    for (let i = 0; i < 15; i++) {
+      const y = 30 - Math.floor(i / 3);
+      t.px(3 + i, y, c('wood', 1));
+      t.px(3 + i, y - 1, c('wood', 2));
+    }
+
+    // Rozsypany snopek — wiązka, która się rozjechała po ziemi.
+    for (let i = 0; i < 40; i++) {
+      const x = 5 + rng.int(0, 12);
+      const y = 24 + rng.int(0, 6);
+      t.px(x, y, straw[rng.int(0, 1)]);
+    }
+    // Kilka pojedynczych słomek odrzuconych dalej.
+    for (let i = 0; i < 6; i++) t.px(1 + rng.int(0, 17), 22 + rng.int(0, 9), straw[1]);
+
+    // Worek: leży na boku, twarz przekrzywiona.
+    t.rect(11, 22, 8, 6, sack);
+    t.hline(11, 18, 22, c('stone', 4));
+    t.hline(11, 18, 27, c('stone', 1));
+    t.px(14, 24, c('soot', 1));
+    t.px(17, 25, c('soot', 1));
+    t.hline(2, 6, 30, rope); // powróz, który się zsunął
+
+    return finish(t);
+  }
+
+  // Słup wbity w ziemię.
+  t.rect(9, 18, 3, 14, c('wood', 1));
+  t.vline(9, 18, 31, c('wood', 0));
+  t.vline(11, 18, 31, c('wood', 2));
+
+  // Poprzeczka na ramiona.
+  t.rect(3 + tilt, 13, 15, 2, c('wood', 1));
+  t.hline(3 + tilt, 17 + tilt, 13, c('wood', 2));
+
+  // Snopek: tułów z krótkich kresek pod kątem.
+  const bodyX = 4 + tilt;
+  for (let row = 0; row < 12; row++) {
+    const y = 12 + row;
+    const inset = row > 9 ? 2 : 0;
+    for (let x = bodyX + inset; x < bodyX + 12 - inset; x++) {
+      // Ukośne pasma słomy — sąsiednie wiersze przesunięte, więc powstaje splot.
+      const shade = (x + row) % 3 === 0 ? 1 : 0;
+      t.px(x, y, straw[shade]);
+    }
+  }
+  // Cień pod poprzeczką i przy dolnej krawędzi snopka.
+  t.hline(bodyX, bodyX + 11, 12, c('wood', 2));
+  t.hline(bodyX + 2, bodyX + 9, 23, c('wood', 2));
+
+  // Powrozy: pas i przewiązanie pod workiem.
+  t.hline(bodyX, bodyX + 11, 17, rope);
+  t.hline(bodyX + 1, bodyX + 10, 18, c('wood', 1));
+  t.hline(bodyX + 2, bodyX + 9, 11, rope);
+
+  // Worek na głowę, z zaznaczonym miejscem na cios.
+  t.rect(bodyX + 2, 4, 8, 7, sack);
+  t.hline(bodyX + 3, bodyX + 8, 4, c('stone', 4));
+  t.hline(bodyX + 2, bodyX + 9, 10, c('stone', 1));
+  t.px(bodyX + 4, 7, c('soot', 1));
+  t.px(bodyX + 7, 7, c('soot', 1));
+  t.hline(bodyX + 4, bodyX + 7, 9, c('soot', 1));
+  // Kłaki słomy wystające z worka.
+  t.px(bodyX + 1, 5, straw[1]);
+  t.px(bodyX + 10, 6, straw[1]);
+
+  // Obicie musi **wygryzać sylwetkę**, nie tylko ją brudzić. Pierwsza wersja
+  // dokładała ciemne kropki na snopku i trzy stany zużycia wyglądały identycznie —
+  // na tle wielobarwnej słomy plamka po prostu ginie. Kontur widać zawsze.
+  if (damage > 0) {
+    // Wyrwy w krawędziach: kasujemy piksele, obrys dorysuje się na nowo w `finish`.
+    for (let i = 0; i < damage * 7; i++) {
+      const left = rng.chance(0.5);
+      const x = left ? bodyX : bodyX + 11;
+      const y = 13 + rng.int(0, 9);
+      t.px(x, y, null);
+      if (rng.chance(0.5)) t.px(left ? x + 1 : x - 1, y, null);
+    }
+
+    // Przetarcia w środku — kilka ciemniejszych, żeby snopek nie był równy.
+    for (let i = 0; i < damage * 6; i++) {
+      t.px(bodyX + 2 + rng.int(0, 7), 13 + rng.int(0, 9), c('wood', 2));
+    }
+
+    // Kłaki wystające na zewnątrz — po nich widać, że wiązka się pruje.
+    for (let i = 0; i < damage * 4; i++) {
+      const side = rng.chance(0.5) ? bodyX - 2 : bodyX + 13;
+      t.px(side, 14 + rng.int(0, 8), straw[1]);
+    }
+
+    // Przy mocnym obiciu worek na głowie też dostaje: naddarty brzeg.
+    if (damage >= 2) {
+      t.px(bodyX + 2, 5, null);
+      t.px(bodyX + 9, 6, null);
+      t.px(bodyX + 3, 4, null);
+    }
+  }
+
+  return finish(t);
+}
+
 function logPile() {
   const t = new Canvas(24, 16);
   const rng = rngFor('logs');
@@ -577,6 +707,8 @@ export function buildProps() {
   add('cart', cart());
   add('board', noticeBoard());
   add('logs', logPile());
+  // Kukła w czterech stanach zużycia: cała, obita, mocno obita, zwalona.
+  for (let d = 0; d <= 3; d++) add(`dummy${d}`, dummy(d));
   add('tree', tree());
   add('boulder', boulder());
   add('fence', fence());

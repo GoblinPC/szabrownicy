@@ -15,6 +15,9 @@
 //    dwiema migawkami — ruch jest gładki mimo rzadkich pakietów.
 
 import { advance, poseOf } from './world/movement.js';
+// `advance` znaczy tu co innego niż w ruchu — stąd alias, żeby nie było wątpliwości,
+// który krok czasu jest który.
+import { advance as advanceDay, partOfDay, phaseOf } from './world/daylight.js';
 
 const INTERP_DELAY = 100;     // ms — o tyle cofamy widok innych graczy
 const SEND_HZ = 30;
@@ -35,8 +38,13 @@ const MAX_CATCHUP_STEPS = 16;   // najwyżej ~256 ms zaległości na klatkę
 // tam, którą wersję kodu naprawdę odpala dana przeglądarka. Bez tego nie da się
 // odróżnić "poprawka nie działa" od "przeglądarka odpala stary plik z cache".
 // Podnosić przy każdej zmianie w warstwie sieciowej lub w ruchu.
-const CLIENT_VERSION = 8;
+const CLIENT_VERSION = 12;
 const MAX_FRAME_MS = 250;   // dłuższa przerwa (przełączona karta) nie jest odrabiana
+
+// Limity czatu. Muszą być zgodne z serwerem: on odrzuca po cichu, więc gdyby
+// klient pozwalał na więcej, gracz widziałby wiadomości przepadające bez słowa.
+const MAX_CHAT_CHARS = 120;
+const CHAT_INTERVAL_MS = 1500;
 
 export class Net {
   constructor(world) {
@@ -56,6 +64,12 @@ export class Net {
     this.seq = 0;
     this.lastSend = 0;
     this.listeners = [];
+    this.chatListeners = [];
+    // Tryb wejścia ogłasza serwer wiadomością `gate`, zaraz po otwarciu gniazda.
+    this.gate = null;
+    this.gateListeners = [];
+    this.guest = false;
+    this.lastChatAt = -Infinity;
     this.socket = null;
     this.retryIn = 500;
 
@@ -76,6 +90,57 @@ export class Net {
 
   onStatus(callback) {
     this.listeners.push(callback);
+  }
+
+  /** Woła, gdy serwer ogłosi tryb wejścia — albo od razu, jeśli już go ogłosił. */
+  onGate(callback) {
+    if (this.gate) callback(this.gate);
+    else this.gateListeners.push(callback);
+  }
+
+  /** Wiadomości czatu i komunikaty serwera — jednym strumieniem, w kolejności. */
+  onChat(callback) {
+    this.chatListeners.push(callback);
+  }
+
+  emitChat(entry) {
+    for (const callback of this.chatListeners) callback(entry);
+  }
+
+  /**
+   * Wysyła wiadomość na czat. Zwraca `{ ok: true }` albo powód odmowy.
+   *
+   * Odstęp sprawdzamy także tutaj, mimo że pilnuje go serwer: tam odrzucenie jest
+   * ciche, a gracz musi wiedzieć, czemu jego zdanie nie poszło.
+   */
+  sendChat(text) {
+    const clean = String(text ?? '').replace(/\s+/g, ' ').trim().slice(0, MAX_CHAT_CHARS);
+    if (!clean) return { ok: false, reason: null };   // puste — bez komentarza
+    if (!this.id) return { ok: false, reason: 'brak połączenia z serwerem' };
+
+    const now = performance.now();
+    if (now - this.lastChatAt < CHAT_INTERVAL_MS) {
+      return { ok: false, reason: 'za szybko — jedna wiadomość na 1,5 s' };
+    }
+    this.lastChatAt = now;
+
+    this.send({ t: 'chat', m: clean });
+    return { ok: true };
+  }
+
+  /**
+   * Kto jest online — do tabeli pod TAB-em. Serwer i tak przysyła co migawkę
+   * opis wszystkich graczy, więc nie ma po co pytać o listę osobno.
+   */
+  roster() {
+    const list = [];
+    if (this.name) {
+      list.push({ id: this.id, name: this.name, admin: Boolean(this.admin), you: true });
+    }
+    for (const remote of this.remotes.values()) {
+      list.push({ id: remote.id, name: remote.name, admin: remote.admin, you: false });
+    }
+    return list;
   }
 
   setStatus(status) {
@@ -108,7 +173,24 @@ export class Net {
     });
   }
 
+  /**
+   * Wejście bez logowania — tylko jeśli serwer sam powiedział, że je dopuszcza.
+   * Prosimy o nick, który dostaliśmy wcześniej, żeby przeładowanie strony
+   * (a serwer deweloperski robi je po każdym zapisie pliku) nie zmieniało postaci.
+   */
+  joinAsGuest() {
+    return new Promise((resolve) => {
+      this.guest = true;
+      this.pending = resolve;
+      if (this.socket?.readyState === 1) this.sendJoin();
+    });
+  }
+
   sendJoin() {
+    if (this.guest) {
+      this.send({ t: 'join', guest: true, name: this.name ?? undefined, ver: CLIENT_VERSION });
+      return;
+    }
     if (!this.credentials) return;
     this.send({
       t: 'join',
@@ -163,6 +245,14 @@ export class Net {
         location.reload();
         break;
 
+      case 'gate':
+        // Serwer mówi, czy wymaga logowania. Scena świata czeka na tę wiadomość,
+        // zanim zdecyduje, czy pokazać formularz.
+        this.gate = { guests: Boolean(message.guests) };
+        for (const callback of this.gateListeners) callback(this.gate);
+        this.gateListeners.length = 0;
+        break;
+
       case 'welcome': {
         this.id = message.id;
         this.name = message.name;
@@ -201,6 +291,20 @@ export class Net {
         if (remote) remote.variant = message.v;
         break;
       }
+
+      case 'chat':
+        this.emitChat({
+          id: message.id,
+          name: message.n,
+          admin: Boolean(message.a),
+          you: message.id === this.id,
+          text: String(message.m ?? ''),
+        });
+        break;
+
+      case 'system':
+        this.emitChat({ id: null, system: true, text: String(message.m ?? '') });
+        break;
 
       case 'state':
         this.reconcile(message);
@@ -252,6 +356,24 @@ export class Net {
     this.body.vx = message.you.vx;
     this.body.vy = message.you.vy;
 
+    // Stan ciosu przywracamy razem z pozycją i **z tego samego powodu**: zaraz
+    // odtworzymy niepotwierdzone komendy, a one przewijają cios. Gdyby licznik
+    // ciosu nie był resetowany, każde odtworzenie przewijałoby go od nowa i cios
+    // u klienta biegłby wielokrotnie szybciej niż na serwerze.
+    this.body.atk = message.you.a ?? 0;
+    this.body.atkWait = message.you.aw ?? 0;
+    this.body.atkSeq = message.you.as ?? 0;
+    this.body.atkStrike = message.you.ak ?? 0;
+    this.body.atkDx = message.you.adx ?? 0;
+    this.body.atkDy = message.you.ady ?? 0;
+    this.body.atkFacing = message.you.af ?? 'down';
+    this.body.atkFlip = Boolean(message.you.al);
+    this.body.dodge = message.you.d ?? 0;
+    this.body.dodgeWait = message.you.dw ?? 0;
+    this.body.dodgeSeq = message.you.ds ?? 0;
+    this.body.dodgeDx = message.you.ddx ?? 0;
+    this.body.dodgeDy = message.you.ddy ?? 0;
+
     while (this.unacked.length && this.unacked[0][0] <= message.ack) this.unacked.shift();
     for (const [, keys, ms] of this.unacked) {
       advance(this.world, this.body, keys, ms / 1000);
@@ -265,9 +387,21 @@ export class Net {
     this.prevX = this.body.x;
     this.prevY = this.body.y;
 
+    // Cele do bicia. Pozycji nie interpolujemy jak graczy: kukła po ciosie szarpie
+    // się gwałtownie i wygładzanie zjadałoby właśnie to, co ma być widoczne.
+    if (message.ms) this.mobs = message.ms;
+
+    // Pora dnia. Zapamiętujemy razem z chwilą odbioru, żeby między migawkami
+    // posuwać ją samodzielnie — dwadzieścia skoków na sekundę byłoby widać
+    // jako drganie światła.
+    if (typeof message.d === 'number') {
+      this.dayPhase = message.d;
+      this.dayPhaseAt = now;
+    }
+
     for (const p of message.ps) {
       const remote = this.upsert(p);
-      remote.buffer.push({ at: now, x: p.x, y: p.y, f: p.f, m: p.m, l: p.l });
+      remote.buffer.push({ at: now, x: p.x, y: p.y, f: p.f, m: p.m, l: p.l, s: p.s });
       while (remote.buffer.length > 2 && now - remote.buffer[0].at > BUFFER_KEEP) {
         remote.buffer.shift();
       }
@@ -365,6 +499,36 @@ export class Net {
     };
   }
 
+  /**
+   * Pora dnia w tej chwili: ostatnia wartość z serwera, posunięta o czas, jaki
+   * minął od jej odebrania.
+   *
+   * Zanim przyjdzie pierwsza migawka, liczymy z własnego zegara. Rozjazd jest
+   * wtedy możliwy, ale trwa ułamek sekundy i dotyczy tylko koloru światła —
+   * lepszy niż błysk domyślnej barwy przy wejściu do gry.
+   */
+  phaseNow() {
+    // Suwak testowy ma pierwszeństwo, ale zegara nie zatrzymuje: po zwolnieniu
+    // sterowania światło wraca tam, gdzie naprawdę jest pora dnia.
+    if (this.dayOverride != null) return this.dayOverride;
+    if (this.dayPhase == null) return phaseOf(Date.now());
+    return advanceDay(this.dayPhase, performance.now() - this.dayPhaseAt);
+  }
+
+  /**
+   * Ręczne przestawienie pory dnia — wyłącznie u siebie, do oglądania świateł.
+   * `null` oddaje sterowanie z powrotem zegarowi serwera.
+   */
+  setDayOverride(phase) {
+    this.dayOverride = phase;
+  }
+
+  /** Pora dnia z serwera, bez względu na suwak — do podpisu pod suwakiem. */
+  serverPhase() {
+    if (this.dayPhase == null) return phaseOf(Date.now());
+    return advanceDay(this.dayPhase, performance.now() - this.dayPhaseAt);
+  }
+
   /** Komplet liczb do panelu diagnostycznego. */
   stats() {
     const m = this.meter;
@@ -380,6 +544,7 @@ export class Net {
       czasSymulacji: m.simPerSec,
       niepotwierdzone: this.unacked.length,
       obok: this.remotes.size,
+      poraDnia: partOfDay(this.phaseNow()),
     };
   }
 
@@ -410,7 +575,7 @@ export class Net {
         sample = {
           x: before.x + (after.x - before.x) * k,
           y: before.y + (after.y - before.y) * k,
-          f: after.f, m: after.m, l: after.l,
+          f: after.f, m: after.m, l: after.l, s: after.s,
         };
       } else {
         // Brak dwóch próbek — pokazujemy ostatnią znaną pozycję. Zdarza się tuż

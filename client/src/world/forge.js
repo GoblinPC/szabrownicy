@@ -13,6 +13,18 @@
 
 import { makeRng, seedFrom } from '../util/rng.js';
 
+/**
+ * Kukła treningowa na placu, na prawo od bramy.
+ *
+ * Miejsce **sprawdzone z listą obiektów**, nie wybrane na oko: pierwsza próba
+ * (456, 404) wchodziła wprost na głaz stojący na (470, 396). Najbliżsi sąsiedzi
+ * tego punktu to głaz 50 px w lewo, skrzynia 52 px w dół i wóz 84 px w prawo.
+ *
+ * Trzymana w tym pliku, a nie po stronie serwera, bo korzystają z niego obie
+ * strony i pozycja celu musi być u nich identyczna.
+ */
+export const TRAINING_DUMMY = { x: 520, y: 400 };
+
 export const TILE = 16;
 export const MAP_W = 48;
 export const MAP_H = 36;
@@ -361,11 +373,16 @@ export const BUILDING_PX = {
 };
 
 /**
- * Wnęka wejściowa: dach jest wycięty nad bramą i o kafel po bokach, więc z placu
- * widać, że tam się wchodzi. Bez tego budynek był zamkniętą płytą i nie dało się
- * odgadnąć, gdzie jest wejście.
+ * Dach jest **jednolity i szczelny** — bez wnęki, bez świetlika, bez pasa nad
+ * wejściem. Dwie próby oznaczenia tam wejścia okazały się gorsze od niczego:
+ *
+ * - wycięcie dachu na wylot (cztery kafle od góry do dołu) odsłaniało wnętrze
+ *   hali stojącemu na placu, co psuło też ograniczoną widoczność;
+ * - pas innego pokrycia na całej długości czytał się jak przypadkowa łata.
+ *
+ * Oznaczenie jest zbędne, bo dach kończy się dwa kafle nad murem: łuk bramy
+ * i tak jest widoczny z placu i on sam wskazuje wejście.
  */
-const PORCH = { x0: GATE.x0 - 1, x1: GATE.x1 + 1, y0: ROOF.y0, y1: ROOF.y1 };
 
 function buildRoof() {
   const rng = makeRng(seedFrom('forge-roof'));
@@ -375,11 +392,6 @@ function buildRoof() {
 
   for (let y = ROOF.y0; y <= ROOF.y1; y++) {
     for (let x = ROOF.x0; x <= ROOF.x1; x++) {
-      // Świetlik nad bramą: dach jest przecięty na wylot w osi wejścia, więc
-      // z placu widać, gdzie się wchodzi, i pas światła spadający na bramę.
-      const inPorch = x >= PORCH.x0 && x <= PORCH.x1 && y >= PORCH.y0 + 4;
-      if (inPorch) continue;
-
       let key;
       if (y === ridge) key = 'roof_ridge';
       // Krokwie przesunięte o trzy kafle w lewo — przy poprzednim rozstawie
@@ -424,6 +436,21 @@ export function buildWorld() {
       y0: prop.y - prop.body.h,
       y1: prop.y,
     }));
+
+  // Kukła treningowa nie jest obiektem z listy `props` — jej stan prowadzi serwer —
+  // ale stoi na placu i ma być zaporą jak każdy inny sprzęt. Przez pierwszą wersję
+  // dało się przechodzić na wylot.
+  //
+  // Prostokąt stoi nieruchomo w miejscu spoczynku, choć sama kukła wychyla się po
+  // ciosie o kilka pikseli. Świadomie: ruchoma zapora musiałaby być przesyłana po
+  // sieci i uwzględniana we wspólnej fizyce, a przy wychyleniu rzędu pięciu pikseli
+  // nikt tego nie zauważy. Chodzące moby dostaną prawdziwą zaporę razem z chodzeniem.
+  bodies.push({
+    x0: TRAINING_DUMMY.x - 7,
+    x1: TRAINING_DUMMY.x + 7,
+    y0: TRAINING_DUMMY.y - 9,
+    y1: TRAINING_DUMMY.y,
+  });
 
   return {
     tiles,

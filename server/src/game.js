@@ -8,8 +8,10 @@
 //
 // Świat i kolizje pochodzą z tego samego pliku co u klienta.
 
-import { buildWorld, SPAWN, WORLD_W, WORLD_H } from '../../client/src/world/forge.js';
-import { advance, poseOf } from '../../client/src/world/movement.js';
+import { buildWorld, SPAWN, WORLD_W, WORLD_H, TRAINING_DUMMY } from '../../client/src/world/forge.js';
+import {
+  advance, poseOf, KEY_MASK, inAttackArc, ATTACK_STEPS,
+} from '../../client/src/world/movement.js';
 
 export const TICK_HZ = 20;
 const TICK_MS = 1000 / TICK_HZ;
@@ -32,11 +34,184 @@ const MAX_PER_TICK = 20;
 const BUDGET_RATE = 1.15;
 const BUDGET_CAP = 0.35;
 
+// --- Cele do bicia ------------------------------------------------------------
+//
+// Kukła treningowa jest **wzorcem dla przyszłych mobów**, nie wyjątkiem: ma
+// punkty życia, przyjmuje trafienia liczone po stronie serwera, dostaje odrzut,
+// przewraca się i wstaje. Potworki będą tym samym kodem, tylko z chodzeniem.
+//
+// Wszystko poza wyglądem należy do serwera. Klient nie może decydować, że trafił —
+// bo docelowo to jest survival PvP i jest o co oszukiwać.
+
+// Odrzut przesuwający cel po ziemi — dla chodzących mobów, gdy takie będą.
+//
+// Kukła go **nie dostaje** i to jest osobna decyzja, wyniesiona z dwóch nieudanych
+// prób. Pozycja celu przychodzi z serwera dwadzieścia razy na sekundę, więc każdy
+// jej ruch ma tylko trzy–cztery klatki na całe szarpnięcie. Bez względu na
+// dobrane liczby wygląda to jak spowolnione odjeżdżanie, a nie jak cios. Kukła
+// jest zresztą przywiązana do słupka i nie ma powodu nigdzie jechać.
+//
+// Reakcję kukły — szarpnięcie i ściśnięcie — rysuje więc klient, natychmiast
+// i gładko, w swoich sześćdziesięciu klatkach. Serwer zostaje właścicielem tego,
+// co ma znaczenie dla rozgrywki: punktów życia i faktu trafienia.
+const KNOCKBACK = 170;
+const KNOCKBACK_DAMPING = 13;
+const HOME_PULL = 40;
+const RESPAWN_MS = 4000;
+
+// Worek do bicia ma **wytrzymywać** — służy do strojenia odczucia ciosu, a nie
+// do zabijania. Pięćdziesiąt ciosów, więc przy testowaniu nie pada pod ręką.
+const DUMMY_HP = 600;
+
+function makeDummy(id) {
+  return {
+    id,
+    kind: 'dummy',
+    // Przywiązana do słupka: nie jeździ po placu, a reakcję na cios rysuje klient.
+    anchored: true,
+    // Promień celu. Trafienie liczy się do środka, a gracz celuje w sylwetkę —
+    // bez tego cios wizualnie dotykał kukły, a mimo to nie wchodził.
+    radius: 9,
+    x: TRAINING_DUMMY.x,
+    y: TRAINING_DUMMY.y,
+    homeX: TRAINING_DUMMY.x,
+    homeY: TRAINING_DUMMY.y,
+    vx: 0,
+    vy: 0,
+    hp: DUMMY_HP,
+    maxHp: DUMMY_HP,
+    // Znacznik trafienia — rośnie z każdym ciosem. Klient porównuje go z poprzednim
+    // i po zmianie odpala reakcję: błysk, krew, wstrząs. Sam spadek punktów życia
+    // by nie wystarczył, bo dwa trafienia mogłyby wypaść między migawkami.
+    hitSeq: 0,
+    hitDx: 0,
+    hitDy: 0,
+    deadUntil: 0,
+  };
+}
+
 export class Game {
   constructor() {
     this.world = buildWorld();
     this.players = new Map();
+    this.mobs = new Map();
     this.tickNumber = 0;
+
+    const dummy = makeDummy(1);
+    this.mobs.set(dummy.id, dummy);
+  }
+
+  /**
+   * Czy cios gracza sięga danego celu — łukiem, nie prostokątem.
+   *
+   * Geometria siedzi w `movement.js`, żeby klient mógł jej użyć do rysowania
+   * podpowiedzi zasięgu tym samym kodem, którym serwer liczy trafienia.
+   */
+  reaches(player, mob) {
+    // Liczone od tułowia do środka celu, a nie od stóp do stóp: przy stopach
+    // wszystko jest na tej samej wysokości i cios sięgałby za daleko w pionie.
+    return inAttackArc(
+      player,
+      mob.x - player.x,
+      (mob.y - 16) - (player.y - 12),
+      mob.radius ?? 0,
+    );
+  }
+
+  /**
+   * Rozliczenie ciosów — po znaczniku cięcia, nie po sprawdzaniu fazy.
+   *
+   * Znacznik podnosi `advance()` dokładnie w kroku, w którym ostrze sięga. Poprzednia
+   * wersja pytała raz na tik „czy jesteś w fazie cięcia" i gubiła uderzenia,
+   * bo faza jest krótsza niż odstęp między tikami razy liczba nadrabianych kroków.
+   */
+  resolveHits(now) {
+    for (const player of this.players.values()) {
+      const strike = player.atkStrike ?? 0;
+      if (strike === (player.atkResolved ?? 0)) continue;
+      player.atkResolved = strike;
+
+      // Który cios łańcucha trafił. Rąbnięcie z góry zabiera prawie trzy razy
+      // tyle co lekkie cięcie i odrzuca dwa razy mocniej.
+      const step = ATTACK_STEPS[player.atkStrikeStep ?? 0] ?? ATTACK_STEPS[0];
+
+      for (const mob of this.mobs.values()) {
+        if (mob.hp <= 0) continue;
+        if (!this.reaches(player, mob)) continue;
+
+        mob.hp = Math.max(0, mob.hp - step.damage);
+        if (!mob.anchored) {
+          mob.vx += player.atkDx * step.knockback;
+          mob.vy += player.atkDy * step.knockback;
+        }
+        mob.hitDx = player.atkDx;
+        mob.hitDy = player.atkDy;
+        mob.hitSeq++;
+        if (mob.hp === 0) mob.deadUntil = now + RESPAWN_MS;
+      }
+    }
+  }
+
+  /** Odrzut wygasa, a kukła wraca na swój słupek. */
+  stepMobs(now, dt) {
+    for (const mob of this.mobs.values()) {
+      if (mob.hp <= 0 && now >= mob.deadUntil) {
+        mob.hp = mob.maxHp;
+        mob.x = mob.homeX;
+        mob.y = mob.homeY;
+        mob.vx = 0;
+        mob.vy = 0;
+        mob.hitSeq++;   // klient po tym pozna, że kukła wstała
+      }
+
+      // Przywiązany cel nie rusza się w ogóle — jego reakcję rysuje klient.
+      if (mob.anchored) continue;
+
+      // Sprężyna do miejsca spoczynku plus tłumienie: cel szarpie się po ciosie
+      // i wraca, zamiast odjechać w pole. Mob, który chodzi, dostanie tu zamiast
+      // tego swoje sterowanie.
+      mob.vx += (mob.homeX - mob.x) * HOME_PULL * dt;
+      mob.vy += (mob.homeY - mob.y) * HOME_PULL * dt;
+      const damping = Math.max(0, 1 - KNOCKBACK_DAMPING * dt);
+      mob.vx *= damping;
+      mob.vy *= damping;
+      mob.x += mob.vx * dt;
+      mob.y += mob.vy * dt;
+
+      // Dociągnięcie do zera. Sprężyna z tłumieniem dochodzi do słupka
+      // asymptotycznie i nigdy go nie osiąga — kukła zostawała półtora piksela
+      // obok swojego miejsca, a serwer bez końca rozsyłał mikroskopijne zmiany
+      // pozycji. Przy dostatecznie małym odchyleniu po prostu ją stawiamy.
+      if (Math.abs(mob.homeX - mob.x) < 0.5 && Math.abs(mob.homeY - mob.y) < 0.5
+        && Math.hypot(mob.vx, mob.vy) < 4) {
+        mob.x = mob.homeX;
+        mob.y = mob.homeY;
+        mob.vx = 0;
+        mob.vy = 0;
+      }
+    }
+  }
+
+  describeMob(mob) {
+    return {
+      id: mob.id,
+      k: mob.kind,
+      x: Math.round(mob.x * 2) / 2,
+      y: Math.round(mob.y * 2) / 2,
+      h: mob.hp,
+      m: mob.maxHp,
+      s: mob.hitSeq,
+      r: mob.radius ?? 0,
+      // Kierunek ostatniego ciosu — po nim klient wie, w którą stronę bryzga krew.
+      dx: Math.round(mob.hitDx * 100) / 100,
+      dy: Math.round(mob.hitDy * 100) / 100,
+    };
+  }
+
+  mobSnapshot() {
+    const list = [];
+    for (const mob of this.mobs.values()) list.push(this.describeMob(mob));
+    return list;
   }
 
   get full() {
@@ -86,7 +261,10 @@ export class Game {
       if (seq <= player.seq) continue;                 // powtórka albo spóźnialska
       if (player.queue.length && seq <= player.queue[player.queue.length - 1][0]) continue;
 
-      player.queue.push([seq, keys & 31, Math.max(0, Math.min(MAX_COMMAND_DT * 1000, ms))]);
+      // Maska bierze się z `movement.js`, a nie jest tu wpisana liczbą. Wpisana na
+      // sztywno (było `31`) cicho ucinała każdy nowo dodany klawisz: serwer go nie
+      // widział, klient tak, i obie strony rozjeżdżały się bez śladu w logu.
+      player.queue.push([seq, keys & KEY_MASK, Math.max(0, Math.min(MAX_COMMAND_DT * 1000, ms))]);
     }
 
     // Gdy kolejka się przepełnia (bardzo słabe łącze), odrzucamy najstarsze —
@@ -137,6 +315,12 @@ export class Game {
       player.x = Math.max(0, Math.min(WORLD_W, player.x));
       player.y = Math.max(0, Math.min(WORLD_H, player.y));
     }
+
+    // Trafienia dopiero po ruchu wszystkich graczy: cios ma sięgać z pozycji,
+    // na której postać naprawdę stoi po wypadzie, a nie sprzed niego.
+    const now = Date.now();
+    this.resolveHits(now);
+    this.stepMobs(now, TICK_MS / 1000);
   }
 
   /** Opis gracza dla innych — bez prędkości, bo jej nie potrzebują do rysowania. */
@@ -150,6 +334,10 @@ export class Game {
       f: player.facing,
       m: player.moving ? 1 : 0,
       l: player.flip ? 1 : 0,
+      // Znacznik ciosu. Odbiorca porównuje go z poprzednim i po zmianie odpala
+      // animację — dzięki temu nowe uderzenie jest rozpoznawalne nawet wtedy, gdy
+      // padło zaraz po poprzednim i migawki nie złapały przerwy między nimi.
+      s: player.atkSeq ?? 0,
       // Odznaka administratora — jawna dla wszystkich, żeby nie dało się
       // podszyć pod obsługę.
       a: player.admin ? 1 : 0,

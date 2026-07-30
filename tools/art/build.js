@@ -175,7 +175,10 @@ function buildSpriteSheetPreview(font, tiles, props, goblins) {
 function buildGoblinPreview(font, goblins) {
   const find = (name) => goblins.find((g) => g.name === name).canvas;
   const cols = ['down', 'up', 'side'];
-  const canvas = new Canvas(20 + VARIANTS.length * 26, 40 + 3 * 26 + 30);
+  // Szerokość z najszerszego rzędu, a nie z liczby wariantów. Po zejściu z sześciu
+  // wariantów do jednego arkusz zrobił się węższy od pasków biegu i obcinał je —
+  // czyli narzędzie do sprawdzania grafiki samo przestało pokazywać grafikę.
+  const canvas = new Canvas(Math.max(20 + 12 * 20 + 6, 20 + VARIANTS.length * 26), 40 + 3 * 26 + 30);
   canvas.fill(c('soot', 1));
 
   cols.forEach((dir, row) => {
@@ -191,6 +194,69 @@ function buildGoblinPreview(font, goblins) {
     canvas.blit(find(`g0_side_run${f}`), 20 + f * 20, 40 + 3 * 26 - 2);
     canvas.blit(find(`g0_down_run${f}`), 20 + 6 * 20 + f * 20, 40 + 3 * 26 - 2);
   }
+  return canvas;
+}
+
+/**
+ * Pasek klatek ciosu — po jednym rzędzie na kierunek, plus spoczynek na początku
+ * dla porównania. Po tym arkuszu ocenia się zamach: czy widać, że cios zaraz
+ * padnie, i czy postać wkłada w niego ciężar.
+ */
+function buildAttackPreview(font, goblins) {
+  const find = (name) => goblins.find((g) => g.name === name).canvas;
+  const dirs = ['side', 'down', 'up'];
+  const stepNames = ['dzgniecie 1', 'dzgniecie 2', 'pchniecie'];
+  const labels = ['spoczynek', 'zamach', 'cios', 'wyprow', 'powrot'];
+
+  // Komórka musi pomieścić ślad pchnięcia, który jest szerszy niż postać —
+  // pokrywa cały zasięg ciosu, a nie tylko okolicę grotu.
+  const cellW = 100;
+  const cellH = 86;
+  const left = 48;
+
+  const rows = [];
+  for (const dir of dirs) for (let s = 0; s < stepNames.length; s++) rows.push({ dir, step: s });
+
+  const canvas = new Canvas(left + labels.length * cellW + 6, 30 + rows.length * cellH + 8);
+  canvas.fill(c('soot', 1));
+
+  drawText(canvas, font, 4, 4, 'WLOCZNIA: LANCUCH TRZECH CIOSOW', c('ember', 2));
+  labels.forEach((label, i) => {
+    drawText(canvas, font, left + i * cellW, 16, label, c('stone', 3));
+  });
+
+  rows.forEach(({ dir, step }, row) => {
+    const top = 30 + row * cellH;
+    const ground = top + cellH - 8;
+    drawText(canvas, font, 2, top + 10, dir, c('stone', 4));
+    drawText(canvas, font, 2, top + 22, stepNames[step].slice(0, 9), c('ember', 1));
+    // Linia ziemi: po niej widać, czy stopy nie odjeżdżają między klatkami.
+    canvas.hline(left, canvas.width - 7, ground, c('soot', 2));
+
+    for (let i = 0; i < labels.length; i++) {
+      const sprite = i === 0 ? find(`g0_${dir}_idle0`) : find(`g0_${dir}_a${step}f${i - 1}`);
+      // Wyśrodkowane i postawione na linii ziemi — tak jak w grze, gdzie
+      // zaczepienie sprite'a to (0.5, 1).
+      const x = left + i * cellW + Math.round((cellW - sprite.width) / 2);
+
+      // Ślad leci na trzech klatkach ciosu — nad postacią, a przy ciosie do góry
+      // pod nią, bo tam broń jest po drugiej stronie ciała niż kamera. Ta sama
+      // kolejność co w grze, inaczej arkusz kłamie o tym, co widać.
+      const slash = i >= 2 ? find(`slash_${dir}${i - 2}`) : null;
+      const drawSlash = () => {
+        // Ślad jest wyśrodkowany na tułowiu, czyli 12 px nad stopami — tak samo
+        // jak w grze i tak samo, jak liczy to serwer przy trafieniu.
+        const sx = left + i * cellW + Math.round((cellW - slash.width) / 2);
+        const sy = ground - 12 - Math.round(slash.height / 2);
+        canvas.blit(slash, sx, sy);
+      };
+
+      if (slash && dir === 'up') drawSlash();
+      canvas.blit(sprite, x, ground - sprite.height);
+      if (slash && dir !== 'up') drawSlash();
+    }
+  });
+
   return canvas;
 }
 
@@ -250,6 +316,10 @@ function main() {
   written.push(writePng(
     path.join(PREVIEW_DIR, 'gobliny.png'),
     buildGoblinPreview(font, goblins).scale(5)
+  ));
+  written.push(writePng(
+    path.join(PREVIEW_DIR, 'cios.png'),
+    buildAttackPreview(font, goblins).scale(4)
   ));
 
   console.log(`Font: ${CHARSET.length} znaków | kafle: ${tiles.length} | obiekty: ${props.length} | klatki postaci: ${goblins.length}`);
