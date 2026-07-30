@@ -1,4 +1,4 @@
-// Połączenie z serwerem gry.
+﻿// Połączenie z serwerem gry.
 //
 // Trzy rzeczy dzieją się tutaj naraz:
 //
@@ -39,7 +39,7 @@ const MAX_CATCHUP_STEPS = 16;   // najwyżej ~256 ms zaległości na klatkę
 // tam, którą wersję kodu naprawdę odpala dana przeglądarka. Bez tego nie da się
 // odróżnić "poprawka nie działa" od "przeglądarka odpala stary plik z cache".
 // Podnosić przy każdej zmianie w warstwie sieciowej lub w ruchu.
-const CLIENT_VERSION = 12;
+const CLIENT_VERSION = 13;
 const MAX_FRAME_MS = 250;   // dłuższa przerwa (przełączona karta) nie jest odrabiana
 
 // Limity czatu. Muszą być zgodne z serwerem: on odrzuca po cichu, więc gdyby
@@ -368,7 +368,9 @@ export class Net {
     this.body.atkDx = message.you.adx ?? 0;
     this.body.atkDy = message.you.ady ?? 0;
     this.body.atkFacing = message.you.af ?? 'down';
+    this.body.atkAim = message.you.ao ?? message.you.af ?? 'down';
     this.body.atkFlip = Boolean(message.you.al);
+    if (Number.isFinite(message.you.am)) this.body.aim = message.you.am;
     this.body.dodge = message.you.d ?? 0;
     this.body.dodgeWait = message.you.dw ?? 0;
     this.body.dodgeSeq = message.you.ds ?? 0;
@@ -376,8 +378,8 @@ export class Net {
     this.body.dodgeDy = message.you.ddy ?? 0;
 
     while (this.unacked.length && this.unacked[0][0] <= message.ack) this.unacked.shift();
-    for (const [, keys, ms] of this.unacked) {
-      advance(this.world, this.body, keys, ms / 1000);
+    for (const [, keys, ms, turn] of this.unacked) {
+      advance(this.world, this.body, keys, ms / 1000, (turn / 256) * Math.PI * 2);
     }
 
     this.error = Math.hypot(this.body.x - predictedX, this.body.y - predictedY);
@@ -407,7 +409,7 @@ export class Net {
 
     for (const p of message.ps) {
       const remote = this.upsert(p);
-      remote.buffer.push({ at: now, x: p.x, y: p.y, f: p.f, m: p.m, l: p.l, s: p.s });
+      remote.buffer.push({ at: now, x: p.x, y: p.y, f: p.f, k: p.k, m: p.m, l: p.l, s: p.s });
       while (remote.buffer.length > 2 && now - remote.buffer[0].at > BUFFER_KEEP) {
         remote.buffer.shift();
       }
@@ -445,11 +447,16 @@ export class Net {
       this.accumulator -= STEP_MS;
       steps++;
       this.seq++;
-      const command = [this.seq, keys, STEP_MS];
+      // Kąt celowania leci **w każdej komendzie**, a nie osobnym komunikatem.
+      // Musi, bo serwer odtwarza komendy po korekcie: kierunek ciosu jest częścią
+      // wejścia dokładnie tak samo jak wciśnięte klawisze. Zapisany jako jedna
+      // z 256 ósemek stopnia — dokładniej niż widać, a mieści się w bajcie.
+      const turn = Math.round(((this.aim ?? Math.PI / 2) / (Math.PI * 2)) * 256) & 255;
+      const command = [this.seq, keys, STEP_MS, turn];
       // Pozycja sprzed kroku — z niej i z nowej liczymy klatkę pośrednią.
       this.prevX = this.body.x;
       this.prevY = this.body.y;
-      advance(this.world, this.body, keys, STEP_MS / 1000);
+      advance(this.world, this.body, keys, STEP_MS / 1000, (turn / 256) * Math.PI * 2);
       this.unacked.push(command);
       this.outbox.push(command);
     }
@@ -593,7 +600,7 @@ export class Net {
         sample = {
           x: before.x + (after.x - before.x) * k,
           y: before.y + (after.y - before.y) * k,
-          f: after.f, m: after.m, l: after.l, s: after.s,
+          f: after.f, k: after.k, m: after.m, l: after.l, s: after.s,
         };
       } else {
         // Brak dwóch próbek — pokazujemy ostatnią znaną pozycję. Zdarza się tuż

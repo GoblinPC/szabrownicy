@@ -218,13 +218,81 @@ export function attackPhase(body) {
 }
 
 /**
+ * Kierunki ciosu. Pięć nazw, bo lewa strona powstaje z odbicia lustrzanego —
+ * w grze daje to osiem kierunków.
+ */
+export const AIMS = ['up', 'upside', 'side', 'downside', 'down'];
+
+/**
+ * Sylwetka ciała dla danego kierunku ciosu.
+ *
+ * Ukos używa **boku**, a nie własnej sylwetki, i to jest cała sztuczka z ukosami:
+ * postać jest wypisana ręcznie, wiersz po wierszu, więc osiem kompletów ciała
+ * oznaczałoby osiem kompletów przy każdym przyszłym elemencie ekwipunku. Włócznia
+ * jest za to trzema liczbami, więc jej obrót jest darmowy.
+ */
+const AIM_BODY = { up: 'up', upside: 'side', side: 'side', downside: 'side', down: 'down' };
+
+// Ósemki kąta, poczynając od „w prawo" i idąc zgodnie z ruchem wskazówek zegara
+// (dodatni kąt to w dół, jak na ekranie).
+const OCTANTS = [
+  { aim: 'side', flip: false },
+  { aim: 'downside', flip: false },
+  { aim: 'down', flip: false },
+  { aim: 'downside', flip: true },
+  { aim: 'side', flip: true },
+  { aim: 'upside', flip: true },
+  { aim: 'up', flip: false },
+  { aim: 'upside', flip: false },
+];
+
+/**
+ * Kąt celowania → nazwa kierunku, sylwetka ciała i odbicie.
+ *
+ * Rysunek przyskakuje do najbliższej ósemki, ale **trafienie liczy się pod
+ * dokładnym kątem** — `atkDx`/`atkDy` biorą się prosto z kursora. Dzięki temu
+ * celowanie jest płynne, a klatek jest tyle, ile trzeba.
+ */
+export function aimPose(angle) {
+  const index = (((Math.round(angle / (Math.PI / 4)) % 8) + 8) % 8);
+  const octant = OCTANTS[index];
+  return { aim: octant.aim, facing: AIM_BODY[octant.aim], flip: octant.flip };
+}
+
+/**
  * Kierunek ciosu, zamrażany w chwili zamachu.
  *
- * Bierzemy go z wciśniętych klawiszy, a gdy postać stoi — z ostatniego kierunku,
- * w którym patrzyła. Bez zamrożenia gracz mógłby obracać cios w trakcie zamachu
- * i uderzać za siebie, a wyglądałoby to jak błąd wyświetlania.
+ * Bierzemy go **z kursora**, nie z klawiszy ruchu. To ta jedna zmiana odkleja
+ * kierunek patrzenia od kierunku biegu i dopiero dzięki niej da się biec w lewo
+ * i uderzać w prawo.
+ *
+ * Bez zamrożenia gracz mógłby obracać cios w trakcie zamachu i uderzać za siebie,
+ * a wyglądałoby to jak błąd wyświetlania.
  */
-function aimOf(keys, body) {
+function aimOf(body) {
+  const angle = body.aim ?? Math.PI / 2;
+  const pose = aimPose(angle);
+  return {
+    dx: Math.cos(angle),
+    dy: Math.sin(angle),
+    aim: pose.aim,
+    facing: pose.facing,
+    flip: pose.flip,
+  };
+}
+
+/**
+ * Kierunek odskoku. Bierze się z **klawiszy ruchu**, a nie z kursora.
+ *
+ * To celowa różnica względem ciosu: uderza się tam, gdzie się patrzy, a ucieka
+ * tam, gdzie się idzie. Odskok w stronę kursora znaczyłby, że jedyny sposób na
+ * wycofanie się to odwrócenie wzroku od przeciwnika — czyli dokładnie to, czego
+ * celowanie myszką miało nie wymagać.
+ *
+ * Gdy nikt nie trzyma kierunku, odskakujemy **w tył**, czyli przeciwnie do
+ * kursora. Stojąc twarzą do wroga i naciskając unik, chce się odejść od niego.
+ */
+function dodgeAimOf(keys, body) {
   let dx = 0;
   let dy = 0;
   if (keys & KEY_LEFT) dx -= 1;
@@ -233,19 +301,12 @@ function aimOf(keys, body) {
   if (keys & KEY_DOWN) dy += 1;
 
   if (dx === 0 && dy === 0) {
-    // Postać stoi — celujemy tam, gdzie patrzy.
-    const facing = body.facing ?? 'down';
-    if (facing === 'side') dx = body.flip ? -1 : 1;
-    else if (facing === 'up') dy = -1;
-    else dy = 1;
+    const angle = body.aim ?? Math.PI / 2;
+    return { dx: -Math.cos(angle), dy: -Math.sin(angle) };
   }
 
   const length = Math.hypot(dx, dy);
-  dx /= length;
-  dy /= length;
-
-  const facing = Math.abs(dx) > Math.abs(dy) ? 'side' : (dy < 0 ? 'up' : 'down');
-  return { dx, dy, facing, flip: dx < 0 };
+  return { dx: dx / length, dy: dy / length };
 }
 
 /** Zapora żywego celu, w której stoją stopy — albo `null`. */
@@ -336,7 +397,12 @@ function slide(world, body, dx, dy) {
  * Posuwa ciało o jeden krok czasu. `body` to `{x, y, vx, vy}` — modyfikowany
  * w miejscu. `keys` to maska bitowa, `dt` w sekundach.
  */
-export function advance(world, body, keys, dt) {
+export function advance(world, body, keys, dt, aim = null) {
+  // Kąt celowania zapamiętujemy w ciele, tak samo jak pozycję. Dzięki temu serwer
+  // odtwarza cios dokładnie tak samo jak klient, a przy korekcie nie trzeba go
+  // rekonstruować z niczego.
+  if (aim !== null && Number.isFinite(aim)) body.aim = aim;
+
   // Cios odlicza się pierwszy, bo od jego fazy zależy, jak szybko wolno się ruszać.
   const atkBefore = body.atk ?? 0;
   if (body.atk > 0) body.atk = Math.max(0, body.atk - dt * 1000);
@@ -389,11 +455,12 @@ export function advance(world, body, keys, dt) {
     // oporu; płaci się za rąbnięcie z góry.
     body.atkWait = step === LAST_STEP ? body.atk + ATTACK_COOLDOWN_MS : 0;
 
-    const aim = aimOf(keys, body);
-    body.atkDx = aim.dx;
-    body.atkDy = aim.dy;
-    body.atkFacing = aim.facing;
-    body.atkFlip = aim.flip;
+    const aimed = aimOf(body);
+    body.atkDx = aimed.dx;
+    body.atkDy = aimed.dy;
+    body.atkFacing = aimed.facing;
+    body.atkFlip = aimed.flip;
+    body.atkAim = aimed.aim;
     // Znacznik ciosu — rośnie z każdym uderzeniem. Po nim odbiorca migawki poznaje,
     // że padł **nowy** cios, a nie że trwa poprzedni. Sam czas ciosu do tego nie
     // wystarczy: przy dwóch ciosach pod rząd migawki mogłyby go nie złapać.
@@ -413,11 +480,11 @@ export function advance(world, body, keys, dt) {
     && (!phase || phase.name === 'recover');
 
   if (canDodge && (keys & KEY_DODGE)) {
-    const aim = aimOf(keys, body);
+    const escape = dodgeAimOf(keys, body);
     body.dodge = DODGE_MS;
     body.dodgeWait = DODGE_MS + DODGE_COOLDOWN_MS;
-    body.dodgeDx = aim.dx;
-    body.dodgeDy = aim.dy;
+    body.dodgeDx = escape.dx;
+    body.dodgeDy = escape.dy;
     body.dodgeSeq = (body.dodgeSeq ?? 0) + 1;
     // Odskok przerywa cios. Inaczej postać kończyłaby zamach w locie.
     body.atk = 0;
@@ -462,19 +529,19 @@ export function advance(world, body, keys, dt) {
   // zepchnięty w połowie drogi przez cel, przez który właśnie przelatuje.
   if (!(body.dodge > 0)) pushOut(world, body, dt);
 
-  // Kierunek patrzenia trzymamy w ciele, bo cios musi z czegoś wziąć cel, gdy
-  // postać stoi. Podczas ciosu jest zamrożony.
+  // Kierunek patrzenia bierze się **wyłącznie z kursora**, nie z ruchu. To jest
+  // sedno sterowania myszką: postać patrzy tam, gdzie celujesz, więc można biec
+  // w lewo i uderzać w prawo. Podczas ciosu kierunek jest zamrożony — obrót
+  // w połowie zamachu czyta się jak błąd i odbiera uderzeniu wagę.
   if (body.atk > 0) {
     body.facing = body.atkFacing;
     body.flip = body.atkFlip;
-  } else if (body.dodge > 0) {
-    // W odskoku kierunek patrzenia zostaje. Odskakując w tył przed przeciwnikiem
-    // trzeba go dalej mieć na oku — obracanie się plecami czytałoby się jak ucieczka.
-  } else if (Math.hypot(body.vx, body.vy) > 6) {
-    body.facing = Math.abs(body.vx) > Math.abs(body.vy) + 4
-      ? 'side'
-      : (body.vy < 0 ? 'up' : 'down');
-    if (body.facing === 'side') body.flip = body.vx < 0;
+    body.aimName = body.atkAim;
+  } else {
+    const look = aimOf(body);
+    body.facing = look.facing;
+    body.flip = look.flip;
+    body.aimName = look.aim;
   }
 }
 
@@ -486,26 +553,27 @@ export function poseOf(body, previousFacing = 'down') {
   const attacking = (body.atk ?? 0) > 0;
   const moving = Math.hypot(body.vx, body.vy) > 6;
 
-  // Podczas ciosu kierunek jest zamrożony na tym, w który poszedł zamach. Obrót
-  // w połowie zamachu czyta się jak błąd i odbiera uderzeniu wagę.
+  // Podczas ciosu kierunek jest zamrożony na tym, w który poszedł zamach.
   if (attacking && body.atkFacing) {
-    return { moving, attacking, facing: body.atkFacing, flip: Boolean(body.atkFlip) };
+    return {
+      moving,
+      attacking,
+      facing: body.atkFacing,
+      flip: Boolean(body.atkFlip),
+      aim: body.atkAim ?? body.atkFacing,
+    };
   }
 
-  let facing = previousFacing;
-  // Odbicie sprite'a bierzemy z **zapamiętanego** kierunku, nie z prędkości.
-  //
-  // Liczone z `vx < 0` psuło się za każdym razem, gdy postać stanęła: prędkość
-  // spada do zera, warunek przestaje być prawdziwy i postać sama odwracała się
-  // w prawo. Widać to było najwyraźniej po ciosie wyprowadzonym w lewo — zamach
-  // kończył się, postać stawała i natychmiast obracała się w drugą stronę.
-  let flip = body.flip ?? (body.vx < 0);
-
-  if (moving) {
-    if (Math.abs(body.vx) > Math.abs(body.vy) + 4) facing = 'side';
-    else facing = body.vy < 0 ? 'up' : 'down';
-    if (facing === 'side') flip = body.vx < 0;
-  }
-  return { moving, attacking, facing, flip };
+  // Poza ciosem kierunek idzie z kursora. Prędkość nie ma tu już nic do rzeczy —
+  // wcześniej to ona decydowała i dlatego nie dało się biec w jedną stronę,
+  // a patrzeć w drugą.
+  const look = aimOf(body);
+  return {
+    moving,
+    attacking,
+    facing: look.facing ?? previousFacing,
+    flip: look.flip,
+    aim: look.aim,
+  };
 }
 

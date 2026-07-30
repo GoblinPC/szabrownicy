@@ -429,7 +429,12 @@ export function attachGame(sockets, dataDir, variantCount = 6, { guests = false 
           adx: Math.round((me.atkDx ?? 0) * 1000) / 1000,
           ady: Math.round((me.atkDy ?? 0) * 1000) / 1000,
           af: me.atkFacing ?? 'down',
+          ao: me.atkAim ?? me.atkFacing ?? 'down',
           al: me.atkFlip ? 1 : 0,
+          // Kąt celowania wraca do klienta, bo po korekcie odtwarza on komendy
+          // jeszcze niepotwierdzone — a każda z nich zawiera własny kąt. Bez tego
+          // pierwsza odtworzona komenda startowałaby od kąta sprzed korekty.
+          am: Math.round((me.aim ?? Math.PI / 2) * 1000) / 1000,
           // Odskok tak samo jak cios — jest stanem fizyki, więc odtwarzanie
           // komend po korekcie przewijałoby go drugi raz.
           d: Math.round(me.dodge ?? 0),

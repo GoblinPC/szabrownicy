@@ -14,7 +14,7 @@ import { buildFont, drawText, measureText, fontToXml, CHARSET } from './font.js'
 import { packGrid, packShelf, atlasJson } from './atlas.js';
 import { buildTiles, TILE } from './tiles.js';
 import { buildProps } from './props.js';
-import { buildGoblins, VARIANTS } from './goblins.js';
+import { buildGoblins, VARIANTS, ATTACK_AIMS } from './goblins.js';
 import { buildMockup } from './mockup.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -204,7 +204,10 @@ function buildGoblinPreview(font, goblins) {
  */
 function buildAttackPreview(font, goblins) {
   const find = (name) => goblins.find((g) => g.name === name).canvas;
-  const dirs = ['side', 'down', 'up'];
+  // Wszystkie pięć kierunków ciosu, w kolejności od góry do dołu — dwa ukosy
+  // trzeba widzieć **obok** pionów i poziomu, bo cała rzecz polega na tym, czy
+  // przejście między nimi wygląda jak jeden ruch.
+  const dirs = ['up', 'upside', 'side', 'downside', 'down'];
   const stepNames = ['dzgniecie 1', 'dzgniecie 2', 'pchniecie'];
   const labels = ['spoczynek', 'zamach', 'cios', 'wyprow', 'powrot'];
 
@@ -234,7 +237,10 @@ function buildAttackPreview(font, goblins) {
     canvas.hline(left, canvas.width - 7, ground, c('soot', 2));
 
     for (let i = 0; i < labels.length; i++) {
-      const sprite = i === 0 ? find(`g0_${dir}_idle0`) : find(`g0_${dir}_a${step}f${i - 1}`);
+      // Spoczynek bierzemy z **sylwetki ciała**, nie z kierunku ciosu: ukos nie
+      // ma własnej postawy spoczynkowej i mieć nie musi — to ten sam bok.
+      const body = ATTACK_AIMS.find((a) => a.name === dir).body;
+      const sprite = i === 0 ? find(`g0_${body}_idle0`) : find(`g0_${dir}_a${step}f${i - 1}`);
       // Wyśrodkowane i postawione na linii ziemi — tak jak w grze, gdzie
       // zaczepienie sprite'a to (0.5, 1).
       const x = left + i * cellW + Math.round((cellW - sprite.width) / 2);

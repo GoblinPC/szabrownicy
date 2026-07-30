@@ -1,6 +1,6 @@
 // Wczytanie assetów i przygotowanie animacji.
 
-import { ATTACK_STEPS } from '../world/movement.js';
+import { ATTACK_STEPS, AIMS } from '../world/movement.js';
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -55,12 +55,17 @@ export class BootScene extends Phaser.Scene {
         // Czasy bierzemy wprost z faz w `world/movement.js`, po jednym zestawie na
         // każdy cios łańcucha. Dzięki temu **animacja nie może rozjechać się
         // z fizyką**: gdy zmieni się czas zamachu, obraz zmienia się razem z nim.
+      }
+
+      // Ciosów jest pięć kierunków, a sylwetek cztery: ukos to ta sama postać
+      // z bokiem, tylko z drzewcem obróconym. Dlatego osobna pętla.
+      for (const aim of AIMS) {
         ATTACK_STEPS.forEach((step, index) => {
           this.anims.create({
-            key: `g${variant.id}_${dir}_atk${index}`,
+            key: `g${variant.id}_${aim}_atk${index}`,
             frames: step.phases.map((phase, frame) => ({
               key: 'goblins',
-              frame: `g${variant.id}_${dir}_a${index}f${frame}`,
+              frame: `g${variant.id}_${aim}_a${index}f${frame}`,
               duration: phase.ms,
             })),
             repeat: 0,
@@ -70,7 +75,7 @@ export class BootScene extends Phaser.Scene {
     }
 
     // Ślad cięcia: startuje razem z klatką uderzenia, więc jest krótszy niż cios.
-    for (const dir of ['down', 'up', 'side']) {
+    for (const dir of AIMS) {
       this.anims.create({
         key: `slash_${dir}`,
         frames: [0, 1, 2].map((i) => ({ key: 'goblins', frame: `slash_${dir}${i}` })),

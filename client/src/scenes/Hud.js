@@ -106,7 +106,7 @@ export class HudScene extends Phaser.Scene {
     this.createRoster();
     this.createDiagnostics();
 
-    this.setHint('WASD — ruch    SPACJA — cios    CTRL — odskok    Shift — bieg    Enter — czat    TAB — gracze');
+    this.setHint('WASD — ruch    MYSZ — cios    SPACJA — odskok    Shift — bieg    Enter — czat    TAB — gracze');
     this.refreshAudioLabel();
     audio.onChange(() => this.refreshAudioLabel());
 
@@ -439,8 +439,8 @@ export class HudScene extends Phaser.Scene {
   /** Powitanie po wejściu — inne dla nowego konta i dla powrotu. */
   setHello(name, fresh) {
     this.setHint(fresh
-      ? `Witaj, ${name}.    WASD — ruch    SPACJA — cios    CTRL — odskok    Enter — czat`
-      : `Witaj ponownie, ${name}.    WASD — ruch    SPACJA — cios    CTRL — odskok    Enter — czat`);
+      ? `Witaj, ${name}.    WASD — ruch    MYSZ — cios    SPACJA — odskok    Enter — czat`
+      : `Witaj ponownie, ${name}.    WASD — ruch    MYSZ — cios    SPACJA — odskok    Enter — czat`);
   }
 
   setNet(text) {

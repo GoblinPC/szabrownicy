@@ -256,7 +256,7 @@ export class Game {
 
     for (const command of commands.slice(0, MAX_PER_TICK * 2)) {
       if (!Array.isArray(command) || command.length < 3) continue;
-      const [seq, keys, ms] = command;
+      const [seq, keys, ms, turn] = command;
       if (!Number.isInteger(seq) || !Number.isInteger(keys) || !Number.isFinite(ms)) continue;
       if (seq <= player.seq) continue;                 // powtórka albo spóźnialska
       if (player.queue.length && seq <= player.queue[player.queue.length - 1][0]) continue;
@@ -264,7 +264,15 @@ export class Game {
       // Maska bierze się z `movement.js`, a nie jest tu wpisana liczbą. Wpisana na
       // sztywno (było `31`) cicho ucinała każdy nowo dodany klawisz: serwer go nie
       // widział, klient tak, i obie strony rozjeżdżały się bez śladu w logu.
-      player.queue.push([seq, keys & KEY_MASK, Math.max(0, Math.min(MAX_COMMAND_DT * 1000, ms))]);
+      // Kąt celowania obcinany do bajtu. Brak pola (stary klient) daje `0`, czyli
+      // patrzenie w prawo — nie wywala symulacji, tylko wygląda dziwnie, a wersja
+      // klienta i tak siedzi w logu.
+      player.queue.push([
+        seq,
+        keys & KEY_MASK,
+        Math.max(0, Math.min(MAX_COMMAND_DT * 1000, ms)),
+        Number.isFinite(turn) ? Math.round(turn) & 255 : 0,
+      ]);
     }
 
     // Gdy kolejka się przepełnia (bardzo słabe łącze), odrzucamy najstarsze —
@@ -282,7 +290,11 @@ export class Game {
 
       let handled = 0;
       while (player.queue.length && handled < MAX_PER_TICK) {
-        const [seq, keys, ms] = player.queue.shift();
+        const [seq, keys, ms, turn] = player.queue.shift();
+        // Kąt celowania z klienta. Zakres jest zamknięty (0–255 ósemek stopnia),
+        // więc podrobiona wartość nie może dać niczego poza normalnym kierunkiem —
+        // a kierunek i tak wybiera gracz.
+        const aim = Number.isFinite(turn) ? ((turn & 255) / 256) * Math.PI * 2 : null;
         let dt = Math.min(ms / 1000, MAX_COMMAND_DT);
         // Licznik diagnostyczny: ile razy limit czasu obciął ruch. Przy uczciwym
         // kliencie powinno to być zero — jeśli rośnie, to zabezpieczenie dusi
@@ -294,13 +306,14 @@ export class Game {
         player.budget -= dt;
         player.seq = seq;
         handled++;
-        if (dt > 0) advance(this.world, player, keys, dt);
+        if (dt > 0) advance(this.world, player, keys, dt, aim);
       }
       // Ile komend czeka w kolejce — jeśli stale rośnie, serwer nie nadąża.
       player.backlog = player.queue.length;
 
       const pose = poseOf(player, player.facing);
       player.facing = pose.facing;
+      player.aimName = pose.aim;
       player.moving = pose.moving;
       player.flip = pose.flip;
 
@@ -332,6 +345,9 @@ export class Game {
       x: Math.round(player.x * 2) / 2,
       y: Math.round(player.y * 2) / 2,
       f: player.facing,
+      // Kierunek ciosu osobno od sylwetki: ukos używa tego samego boku, więc
+      // z samego `f` nie dałoby się poznać, że ktoś dźga na ukos.
+      k: player.aimName ?? player.facing,
       m: player.moving ? 1 : 0,
       l: player.flip ? 1 : 0,
       // Znacznik ciosu. Odbiorca porównuje go z poprzednim i po zmianie odpala

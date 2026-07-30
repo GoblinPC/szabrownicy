@@ -182,7 +182,7 @@ const SLASH_W = 96;
 const SLASH_C = SLASH_W / 2;
 
 // Kierunek pchnięcia. Bok rysujemy w prawo i odbijamy lustrzanie w grze.
-const SLASH_AIM = { side: 0, down: 90, up: -90 };
+const SLASH_AIM = { side: 0, down: 90, up: -90, downside: 45, upside: -45 };
 
 /**
  * Trzy klatki śladu: `[od, do, grubość u nasady]` w pikselach od środka postaci.
@@ -203,6 +203,32 @@ export const SLASH_FRAMES = SLASH_SWEEPS.length;
 
 export const ATTACK_STEPS = ATTACK_POSES.side.length;
 export const ATTACK_FRAMES = ATTACK_POSES.side[0].length;
+
+/**
+ * Kierunki ciosu — **osiem, ale sylwetek ciała dalej cztery**.
+ *
+ * To jest cała sztuczka z celowaniem myszką: włócznia powstaje z trzech liczb
+ * (garść, kąt, zasięg), więc cios na ukos to **inny kąt na tej samej sylwetce**,
+ * a nie nowy rysunek postaci. Ciała nie da się tak potraktować — jest wypisane
+ * ręcznie, wiersz po wierszu, i osiem kompletów oznaczałoby osiem kompletów przy
+ * każdym przyszłym elemencie ekwipunku.
+ *
+ * Lewa strona powstaje z odbicia lustrzanego, więc pięć wpisów daje osiem
+ * kierunków w grze.
+ *
+ * `reach` to mnożnik zasięgu, a nie ozdoba:
+ * - **w górę i w dół włócznia jest skrócona perspektywą** — celuje w kamerę;
+ * - **ukos w dół musi być najkrótszy**, bo grot schodzi poniżej stóp, a niżej
+ *   niż stopy nie ma klatki: zaczepienie sprite'a to (0.5, 1), więc miejsce
+ *   dodane u dołu przesunęłoby całą postać nad ziemię. U góry jest za darmo.
+ */
+export const ATTACK_AIMS = [
+  { name: 'up', body: 'up', turn: 0, reach: 1 },
+  { name: 'upside', body: 'side', turn: -46, reach: 0.86 },
+  { name: 'side', body: 'side', turn: 0, reach: 1 },
+  { name: 'downside', body: 'side', turn: 46, reach: 0.6 },
+  { name: 'down', body: 'down', turn: 0, reach: 1 },
+];
 
 /**
  * Poza dla danej klatki. W widoku z przodu i tyłu nogi unoszą się w pionie,
@@ -610,8 +636,16 @@ function drawBody(variant, dir, kind, frame, p) {
   return t.outline(OUTLINE);
 }
 
-function drawFrame(variant, dir, kind, frame, step = 0) {
+/**
+ * @param dir sylwetka ciała: `down`, `up` albo `side`
+ * @param aim kierunek ciosu z `ATTACK_AIMS` — obraca samo drzewce i skraca zasięg
+ */
+function drawFrame(variant, dir, kind, frame, step = 0, aim = null) {
   const p = pose(kind, frame, dir, step);
+  if (aim) {
+    p.angle += aim.turn;
+    p.reach = Math.round(p.reach * aim.reach);
+  }
   const body = drawBody(variant, dir, kind, frame, p);
   if (kind !== 'attack') return body;
 
@@ -655,12 +689,17 @@ export function buildGoblins() {
       for (let f = 0; f < RUN_FRAMES; f++) {
         entries.push({ name: `g${variant.id}_${dir}_run${f}`, canvas: drawFrame(variant, dir, 'run', f) });
       }
-      // Trzy ciosy łańcucha po cztery klatki. Nazwa: `a<ogniwo>f<klatka>`.
+    }
+
+    // Ciosy mają własne kierunki, bo jest ich więcej niż sylwetek: ukos powstaje
+    // z tej samej sylwetki bocznej, tylko z drzewcem obróconym o 46 stopni.
+    // Nazwa: `a<ogniwo>f<klatka>`.
+    for (const aim of ATTACK_AIMS) {
       for (let s = 0; s < ATTACK_STEPS; s++) {
         for (let f = 0; f < ATTACK_FRAMES; f++) {
           entries.push({
-            name: `g${variant.id}_${dir}_a${s}f${f}`,
-            canvas: drawFrame(variant, dir, 'attack', f, s),
+            name: `g${variant.id}_${aim.name}_a${s}f${f}`,
+            canvas: drawFrame(variant, aim.body, 'attack', f, s, aim),
           });
         }
       }
@@ -669,9 +708,9 @@ export function buildGoblins() {
 
   // Ślad cięcia jest wspólny dla wszystkich wariantów postaci — to efekt broni,
   // nie części ciała.
-  for (const dir of DIRECTIONS) {
+  for (const aim of ATTACK_AIMS) {
     for (let f = 0; f < SLASH_FRAMES; f++) {
-      entries.push({ name: `slash_${dir}${f}`, canvas: drawSlash(dir, f) });
+      entries.push({ name: `slash_${aim.name}${f}`, canvas: drawSlash(aim.name, f) });
     }
   }
 

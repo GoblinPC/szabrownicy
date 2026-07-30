@@ -696,10 +696,10 @@ export class ForgeScene extends Phaser.Scene {
       adown: Phaser.Input.Keyboard.KeyCodes.DOWN,
       aleft: Phaser.Input.Keyboard.KeyCodes.LEFT,
       aright: Phaser.Input.Keyboard.KeyCodes.RIGHT,
-      attack: Phaser.Input.Keyboard.KeyCodes.SPACE,
-      // CTRL, nie C: unik jest ruchem, więc chce być pod kciukiem obok WASD,
-      // a nie pod palcem, który musi zjechać z klawiszy chodzenia.
-      dodge: Phaser.Input.Keyboard.KeyCodes.CTRL,
+      // Spacja to unik, nie cios. Cios przeszedł pod lewy przycisk myszy razem
+      // z celowaniem — spacja jest najwygodniejszym klawiszem, jaki został,
+      // a przy okazji znika problem `Ctrl+W`, którego strona nie może zablokować.
+      dodge: Phaser.Input.Keyboard.KeyCodes.SPACE,
       // Drugi argument to przechwytywanie klawiszy. MUSI być `false`.
       //
       // Przy domyślnym `true` Phaser wywołuje `preventDefault()` na każdym
@@ -709,6 +709,28 @@ export class ForgeScene extends Phaser.Scene {
       // czat. Kadr jest nieprzewijalny (`overflow: hidden`), więc strzałki nie
       // mają czego przewinąć i nie ma po co ich przechwytywać.
     }, false);
+
+    // Kursor. Trzymamy **wskazanie w świecie**, a nie na ekranie, bo kamera się
+    // porusza: gdy postać biegnie, a mysz stoi, cel pod kursorem zostaje ten sam
+    // tylko wtedy, gdy przeliczymy go co klatkę.
+    this.pointer = this.input.activePointer;
+    this.input.mouse?.disableContextMenu();
+    this.input.on('pointerdown', (pointer) => {
+      if (this.isTyping()) return;
+      if (pointer.leftButtonDown()) this.attackUntil = this.time.now + ATTACK_BUFFER_MS;
+    });
+  }
+
+  /**
+   * Kąt od postaci do kursora, w radianach.
+   *
+   * Liczony od **tułowia**, nie od stóp: kursor prowadzi się na wysokości ciała
+   * przeciwnika, a przy zaczepieniu sprite'a u dołu różnica dwunastu pikseli
+   * przekłada się przy bliskim celu na kilkanaście stopni.
+   */
+  aimAngle() {
+    const point = this.cameras.main.getWorldPoint(this.pointer.x, this.pointer.y);
+    return Math.atan2(point.y - (this.py - 12), point.x - this.px);
   }
 
   /**
@@ -815,10 +837,17 @@ export class ForgeScene extends Phaser.Scene {
       // więc uderzenie wstukane w trakcie poprzedniego ciosu nie przepada — odpala
       // się w chwili, w której poprzedni się kończy. Bez tego szybkie młócenie gubi
       // co drugie uderzenie i sterowanie czuć jak zacinające się.
-      if (this.keys.attack.isDown) this.attackUntil = time + ATTACK_BUFFER_MS;
+      // Trzymany lewy przycisk bije dalej — pojedyncze kliknięcia dokłada
+      // `pointerdown`, żeby najkrótsze tapnięcie też się liczyło.
+      if (this.pointer.leftButtonDown()) this.attackUntil = time + ATTACK_BUFFER_MS;
       // Odskok też buforowany: wciśnięty w trakcie ciosu odpala się, gdy tylko
       // wolno — czyli w ostatniej fazie zamachu, przerywając ją.
       if (this.keys.dodge.isDown) this.dodgeUntil = time + ATTACK_BUFFER_MS;
+
+      // Kąt celowania przekazujemy warstwie sieciowej, a ona dokłada go do każdej
+      // komendy. Poza pisaniem zostaje ostatni — postać nie ma się obracać za
+      // kursorem, gdy gracz sięga myszą do suwaka głośności.
+      this.net.aim = this.aimAngle();
     }
     if (this.attackUntil > time) keys |= KEY_ATTACK;
     if (this.dodgeUntil > time) keys |= KEY_DODGE;
@@ -855,7 +884,8 @@ export class ForgeScene extends Phaser.Scene {
         .setVisible(false);
     }
 
-    owner.slash.setFlipX(facing === 'side' ? flip : false);
+    // Odbijamy ślad także na ukosach — one też mają lewą i prawą stronę.
+    owner.slash.setFlipX(facing === 'up' || facing === 'down' ? false : flip);
     owner.slash.setFlipY(false);
 
     // Ślad rozciągamy dokładnie tak, jak sięga dany cios. Rysunek ma 46 px
@@ -893,8 +923,12 @@ export class ForgeScene extends Phaser.Scene {
     const moving = pose.moving;
     this.facing = pose.facing;
 
-    const key = `g${this.variant}_${this.facing}_`
-      + (pose.attacking ? 'atk' : (moving ? 'run' : 'idle'));
+    // Cios sięga po **kierunek celowania** (pięć nazw, w tym dwa ukosy), a chód
+    // i spoczynek po sylwetkę ciała (trzy). Ukos nie ma własnej postawy — i mieć
+    // nie musi, bo to ten sam bok, tylko z drzewcem pod innym kątem.
+    const key = pose.attacking
+      ? `g${this.variant}_${pose.aim}_atk`
+      : `g${this.variant}_${this.facing}_` + (moving ? 'run' : 'idle');
 
     // Animację ciosu odpalamy od nowa przy każdym **nowym znaczniku**, także gdy
     // drugie uderzenie idzie w tę samą stronę. Porównywanie samej nazwy animacji
@@ -907,7 +941,7 @@ export class ForgeScene extends Phaser.Scene {
       this.shownAtkSeq = seq;
       const step = attackStep(body);
       this.player.play(`${key}${step}`);
-      this.spawnSlash(this, this.facing, pose.flip, step);
+      this.spawnSlash(this, pose.aim, pose.flip, step);
     } else if (!pose.attacking && this.player.anims.currentAnim?.key !== key) {
       this.player.play(key);
     }
@@ -994,12 +1028,16 @@ export class ForgeScene extends Phaser.Scene {
       const struck = seq !== (other.atkSeq ?? 0);
       if (struck) other.atkSeq = seq;
 
-      const key = `g${sample.variant}_${sample.f}_`
-        + (struck ? 'atk' : (sample.m ? 'run' : 'idle'));
+      // Cios po kierunku celowania, chód i spoczynek po sylwetce — tak samo jak
+      // u własnej postaci.
+      const aim = sample.k ?? sample.f;
+      const key = struck
+        ? `g${sample.variant}_${aim}_atk`
+        : `g${sample.variant}_${sample.f}_` + (sample.m ? 'run' : 'idle');
 
       if (struck) {
         other.sprite.play(key);
-        this.spawnSlash(other, sample.f, Boolean(sample.l));
+        this.spawnSlash(other, aim, Boolean(sample.l));
       } else if (!other.sprite.anims.isPlaying
         || !other.sprite.anims.currentAnim?.key.endsWith('_atk')) {
         // Animacji ciosu nie przerywamy w połowie — dopiero gdy dobiegnie końca,
