@@ -107,7 +107,7 @@ export class HudScene extends Phaser.Scene {
     this.createDiagnostics();
     this.createHealth();
 
-    this.setHint('WASD — ruch    MYSZ — cios    SPACJA — odskok    Shift — bieg    Enter — czat    TAB — gracze');
+    this.setHint('WASD — ruch    MYSZ — cios    SPACJA — odskok    Shift — bieg    Enter — czat    F1 — panel');
     this.refreshAudioLabel();
     audio.onChange(() => this.refreshAudioLabel());
 
@@ -290,21 +290,13 @@ export class HudScene extends Phaser.Scene {
     this.rosterRows = [];
     this.rosterVisible = false;
 
-    this.input.keyboard.on('keydown-TAB', (event) => {
-      if (typing()) return;
-      // Bez tego TAB przenosi zaznaczenie na przycisk suwaków i gracz traci
-      // sterowanie postacią.
-      event.preventDefault();
-      if (this.rosterSource) this.rosterVisible = true;
-    });
-    this.input.keyboard.on('keyup-TAB', (event) => {
-      if (typing()) return;
-      event.preventDefault();
-      this.hideRoster();
-    });
-    // Zdjęta ostrość okna zjada `keyup` — bez tego tabela zostawałaby na ekranie
-    // po przełączeniu karty z wciśniętym TAB-em.
-    this.game.events.on(Phaser.Core.Events.BLUR, () => this.hideRoster());
+    // Lista graczy chodzi razem z panelem diagnostycznym pod `F1`, a nie pod
+    // `TAB`-em. Powód jest prosty: to jest przyrząd dla prowadzącego serwer, nie
+    // element rozgrywki — a `TAB` jest potrzebny plecakowi, do którego sięga się
+    // sto razy częściej niż do listy obecnych.
+    //
+    // Samego przełączania nie ma tutaj: robi je `createDiagnostics()`, żeby oba
+    // panele zapalały się i gasły jednym warunkiem i nie dało się ich rozjechać.
   }
 
   /** Skąd brać listę graczy. Pytamy dopiero, gdy tabela jest na ekranie. */
@@ -413,6 +405,9 @@ export class HudScene extends Phaser.Scene {
       const on = !this.diag.visible;
       this.diag.setVisible(on);
       this.diagPanel.setVisible(on);
+      // Lista graczy należy do tego samego przyrządu, więc zapala się razem z nim.
+      this.rosterVisible = on && Boolean(this.rosterSource);
+      if (!on) this.hideRoster();
       // Suwak pory dnia to element HTML, więc mieszka w scenie świata — stąd
       // przełączanie przez scenę, a nie tutaj.
       this.scene.get('Forge')?.setDiagVisible(on);

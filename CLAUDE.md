@@ -493,6 +493,12 @@ Ten sam VPS, na którym stoją Goblin i Nibylandia. Sprawdzone połączeniem 202
 z mapy — portali nie będzie), studnia jest mętna, kilka drobnych obiektów to poziom
 wypełniacza.
 
+**Odskok potrzebuje własnych klatek — najlepiej turlania.** Dziś to przesuwana
+sylwetka z bladym śladem za sobą i widać, że to ta sama postać przemieszczona,
+a nie ruch ciała. Turlanie jest z tych trzech najtrudniejsze do narysowania
+(goblin musi się zwinąć i obrócić, a sylwetka jest wypisana ręcznie), ale to ono
+daje efekt. Ustalone 2026-07-30, świadomie odłożone: walka ma najpierw działać.
+
 **Cios do góry idzie w bok, nie w przód.** Postać odwrócona plecami wyprowadza cios
 „w głąb ekranu", a na to nie ma miejsca: nad głową zostaje 5 pikseli w klatce wysokiej
 na 27, bo wiersze 0–5 to zapas na nakrycie głowy. Ostrze nie miało gdzie pójść w górę

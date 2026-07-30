@@ -15,6 +15,7 @@ import { packGrid, packShelf, atlasJson } from './atlas.js';
 import { buildTiles, TILE } from './tiles.js';
 import { buildProps } from './props.js';
 import { buildGoblins, VARIANTS, ATTACK_AIMS } from './goblins.js';
+import { buildUi } from './ui.js';
 import { buildMockup } from './mockup.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -289,6 +290,18 @@ function main() {
   written.push(writeText(
     path.join(GEN_DIR, 'props.json'),
     atlasJson(propAtlas.frames, 'props.png', propAtlas.canvas)
+  ));
+
+  // Interfejs ma **własny atlas**, a nie miejsce w atlasie obiektów. Powód jest
+  // praktyczny: ramki i znaczniki zmieniają się przy każdej zmianie układu HUD-u,
+  // a props i tiles nie — trzymane razem, każda poprawka panelu przepakowywałaby
+  // cały świat i mieszała w commitach.
+  const ui = buildUi();
+  const uiAtlas = packShelf(ui, { maxWidth: 128 });
+  written.push(writePng(path.join(GEN_DIR, 'ui.png'), uiAtlas.canvas));
+  written.push(writeText(
+    path.join(GEN_DIR, 'ui.json'),
+    atlasJson(uiAtlas.frames, 'ui.png', uiAtlas.canvas)
   ));
 
   const goblins = buildGoblins();
