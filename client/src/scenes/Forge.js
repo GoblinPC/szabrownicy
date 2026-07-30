@@ -1060,7 +1060,9 @@ export class ForgeScene extends Phaser.Scene {
       this.others.delete(id);
     }
 
-    this.scene.get('Hud')?.setDiagnostics(this.net.stats());
+    const hud = this.scene.get('Hud');
+    hud?.setDiagnostics(this.net.stats());
+    hud?.setHealth(this.net.hp ?? 0, this.net.maxHp ?? 100, this.net.safe);
 
     // Plakietki rysuje HUD, bo jego kamera nie jest powiększana — dzięki temu
     // nick zostaje mały i ostry niezależnie od zoomu świata.

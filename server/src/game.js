@@ -8,7 +8,9 @@
 //
 // Świat i kolizje pochodzą z tego samego pliku co u klienta.
 
-import { buildWorld, SPAWN, WORLD_W, WORLD_H, TRAINING_DUMMY } from '../../client/src/world/forge.js';
+import {
+  buildWorld, SPAWN, WORLD_W, WORLD_H, TRAINING_DUMMY, BUILDING_PX,
+} from '../../client/src/world/forge.js';
 import {
   advance, poseOf, KEY_MASK, inAttackArc, ATTACK_STEPS,
 } from '../../client/src/world/movement.js';
@@ -59,6 +61,35 @@ const KNOCKBACK_DAMPING = 13;
 const HOME_PULL = 40;
 const RESPAWN_MS = 4000;
 
+// --- Gracz: życie, śmierć, strefa bezpieczna ----------------------------------
+//
+// Bez tego nie ma pętli gry: wychodzi się po surowce dlatego, że można ich nie
+// donieść. Wszystko liczy serwer — kto ile ma życia i kto kogo trafił — bo to
+// jest survival PvP i jest o co oszukiwać.
+
+const PLAYER_HP = 100;
+
+// Ile trwa leżenie po śmierci. Krótko, bo to jeszcze nie jest gra, w której
+// śmierć ma boleć czasem — ma boleć stratą tego, co się niosło.
+const DEATH_MS = 3000;
+
+// Regeneracja: powolna i **tylko poza walką**. Powolna, żeby wracanie do kuźni
+// miało sens; przerywana ciosem, żeby nie dało się przeczekać wymiany ciosów.
+const REGEN_PER_SEC = 3.5;
+const REGEN_DELAY_MS = 6000;
+
+/**
+ * Czy punkt leży w strefie bezpiecznej.
+ *
+ * Dziś to wnętrze kuźni i to jest **cała definicja** — jedna reguła, z której sam
+ * z siebie bierze się napięcie przy bramie: krok w tę stronę i można cię zabić.
+ * Docelowo strefa obejmie też plac, gdy plac przestanie być całym światem.
+ */
+export function inSafeZone(x, y) {
+  return x >= BUILDING_PX.x && x <= BUILDING_PX.x + BUILDING_PX.w
+    && y >= BUILDING_PX.y && y <= BUILDING_PX.y + BUILDING_PX.h;
+}
+
 // Worek do bicia ma **wytrzymywać** — służy do strojenia odczucia ciosu, a nie
 // do zabijania. Pięćdziesiąt ciosów, więc przy testowaniu nie pada pod ręką.
 const DUMMY_HP = 600;
@@ -72,6 +103,8 @@ function makeDummy(id) {
     // Promień celu. Trafienie liczy się do środka, a gracz celuje w sylwetkę —
     // bez tego cios wizualnie dotykał kukły, a mimo to nie wchodził.
     radius: 9,
+    // Wysokość tułowia nad stopami — punkt, w który mierzy cios.
+    torso: 16,
     x: TRAINING_DUMMY.x,
     y: TRAINING_DUMMY.y,
     homeX: TRAINING_DUMMY.x,
@@ -107,14 +140,15 @@ export class Game {
    * Geometria siedzi w `movement.js`, żeby klient mógł jej użyć do rysowania
    * podpowiedzi zasięgu tym samym kodem, którym serwer liczy trafienia.
    */
-  reaches(player, mob) {
-    // Liczone od tułowia do środka celu, a nie od stóp do stóp: przy stopach
-    // wszystko jest na tej samej wysokości i cios sięgałby za daleko w pionie.
+  reaches(player, target) {
+    // Liczone od tułowia do tułowia, a nie od stóp do stóp: przy stopach wszystko
+    // jest na tej samej wysokości i cios sięgałby za daleko w pionie. Wysokość
+    // tułowia jest cechą celu (`torso`), bo kukła i goblin są różnej wielkości.
     return inAttackArc(
       player,
-      mob.x - player.x,
-      (mob.y - 16) - (player.y - 12),
-      mob.radius ?? 0,
+      target.x - player.x,
+      (target.y - (target.torso ?? 12)) - (player.y - 12),
+      target.radius ?? 0,
     );
   }
 
@@ -135,6 +169,9 @@ export class Game {
       // tyle co lekkie cięcie i odrzuca dwa razy mocniej.
       const step = ATTACK_STEPS[player.atkStrikeStep ?? 0] ?? ATTACK_STEPS[0];
 
+      // Martwy nie bije.
+      if (player.hp <= 0) continue;
+
       for (const mob of this.mobs.values()) {
         if (mob.hp <= 0) continue;
         if (!this.reaches(player, mob)) continue;
@@ -148,6 +185,59 @@ export class Game {
         mob.hitDy = player.atkDy;
         mob.hitSeq++;
         if (mob.hp === 0) mob.deadUntil = now + RESPAWN_MS;
+      }
+
+      // Gracz na gracza.
+      //
+      // Strefę sprawdzamy po **obu stronach**: nie wolno bić stojąc w kuźni ani
+      // bić kogoś, kto w niej stoi. Jeden warunek zamiast dwóch dawałby wygodne
+      // nadużycie — wystarczyłoby stanąć w bramie i wyciągać ludzi ciosami.
+      if (inSafeZone(player.x, player.y)) continue;
+
+      for (const target of this.players.values()) {
+        if (target === player || target.hp <= 0) continue;
+        if (inSafeZone(target.x, target.y)) continue;
+        if (!this.reaches(player, target)) continue;
+
+        this.hurt(target, step.damage, player.atkDx, player.atkDy, now);
+        if (target.hp === 0) player.kills++;
+      }
+    }
+  }
+
+  /** Jedno oberwanie: punkty, znacznik dla klienta i ewentualna śmierć. */
+  hurt(target, damage, dx, dy, now) {
+    target.hp = Math.max(0, target.hp - damage);
+    target.hurtDx = dx;
+    target.hurtDy = dy;
+    target.hurtSeq++;
+    target.lastHurtAt = now;
+
+    if (target.hp === 0) {
+      target.deadUntil = now + DEATH_MS;
+      target.deaths++;
+      // Cios i odskok gasną razem z życiem — inaczej trup dokończyłby zamach.
+      target.atk = 0;
+      target.dodge = 0;
+      target.vx = 0;
+      target.vy = 0;
+    }
+  }
+
+  /** Leżenie, wstawanie i powolna regeneracja poza walką. */
+  stepPlayers(now, dt) {
+    for (const player of this.players.values()) {
+      if (player.hp <= 0) {
+        if (now < player.deadUntil) continue;
+        player.hp = player.maxHp;
+        player.x = SPAWN.x + (Math.random() * 24 - 12);
+        player.y = SPAWN.y + (Math.random() * 16 - 8);
+        player.hurtSeq++;   // po tym klient pozna, że gracz wstał
+        continue;
+      }
+
+      if (player.hp < player.maxHp && now - player.lastHurtAt > REGEN_DELAY_MS) {
+        player.hp = Math.min(player.maxHp, player.hp + REGEN_PER_SEC * dt);
       }
     }
   }
@@ -236,6 +326,23 @@ export class Game {
       facing: 'down',
       moving: false,
       flip: false,
+      hp: PLAYER_HP,
+      maxHp: PLAYER_HP,
+      // Cel wielkości goblina: sylwetka ma jakieś 12 px szerokości, więc połowa
+      // z zapasem. Bez promienia cios trzeba by wyprowadzić dokładnie w oś
+      // przeciwnika, a gracz celuje w to, co widzi.
+      radius: 6,
+      torso: 12,
+      // Znacznik oberwania — rośnie z każdym trafieniem. Klient po nim poznaje,
+      // że padł **nowy** cios, tak samo jak przy celach do bicia. Sam spadek
+      // punktów by nie wystarczył: dwa trafienia mogą wypaść między migawkami.
+      hurtSeq: 0,
+      hurtDx: 0,
+      hurtDy: 0,
+      deadUntil: 0,
+      lastHurtAt: 0,
+      kills: 0,
+      deaths: 0,
     };
     this.players.set(id, player);
     return player;
@@ -306,7 +413,10 @@ export class Game {
         player.budget -= dt;
         player.seq = seq;
         handled++;
-        if (dt > 0) advance(this.world, player, keys, dt, aim);
+        // Komendy trupa **odliczamy, ale nie wykonujemy**: numer musi rosnąć,
+        // żeby klient dostał potwierdzenie i nie odtwarzał ich w nieskończoność,
+        // a leżący ma leżeć.
+        if (dt > 0 && player.hp > 0) advance(this.world, player, keys, dt, aim);
       }
       // Ile komend czeka w kolejce — jeśli stale rośnie, serwer nie nadąża.
       player.backlog = player.queue.length;
@@ -334,6 +444,9 @@ export class Game {
     const now = Date.now();
     this.resolveHits(now);
     this.stepMobs(now, TICK_MS / 1000);
+    // Po trafieniach, nie przed: kto zginął w tym tiku, ma zacząć leżeć od razu,
+    // a nie dopiero za pięćdziesiąt milisekund.
+    this.stepPlayers(now, TICK_MS / 1000);
   }
 
   /** Opis gracza dla innych — bez prędkości, bo jej nie potrzebują do rysowania. */
@@ -354,6 +467,15 @@ export class Game {
       // animację — dzięki temu nowe uderzenie jest rozpoznawalne nawet wtedy, gdy
       // padło zaraz po poprzednim i migawki nie złapały przerwy między nimi.
       s: player.atkSeq ?? 0,
+      // Życie jest jawne dla wszystkich: pasek nad głową rannego przeciwnika to
+      // informacja, na której stoi decyzja „gonić czy odpuścić".
+      h: Math.round(player.hp),
+      mh: player.maxHp,
+      // Znacznik oberwania — po nim klient odpala błysk i krew, tak samo jak
+      // przy celach do bicia.
+      hs: player.hurtSeq ?? 0,
+      hx: Math.round((player.hurtDx ?? 0) * 100) / 100,
+      hy: Math.round((player.hurtDy ?? 0) * 100) / 100,
       // Odznaka administratora — jawna dla wszystkich, żeby nie dało się
       // podszyć pod obsługę.
       a: player.admin ? 1 : 0,

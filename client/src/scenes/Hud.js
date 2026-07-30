@@ -105,6 +105,7 @@ export class HudScene extends Phaser.Scene {
     this.createChat();
     this.createRoster();
     this.createDiagnostics();
+    this.createHealth();
 
     this.setHint('WASD — ruch    MYSZ — cios    SPACJA — odskok    Shift — bieg    Enter — czat    TAB — gracze');
     this.refreshAudioLabel();
@@ -530,10 +531,75 @@ export class HudScene extends Phaser.Scene {
     }
   }
 
-  update(time) {
+  // --- Pasek życia ------------------------------------------------------------
+
+  /**
+   * Pasek zdrowia własnej postaci.
+   *
+   * Rysowany prostokątami, nie sprite'em, bo ma **spadać płynnie**, a nie skakać
+   * co migawkę. Za czerwoną warstwą idzie druga, jasna, która dogania ją z
+   * opóźnieniem — po niej widać, ile życia właśnie ubyło, a nie tylko ile zostało.
+   * Bez tego mocny cios i lekkie draśnięcie wyglądają tak samo.
+   */
+  createHealth() {
+    this.health = this.add.graphics().setDepth(DEPTH.plate);
+    this.healthShown = 1;   // ułamek, do którego dojeżdża pasek
+    this.healthGhost = 1;   // jasny ślad po świeżej stracie
+    this.healthValue = 1;
+  }
+
+  setHealth(hp, maxHp, safe) {
+    this.healthValue = maxHp > 0 ? Math.max(0, Math.min(1, hp / maxHp)) : 0;
+    this.healthText = `${Math.max(0, Math.round(hp))}/${Math.round(maxHp)}`;
+    this.healthSafe = Boolean(safe);
+  }
+
+  updateHealth(delta) {
+    if (!this.health) return;
+    const dt = Math.min(delta, 60) / 1000;
+
+    // Czerwony pasek dogania szybko, jasny ślad wolno — stąd bierze się „błysk"
+    // pokazujący wielkość ciosu.
+    this.healthShown += (this.healthValue - this.healthShown) * Math.min(1, dt * 14);
+    this.healthGhost += (this.healthShown - this.healthGhost) * Math.min(1, dt * 2.6);
+    if (this.healthGhost < this.healthShown) this.healthGhost = this.healthShown;
+
+    const W = 168;
+    const H = 9;
+    const x = 10;
+    const y = this.scale.height - 88;
+
+    this.health.clear();
+    this.health.fillStyle(PANEL, 0.85);
+    this.health.fillRect(x - 1, y - 1, W + 2, H + 2);
+    this.health.fillStyle(0x2a1c14, 1);
+    this.health.fillRect(x, y, W, H);
+    this.health.fillStyle(0xffe08a, 0.55);
+    this.health.fillRect(x, y, Math.round(W * this.healthGhost), H);
+    // Zieleń przy pełnym życiu, żar przy resztkach — kolor sam ostrzega.
+    const low = this.healthShown < 0.3;
+    this.health.fillStyle(low ? 0xc43a0d : 0x66913f, 1);
+    this.health.fillRect(x, y, Math.round(W * this.healthShown), H);
+    this.health.lineStyle(1, BORDER, 1);
+    this.health.strokeRect(x - 1, y - 1, W + 2, H + 2);
+
+    if (!this.healthLabel) {
+      this.healthLabel = this.add.bitmapText(0, 0, 'goblin', '', 11)
+        .setDepth(DEPTH.plate + 1)
+        .setTint(TEXT);
+    }
+    this.healthLabel.setPosition(x + W + 6, y - 1);
+    this.healthLabel.setText(
+      `${this.healthText ?? ''}${this.healthSafe ? '   bezpiecznie' : ''}`
+    );
+    this.healthLabel.setTint(this.healthSafe ? 0x66913f : TEXT);
+  }
+
+  update(time, delta) {
     this.updateBubbles(time);
     this.updateLog(time);
     this.updateRoster(time);
+    this.updateHealth(delta ?? 16);
   }
 
   reposition() {

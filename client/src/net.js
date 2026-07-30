@@ -371,6 +371,16 @@ export class Net {
     this.body.atkAim = message.you.ao ?? message.you.af ?? 'down';
     this.body.atkFlip = Boolean(message.you.al);
     if (Number.isFinite(message.you.am)) this.body.aim = message.you.am;
+
+    // Życie własne. **Nie przewidujemy go** i to jest świadome: o obrażeniach
+    // rozstrzyga wyłącznie serwer, więc nie ma czego odtwarzać po korekcie —
+    // a zgadywanie własnego HP dawałoby paski, które skaczą w tył.
+    this.hp = message.you.hp ?? this.hp ?? 0;
+    this.maxHp = message.you.mhp ?? this.maxHp ?? 100;
+    this.safe = Boolean(message.you.safe);
+    const hurt = message.you.hs ?? 0;
+    if (hurt !== (this.hurtSeq ?? hurt)) this.onHurtSelf?.();
+    this.hurtSeq = hurt;
     this.body.dodge = message.you.d ?? 0;
     this.body.dodgeWait = message.you.dw ?? 0;
     this.body.dodgeSeq = message.you.ds ?? 0;
@@ -409,7 +419,12 @@ export class Net {
 
     for (const p of message.ps) {
       const remote = this.upsert(p);
-      remote.buffer.push({ at: now, x: p.x, y: p.y, f: p.f, k: p.k, m: p.m, l: p.l, s: p.s });
+      remote.hp = p.h;
+      remote.maxHp = p.mh;
+      remote.buffer.push({
+        at: now, x: p.x, y: p.y, f: p.f, k: p.k, m: p.m, l: p.l, s: p.s,
+        h: p.h, mh: p.mh, hs: p.hs, hx: p.hx, hy: p.hy,
+      });
       while (remote.buffer.length > 2 && now - remote.buffer[0].at > BUFFER_KEEP) {
         remote.buffer.shift();
       }
@@ -601,6 +616,7 @@ export class Net {
           x: before.x + (after.x - before.x) * k,
           y: before.y + (after.y - before.y) * k,
           f: after.f, k: after.k, m: after.m, l: after.l, s: after.s,
+          h: after.h, mh: after.mh, hs: after.hs, hx: after.hx, hy: after.hy,
         };
       } else {
         // Brak dwóch próbek — pokazujemy ostatnią znaną pozycję. Zdarza się tuż

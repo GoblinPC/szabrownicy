@@ -9,7 +9,7 @@
 // temu postać i jej stan przeżywają zamknięcie przeglądarki, a jednocześnie
 // wejście to dwa pola i jedno kliknięcie.
 
-import { Game, TICK_HZ } from './game.js';
+import { Game, TICK_HZ, inSafeZone } from './game.js';
 import { Accounts, checkName, isReserved } from './accounts.js';
 import { phaseOf } from '../../client/src/world/daylight.js';
 import { rainAt } from '../../client/src/world/weather.js';
@@ -422,6 +422,12 @@ export function attachGame(sockets, dataDir, variantCount = 6, { guests = false 
         // wypadały w innych momentach i część z nich gubiła się albo dublowała.
         you: {
           x: me.x, y: me.y, vx: me.vx, vy: me.vy,
+          // Życie własne razem z resztą stanu. Klient tego nie przewiduje —
+          // obrażenia rozstrzyga wyłącznie serwer, więc nie ma czego odtwarzać.
+          hp: Math.round(me.hp),
+          mhp: me.maxHp,
+          hs: me.hurtSeq ?? 0,
+          safe: inSafeZone(me.x, me.y) ? 1 : 0,
           a: Math.round(me.atk ?? 0),
           aw: Math.round(me.atkWait ?? 0),
           as: me.atkSeq ?? 0,
