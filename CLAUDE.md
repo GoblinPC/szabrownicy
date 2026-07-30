@@ -259,6 +259,31 @@ wszyscy mają go w nosie, bo trudno od niego umrzeć i prawie nic nie odbiera.
 - **Kuźnia jest strefą bezpieczną**, reszta świata nie.
 - Na później: **system czaszek przy PvP** (PK jak w Tibii i Hurtworldzie).
 
+### Plecak: siatka z kształtami, jak w Tarkovie
+
+Ustalone 2026-07-30. **Miejsce w plecaku jest zasobem**, a nie licznikiem sztuk.
+
+- Plecak to **siatka kwadratów**. Każdy przedmiot zajmuje prostokąt o własnym
+  kształcie: moneta 1×1, mikstura 1×2, włócznia 1×5, zbroja 2×3.
+- Przedmioty **da się obracać** i trzeba je układać. To jest część rozgrywki,
+  nie utrudnienie interfejsu: decyzja „co zostawiam" ma zapadać na łupie, a nie
+  w tabelce.
+- **Po trupie zostaje worek**, jeśli coś niósł. Otwierasz go i przekładasz do
+  siebie tyle, ile się zmieści — czyli przy pełnym plecaku trzeba wybierać, stojąc
+  nad ciałem, w otwartym świecie. To jest właśnie ta scena, dla której warto było
+  odłożyć „trupa leżącego przez trzy sekundy".
+
+**Właścicielem zawartości jest serwer.** Klient rysuje i prosi o przełożenie;
+o tym, czy przedmiot zmieścił się w siatce i czy w ogóle był, rozstrzyga serwer.
+Przy grze, w której łupi się innych graczy, nie ma innej możliwości.
+
+Interfejs po stronie HTML nad kanwą — tak jak czat, logowanie i suwaki. Przeciąganie,
+trafianie w kratkę i klawiatura działają wtedy za darmo, a ikony biorą się z tego
+samego atlasu co reszta grafiki.
+
+**Kolejność:** najpierw muszą istnieć przedmioty i coś, z czego się je zdobywa.
+Plecak zbudowany przed nimi jest pustą siatką, której nie da się przetestować.
+
 ### Pokój w karczmie zamiast baz
 
 Pomysł użytkownika i **przyjmuję go jako obowiązujący**, bo rozwiązuje problem,
