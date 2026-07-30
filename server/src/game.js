@@ -69,9 +69,13 @@ const RESPAWN_MS = 4000;
 
 const PLAYER_HP = 100;
 
-// Ile trwa leżenie po śmierci. Krótko, bo to jeszcze nie jest gra, w której
-// śmierć ma boleć czasem — ma boleć stratą tego, co się niosło.
-const DEATH_MS = 3000;
+// Śmierć jest **natychmiastowa**: zero życia i od razu odrodzenie w hali.
+//
+// Pierwsza wersja kładła trupa na trzy sekundy i wyglądało to źle z powodu, który
+// był do przewidzenia: zabity zostawał w miejscu, przygaszony i bezwładny, więc
+// czytało się to jak zawieszenie gry, a nie jak śmierć. Leżące ciało ma sens
+// dopiero wtedy, gdy jest po co przy nim stać — czyli gdy wypadną z niego rzeczy.
+// Do tego czasu prościej i uczciwiej jest zniknąć.
 
 // **Życie nie regeneruje się samo. Nigdy.**
 //
@@ -207,13 +211,20 @@ export class Game {
         if (inSafeZone(target.x, target.y)) continue;
         if (!this.reaches(player, target)) continue;
 
-        this.hurt(target, step.damage, player.atkDx, player.atkDy, now);
-        if (target.hp === 0) player.kills++;
+        // Zabójstwo poznajemy po **wyniku `hurt()`**, a nie po życiu celu po
+        // fakcie: odrodzenie jest natychmiastowe, więc zaraz po ciosie ofiara ma
+        // już połowę życia i warunek `hp === 0` nigdy by nie zadziałał.
+        if (this.hurt(target, step.damage, player.atkDx, player.atkDy, now)) {
+          player.kills++;
+        }
       }
     }
   }
 
-  /** Jedno oberwanie: punkty, znacznik dla klienta i ewentualna śmierć. */
+  /**
+   * Jedno oberwanie: punkty, znacznik dla klienta i ewentualna śmierć.
+   * Zwraca `true`, jeśli ten cios zabił.
+   */
   hurt(target, damage, dx, dy, now) {
     target.hp = Math.max(0, target.hp - damage);
     target.hurtDx = dx;
@@ -221,26 +232,46 @@ export class Game {
     target.hurtSeq++;
     target.lastHurtAt = now;
 
-    if (target.hp === 0) {
-      target.deadUntil = now + DEATH_MS;
-      target.deaths++;
-      // Cios i odskok gasną razem z życiem — inaczej trup dokończyłby zamach.
-      target.atk = 0;
-      target.dodge = 0;
-      target.vx = 0;
-      target.vy = 0;
-    }
+    if (target.hp > 0) return false;
+    this.respawn(target);
+    return true;
   }
 
-  /** Leżenie, wstawanie i powolna regeneracja poza walką. */
-  stepPlayers(now, dt) {
+  /**
+   * Odrodzenie: pełne przestawienie stanu walki i powrót do hali.
+   *
+   * Robione w tej samej chwili, w której padło zero życia — bez pauzy, bez trupa
+   * i bez czekania na kolejny tik. Gracz ma zniknąć stamtąd, gdzie zginął,
+   * i pojawić się w kuźni.
+   */
+  respawn(player) {
+    player.deaths++;
+    player.hp = Math.round(player.maxHp * RESPAWN_HP);
+    // Rozrzut wokół punktu, żeby dwóch odrodzonych naraz nie wylądowało w sobie.
+    player.x = SPAWN.x + (Math.random() * 20 - 10);
+    player.y = SPAWN.y + (Math.random() * 12 - 6);
+    player.vx = 0;
+    player.vy = 0;
+    // Cios i odskok gasną razem z życiem — inaczej odrodzony dokończyłby zamach
+    // już przy nowym miejscu.
+    player.atk = 0;
+    player.atkWait = 0;
+    player.dodge = 0;
+    player.dodgeWait = 0;
+    player.hurtSeq++;
+  }
+
+  /**
+   * Siatka bezpieczeństwa na zero życia.
+   *
+   * Odrodzenie robi `hurt()` w chwili zabójstwa, więc normalnie nie ma tu nic do
+   * roboty. To jest zabezpieczenie na wypadek, gdyby gracz stracił życie inną
+   * drogą — utonięcie, głód, cokolwiek dojdzie później — bo wtedy trzeba go
+   * podnieść, a nie zostawić na zawsze na zerze.
+   */
+  stepPlayers() {
     for (const player of this.players.values()) {
-      if (player.hp <= 0 && now >= player.deadUntil) {
-        player.hp = Math.round(player.maxHp * RESPAWN_HP);
-        player.x = SPAWN.x + (Math.random() * 24 - 12);
-        player.y = SPAWN.y + (Math.random() * 16 - 8);
-        player.hurtSeq++;   // po tym klient pozna, że gracz wstał
-      }
+      if (player.hp <= 0) this.respawn(player);
     }
   }
 
@@ -341,7 +372,6 @@ export class Game {
       hurtSeq: 0,
       hurtDx: 0,
       hurtDy: 0,
-      deadUntil: 0,
       lastHurtAt: 0,
       kills: 0,
       deaths: 0,
@@ -446,9 +476,7 @@ export class Game {
     const now = Date.now();
     this.resolveHits(now);
     this.stepMobs(now, TICK_MS / 1000);
-    // Po trafieniach, nie przed: kto zginął w tym tiku, ma zacząć leżeć od razu,
-    // a nie dopiero za pięćdziesiąt milisekund.
-    this.stepPlayers(now, TICK_MS / 1000);
+    this.stepPlayers();
   }
 
   /** Opis gracza dla innych — bez prędkości, bo jej nie potrzebują do rysowania. */

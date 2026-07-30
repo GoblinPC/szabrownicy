@@ -1089,14 +1089,11 @@ export class ForgeScene extends Phaser.Scene {
       }
       if (sample.f === 'side') other.sprite.setFlipX(Boolean(sample.l));
 
-      // Trup leży przygaszony i nie animuje się. Bez tego zabity gracz dalej
-      // biega w miejscu, dopóki nie wstanie.
-      const dead = (sample.h ?? 1) <= 0;
-      if (dead !== other.dead) {
-        other.dead = dead;
-        other.sprite.setAlpha(dead ? 0.4 : 1);
-        if (dead) other.sprite.anims.stop();
-      }
+      // Trupów nie rysujemy, bo ich nie ma: zabity znika i pojawia się w kuźni
+      // w tej samej chwili. Wersja z leżącym, przygaszonym ciałem czytała się jak
+      // zawieszenie gry — postać stała bezwładnie i nie dało się nic zrobić.
+      // Leżące ciało wróci wtedy, gdy będzie po co przy nim stać, czyli gdy
+      // zaczną z niego wypadać rzeczy.
 
       other.sprite.setPosition(Math.round(sample.x), Math.round(sample.y));
       other.sprite.setDepth(sample.y);

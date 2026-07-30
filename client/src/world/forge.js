@@ -84,7 +84,18 @@ export const INTERIOR_PX = {
   h: (BUILDING.y1 - BUILDING.y0 - 2) * TILE,
 };
 
-export const SPAWN = { x: 384, y: 352 };
+/**
+ * Miejsce wejścia do gry i odrodzenia po śmierci — **wewnątrz hali**, kilka kafli
+ * za bramą.
+ *
+ * Wewnątrz, a nie na placu, i to jest decyzja o rozgrywce, nie o wygodzie: punkt
+ * odrodzenia leżący na otwartym terenie zaprasza do kampienia go. Tu odrodzony
+ * wychodzi ze strefy bezpiecznej **wtedy, kiedy sam zdecyduje**, a czekający na
+ * niego stoi za bramą i jest widoczny.
+ *
+ * Przechodniość sprawdzona `isWalkable`, nie policzona z siatki na oko.
+ */
+export const SPAWN = { x: 384, y: 288 };
 
 /**
  * Drzewa na placu, w pikselach (podstawa pnia).
