@@ -573,8 +573,8 @@ export class ForgeScene extends Phaser.Scene {
 
       if (!mob) {
         mob = {
-          sprite: this.add.sprite(state.x, state.y, 'props', 'dummy0').setOrigin(0.5, 1),
-          shadow: this.shadows.add(state.x, state.y, 'props', 'dummy0', {
+          sprite: this.add.sprite(state.x, state.y, 'props', state.k === 'boar' ? 'boar_down0' : 'dummy0').setOrigin(0.5, 1),
+          shadow: this.shadows.add(state.x, state.y, 'props', state.k === 'boar' ? 'boar_down0' : 'dummy0', {
             squash: 0.4,
             width: 20,
           }),
@@ -586,13 +586,26 @@ export class ForgeScene extends Phaser.Scene {
       // Klatka zależy od tego, ile życia zostało: cała, obita, mocno obita,
       // zwalona. Ten sam podział obsłuży potem moby z kilkoma stanami rannymi.
       const ratio = state.m > 0 ? state.h / state.m : 0;
-      const frame = state.h <= 0 ? 'dummy3'
-        : ratio > 0.66 ? 'dummy0'
-        : ratio > 0.33 ? 'dummy1'
-        : 'dummy2';
+      let frame;
+      if (state.k === 'boar') {
+        // Zwierzę: klatka z kierunku i z chodu. Krok liczymy z czasu, bo serwer
+        // przysyła tylko „idzie" albo „stoi" — animacja należy do rysowania.
+        const step = state.w ? Math.floor(time / 150) % 2 : 0;
+        frame = `boar_${state.f ?? 'down'}${step}`;
+        mob.sprite.setFlipX(state.f === 'side' && Boolean(state.l));
+        // Zapowiedź szarży: zwierzę staje i **czerwienieje**. To jedyny moment,
+        // w którym gracz może zdecydować, czy uskakuje — musi być widoczny bez
+        // patrzenia wprost.
+        mob.sprite.setTint(state.st === 'spot' ? 0xff9a6a : 0xffffff);
+      } else {
+        frame = state.h <= 0 ? 'dummy3'
+          : ratio > 0.66 ? 'dummy0'
+          : ratio > 0.33 ? 'dummy1'
+          : 'dummy2';
+      }
       if (mob.sprite.frame.name !== frame) {
         mob.sprite.setFrame(frame);
-        this.shadows.setFrame(mob.shadow, frame, false);
+        this.shadows.setFrame(mob.shadow, frame, Boolean(mob.sprite.flipX));
       }
 
       if (state.s !== mob.hitSeq) {
@@ -1206,5 +1219,6 @@ export class ForgeScene extends Phaser.Scene {
     this.lastSafe = safe;
   }
 }
+
 
 

@@ -732,6 +732,99 @@ function flowers(name) {
   return finish(t);
 }
 
+// --- Zwierzęta ------------------------------------------------------------------
+//
+// Pierwszy mieszkaniec lasu. Sylwetka budowana tą samą metodą co goblin —
+// **wypisywana wierszami**, nie składana z prostokątów. Prostokątne zwierzę
+// wygląda jak zabawka na kółkach; ta sama lekcja, która kazała odrzucić
+// parametryzowane ludzkie postacie.
+//
+// Cztery cechy, po których poznaje się to zwierzę z odległości gry, i to one
+// muszą być czytelne przy dwudziestu pikselach: **garb na karku**, **ryj przy
+// ziemi**, **kły do góry** i **krótkie nogi**. Reszta to szczecina.
+
+const BOAR_DARK = () => c('earth', 1);
+const BOAR_BODY = () => c('earth', 3);
+const BOAR_LIT = () => c('stone', 1);
+const BOAR_TUSK = () => c('bone');
+
+/**
+ * @param dir  `side`, `down` albo `up`
+ * @param step 0 albo 1 — faza chodu
+ */
+function boar(name, dir, step) {
+  const rng = rngFor(name);
+  const t = new Canvas(dir === 'side' ? 24 : 18, 18);
+
+  if (dir === 'side') {
+    // Tułów: garb nad łopatkami opadający ku zadowi. To on robi dzika.
+    for (let x = 3; x < 21; x++) {
+      const k = (x - 3) / 17;
+      const gora = Math.round(4 + Math.sin(k * 2.6) * -2.2 + k * 3.5);
+      for (let y = gora; y < 13; y++) {
+        t.px(x, y, y < gora + 2 ? BOAR_LIT() : BOAR_BODY());
+      }
+      t.px(x, gora - 1, BOAR_DARK());
+      t.px(x, 13, BOAR_DARK());
+    }
+    // Łeb pochylony do ziemi, z ryjem.
+    for (let y = 6; y < 13; y++) t.hline(1, 5, y, BOAR_BODY());
+    t.hline(0, 2, 11, BOAR_DARK());     // ryj
+    t.px(0, 10, BOAR_LIT());
+    t.px(4, 7, c('soot', 0));            // oko
+    t.px(2, 9, BOAR_TUSK());             // kieł
+    t.px(1, 8, BOAR_TUSK());
+    t.px(6, 4, BOAR_DARK());             // ucho
+    t.px(7, 3, BOAR_DARK());
+
+    // Nogi: przednie i tylne w przeciwfazie.
+    const przod = step === 0 ? 0 : 2;
+    const tyl = step === 0 ? 2 : 0;
+    t.rect(5, 13, 2, 4 - przod, BOAR_DARK());
+    t.rect(8, 13, 2, 2 + przod, BOAR_DARK());
+    t.rect(16, 13, 2, 4 - tyl, BOAR_DARK());
+    t.rect(19, 13, 2, 2 + tyl, BOAR_DARK());
+    // Ogon.
+    t.px(22, 5, BOAR_DARK());
+    t.px(23, 4 + step, BOAR_DARK());
+  } else {
+    // Z przodu i z tyłu: krępa bryła, szersza w barkach.
+    for (let y = 4; y < 14; y++) {
+      const half = Math.round(5 + Math.sin((y - 4) / 10 * Math.PI) * 2);
+      for (let x = 9 - half; x <= 8 + half; x++) {
+        t.px(x, y, y < 6 ? BOAR_LIT() : BOAR_BODY());
+      }
+      t.px(9 - half, y, BOAR_DARK());
+      t.px(8 + half, y, BOAR_DARK());
+    }
+    if (dir === 'down') {
+      t.hline(6, 11, 12, BOAR_DARK());   // ryj
+      t.px(6, 8, c('soot', 0));          // oczy
+      t.px(11, 8, c('soot', 0));
+      t.px(5, 11, BOAR_TUSK());
+      t.px(12, 11, BOAR_TUSK());
+      t.px(4, 5, BOAR_DARK());           // uszy
+      t.px(13, 5, BOAR_DARK());
+    } else {
+      t.hline(6, 11, 5, BOAR_DARK());    // kark
+      t.px(8, 12, BOAR_DARK());          // ogon
+    }
+    const przod = step === 0 ? 1 : 0;
+    t.rect(4, 14, 2, 3 - przod, BOAR_DARK());
+    t.rect(12, 14, 2, 2 + przod, BOAR_DARK());
+  }
+
+  // Szczecina: pojedyncze jasne piksele na grzbiecie. Gładka sierść wygląda
+  // jak plastik — ta sama zasada co przy drewnie i przy skórze goblina.
+  for (let i = 0; i < 14; i++) {
+    const x = rng.between(2, t.width - 3);
+    const y = rng.between(3, 9);
+    if (t.alphaAt(x, y)) t.px(x, y, rng.chance(0.5) ? BOAR_LIT() : BOAR_DARK());
+  }
+
+  return finish(t);
+}
+
 // --- Ogień (klatki animacji) --------------------------------------------------
 
 /**
@@ -800,6 +893,9 @@ export function buildProps() {
   add('campfire', campfire());
   add('gate', gateArch());
   add('gatepost', gatePost('gatepost'));
+  for (const dir of ['side', 'down', 'up']) {
+    for (let step = 0; step < 2; step++) add(`boar_${dir}${step}`, boar(`boar_${dir}${step}`, dir, step));
+  }
   for (let i = 0; i < 3; i++) add(`bush${i}`, bush(`bush${i}`));
   for (let i = 0; i < 2; i++) add(`flowers${i}`, flowers(`flowers${i}`));
 
@@ -811,4 +907,5 @@ export function buildProps() {
 
   return entries;
 }
+
 

@@ -10,6 +10,7 @@
 
 import {
   buildWorld, SPAWN, WORLD_W, WORLD_H, TRAINING_DUMMY, CITY_PX,
+  isWalkable,
 } from '../../client/src/world/forge.js';
 import {
   advance, poseOf, KEY_MASK, inAttackArc, ATTACK_STEPS,
@@ -140,6 +141,37 @@ function makeDummy(id) {
   };
 }
 
+// --- Zwierzę ---------------------------------------------------------------
+//
+// Pierwszy mieszkaniec lasu i **wzorzec dla wszystkich przyszłych**.
+//
+// Zachowanie jest celowo proste, ale ma jedną cechę, na której stoi cała walka
+// z nim: **szarżę z zapowiedzią**. Zwierzę zauważa gracza, zatrzymuje się na
+// moment i dopiero wtedy rusza po prostej. Ten moment jest wszystkim — to on
+// zamienia potwora, który po prostu podchodzi, w przeciwnika, którego trzeba
+// przeczytać. Unik istnieje po to, żeby było czego unikać.
+//
+// Po chybionej szarży zwierzę **musi się zatrzymać i zawrócić**, i to jest jego
+// jedyna słabość: wtedy się je bije. Bez tego okna walka byłaby wyścigiem.
+
+const BOAR = {
+  hp: 40,
+  radius: 10,
+  torso: 12,
+  damage: 14,
+  // Prędkości: wolniejszy od gracza w spokoju, wyraźnie szybszy w szarży.
+  walk: 26,
+  charge: 190,
+  // Czasy fazy. Zapowiedź musi być **widoczna**, więc jest długa jak na walkę.
+  noticeRange: 130,
+  loseRange: 260,
+  windupMs: 620,
+  chargeMs: 900,
+  restMs: 1100,
+  hitCooldownMs: 900,
+  respawnMs: 25_000,
+};
+
 export class Game {
   constructor() {
     this.world = buildWorld();
@@ -149,6 +181,7 @@ export class Game {
 
     const dummy = makeDummy(1);
     this.mobs.set(dummy.id, dummy);
+    this.spawnWildlife();
 
     // Zasoby: pełna lista jest deterministyczna i klient zna ją z tego samego
     // kodu. Trzymamy **tylko odstępstwa od pełnego stanu** — uszkodzone i ścięte.
@@ -159,6 +192,45 @@ export class Game {
     // identyfikatorze, a nie po pozycji.
     this.drops = new Map();
     this.nextDrop = 1;
+  }
+
+  /**
+   * Rozstawia zwierzęta po lesie — **tylko poza murami**.
+   *
+   * Miejsca losowane z odrzucaniem: musi być przechodnie i dostatecznie daleko
+   * od miasta, żeby nikt nie dostał szarży zaraz za bramą. Pierwsze wyjście ma
+   * być spokojne; niebezpiecznie robi się głębiej i to jest jedyny wskaźnik
+   * trudności w tej grze.
+   */
+  spawnWildlife() {
+    let id = 100;
+    let placed = 0;
+    for (let attempt = 0; attempt < 4000 && placed < 14; attempt++) {
+      const x = 60 + Math.random() * (WORLD_W - 120);
+      const y = 60 + Math.random() * (WORLD_H - 120);
+      if (inSafeZone(x, y)) continue;
+      // Zapas od murów: 120 pikseli to jakieś siedem kafli spokoju za bramą.
+      if (x > CITY_PX.x - 120 && x < CITY_PX.x + CITY_PX.w + 120
+        && y > CITY_PX.y - 120 && y < CITY_PX.y + CITY_PX.h + 120) continue;
+      if (!isWalkable(this.world, x - 8, y - 8, x + 8, y - 0.5)) continue;
+
+      placed++;
+      const mob = {
+        id: id++,
+        kind: 'boar',
+        radius: BOAR.radius,
+        torso: BOAR.torso,
+        x, y, homeX: x, homeY: y,
+        vx: 0, vy: 0,
+        hp: BOAR.hp,
+        maxHp: BOAR.hp,
+        hitSeq: 0, hitDx: 0, hitDy: 0,
+        deadUntil: 0,
+        state: 'wander',
+        facing: 'down',
+      };
+      this.mobs.set(mob.id, mob);
+    }
   }
 
   /** Bieżący stan zasobu — z mapy odstępstw albo pełny. */
@@ -356,6 +428,103 @@ export class Game {
     }
   }
 
+  /**
+   * Zachowanie zwierzęcia: włóczy się, zauważa, zapowiada, szarżuje, odpoczywa.
+   *
+   * Cztery stany i **każdy widać z zewnątrz** — to jest tu ważniejsze niż sam
+   * układ. Gracz ma czytać zamiar, a nie zgadywać: `spot` to moment, w którym
+   * zwierzę staje i patrzy, `charge` to prosta linia bez skrętu, `rest` to okno,
+   * w którym można je bić bezkarnie.
+   */
+  stepBoar(mob, now, dt) {
+    // Cel: najbliższy żywy gracz poza strefą bezpieczną.
+    let target = null;
+    let best = Infinity;
+    for (const player of this.players.values()) {
+      if (player.hp <= 0 || inSafeZone(player.x, player.y)) continue;
+      const d = Math.hypot(player.x - mob.x, player.y - mob.y);
+      if (d < best) { best = d; target = player; }
+    }
+
+    if (mob.state === 'charge' && now >= mob.until) {
+      mob.state = 'rest';
+      mob.until = now + BOAR.restMs;
+    } else if (mob.state === 'spot' && now >= mob.until) {
+      // Kierunek zamrażamy **w chwili ruszenia**, nie w każdej klatce. Szarża,
+      // która skręca za graczem, jest nie do uniknięcia i przestaje być szarżą.
+      const dx = (target?.x ?? mob.x) - mob.x;
+      const dy = (target?.y ?? mob.y + 1) - mob.y;
+      const len = Math.hypot(dx, dy) || 1;
+      mob.runDx = dx / len;
+      mob.runDy = dy / len;
+      mob.state = 'charge';
+      mob.until = now + BOAR.chargeMs;
+    } else if (mob.state === 'rest' && now >= mob.until) {
+      mob.state = 'wander';
+    } else if ((mob.state === 'wander' || !mob.state)
+      && target && best < BOAR.noticeRange) {
+      mob.state = 'spot';
+      mob.until = now + BOAR.windupMs;
+      mob.seq = (mob.seq ?? 0) + 1;   // po tym klient pozna, że zwierzę stanęło
+    }
+
+    if (mob.state === 'charge') {
+      mob.vx = mob.runDx * BOAR.charge;
+      mob.vy = mob.runDy * BOAR.charge;
+    } else if (mob.state === 'spot' || mob.state === 'rest') {
+      // Stoi. To jest cała zapowiedź i całe okno na cios.
+      mob.vx = 0;
+      mob.vy = 0;
+    } else {
+      // Włóczęga: co kilka sekund nowy kierunek, wolno i bez celu.
+      if (now >= (mob.turnAt ?? 0)) {
+        mob.turnAt = now + 1600 + Math.random() * 2600;
+        const a = Math.random() * Math.PI * 2;
+        mob.wanderDx = Math.cos(a);
+        mob.wanderDy = Math.sin(a);
+        if (Math.random() < 0.35) { mob.wanderDx = 0; mob.wanderDy = 0; }
+      }
+      mob.vx = (mob.wanderDx ?? 0) * BOAR.walk;
+      mob.vy = (mob.wanderDy ?? 0) * BOAR.walk;
+    }
+
+    // Ruch po świecie z kolizją — zwierzę nie przechodzi przez skały ani mury.
+    const nx = mob.x + mob.vx * dt;
+    const ny = mob.y + mob.vy * dt;
+    if (isWalkable(this.world, nx - 6, ny - 6, nx + 6, ny - 0.5, true)) {
+      mob.x = nx;
+      mob.y = ny;
+    } else if (mob.state === 'charge') {
+      // Uderzyło w drzewo. Szarża kończy się od razu i **zwierzę zostaje ogłuszone** —
+      // to jest nagroda za wciągnięcie go na przeszkodę.
+      mob.state = 'rest';
+      mob.until = now + BOAR.restMs * 1.4;
+    } else {
+      mob.turnAt = 0;
+    }
+
+    // Uderzenie ciałem — tylko w szarży i nie częściej niż raz na sekundę.
+    if (mob.state === 'charge' && target && now - (mob.lastHit ?? 0) > BOAR.hitCooldownMs) {
+      const d = Math.hypot(target.x - mob.x, target.y - mob.y);
+      if (d < BOAR.radius + 8) {
+        mob.lastHit = now;
+        this.hurt(target, BOAR.damage, mob.runDx, mob.runDy, now);
+        mob.state = 'rest';
+        mob.until = now + BOAR.restMs;
+      }
+    }
+
+    // Kierunek patrzenia — do rysunku. Z prędkości, bo zwierzę patrzy tam,
+    // gdzie idzie.
+    if (Math.abs(mob.vx) > Math.abs(mob.vy)) {
+      mob.facing = 'side';
+      mob.flip = mob.vx < 0;
+    } else if (Math.abs(mob.vy) > 1) {
+      mob.facing = mob.vy < 0 ? 'up' : 'down';
+    }
+    mob.moving = Math.hypot(mob.vx, mob.vy) > 4;
+  }
+
   /** Odrzut wygasa, a kukła wraca na swój słupek. */
   stepMobs(now, dt) {
     for (const mob of this.mobs.values()) {
@@ -406,6 +575,10 @@ export class Game {
       m: mob.maxHp,
       s: mob.hitSeq,
       r: mob.radius ?? 0,
+      f: mob.facing ?? 'down',
+      l: mob.flip ? 1 : 0,
+      w: mob.moving ? 1 : 0,
+      st: mob.state ?? '',
       // Kierunek ostatniego ciosu — po nim klient wie, w którą stronę bryzga krew.
       dx: Math.round(mob.hitDx * 100) / 100,
       dy: Math.round(mob.hitDy * 100) / 100,
@@ -600,4 +773,5 @@ export class Game {
     return list;
   }
 }
+
 
