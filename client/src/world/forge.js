@@ -1,4 +1,4 @@
-// Definicja świata: kuźnia i plac przed nią.
+﻿// Definicja świata: kuźnia i plac przed nią.
 //
 // Mapa jest opisana w kodzie, a nie w edytorze — skoro grafikę i tak generujemy
 // programistycznie, dodatkowy format pośredni tylko by przeszkadzał.
@@ -12,6 +12,7 @@
 //   34-35  skalna granica
 
 import { makeRng, seedFrom } from '../util/rng.js';
+import { field, scatter, REGIONS } from './terrain.js';
 
 /**
  * Kukła treningowa na placu, na prawo od bramy.
@@ -23,13 +24,32 @@ import { makeRng, seedFrom } from '../util/rng.js';
  * Trzymana w tym pliku, a nie po stronie serwera, bo korzystają z niego obie
  * strony i pozycja celu musi być u nich identyczna.
  */
-export const TRAINING_DUMMY = { x: 520, y: 400 };
+export const TRAINING_DUMMY = { x: 520 + 56 * 16, y: 400 + 8 * 16 };
 
 export const TILE = 16;
-export const MAP_W = 48;
-export const MAP_H = 36;
+
+// Miasto ma **własny układ współrzędnych** i to jest tu sedno.
+//
+// Cała kuźnia — mury, palenisko, okna, każdy prop — jest opisana liczbami
+// wpisanymi na sztywno w siatce 48×36. Powiększenie świata przez przeliczenie
+// tych liczb oznaczałoby przejrzenie każdej z nich i pomyłkę w co dziesiątej.
+// Zamiast tego miasto powstaje **dalej w swoim układzie**, a na wielką mapę
+// wchodzi w całości, przesunięte o `CITY_OX`/`CITY_OY`. Jedno miejsce
+// przesunięcia zamiast dwustu.
+const CITY_W = 48;
+const CITY_H = 36;
+export const CITY_OX = 56;
+export const CITY_OY = 8;
+const OFF_X = CITY_OX * TILE;
+const OFF_Y = CITY_OY * TILE;
+
+export const MAP_W = 160;
+export const MAP_H = 120;
 export const WORLD_W = MAP_W * TILE;
 export const WORLD_H = MAP_H * TILE;
+
+/** Przesunięcie punktu z układu miasta na wielką mapę. */
+const shift = (p) => ({ ...p, x: p.x + OFF_X, y: p.y + OFF_Y });
 
 // Obrys budynku w kaflach.
 const BUILDING = { x0: 5, x1: 42, y0: 2, y1: 19 };
@@ -65,16 +85,14 @@ const WINDOW_TILES = [
 const WINDOW_KEYS = new Set(WINDOW_TILES.map((w) => `${w.x},${w.y}`));
 
 export const WINDOWS = WINDOW_TILES.map((w) => {
-  // Otwór w rysunku kafla ma 12 px, licząc od 2 do 14.
+  // Otwor w rysunku kafla ma 12 px, liczac od 2 do 14. Wynik od razu przesuwamy
+  // na wielka mape, bo okna sa uzywane wylacznie w jej ukladzie.
   if (w.side === 'bottom') {
-    // Ściana biegnie w poziomie, więc otwór jest odcinkiem poziomym na jej licu
-    // od strony placu.
-    const y = (w.y + 1) * TILE;
-    return { a: { x: w.x * TILE + 2, y }, b: { x: w.x * TILE + 14, y } };
+    const y = OFF_Y + (w.y + 1) * TILE;
+    return { a: { x: OFF_X + w.x * TILE + 2, y }, b: { x: OFF_X + w.x * TILE + 14, y } };
   }
-  // Ściany boczne biegną w pionie — otwór jest odcinkiem pionowym.
-  const x = w.side === 'left' ? w.x * TILE : (w.x + 1) * TILE;
-  return { a: { x, y: w.y * TILE + 2 }, b: { x, y: w.y * TILE + 14 } };
+  const x = OFF_X + (w.side === 'left' ? w.x * TILE : (w.x + 1) * TILE);
+  return { a: { x, y: OFF_Y + w.y * TILE + 2 }, b: { x, y: OFF_Y + w.y * TILE + 14 } };
 });
 
 /**
@@ -89,15 +107,15 @@ export const WINDOWS = WINDOW_TILES.map((w) => {
  * i stanie się wrogi bez zmiany choćby jednej linii — o to w tym opisie chodzi.
  */
 export const CITY_PX = {
-  x: 3 * TILE,
-  y: 2 * TILE,
-  w: (MAP_W - 6) * TILE,
-  h: (MAP_H - 4) * TILE,
+  x: OFF_X + 3 * TILE,
+  y: OFF_Y + 2 * TILE,
+  w: (CITY_W - 6) * TILE,
+  h: (CITY_H - 4) * TILE,
 };
 
 export const INTERIOR_PX = {
-  x: (BUILDING.x0 + 1) * TILE,
-  y: (BUILDING.y0 + 2) * TILE,
+  x: OFF_X + (BUILDING.x0 + 1) * TILE,
+  y: OFF_Y + (BUILDING.y0 + 2) * TILE,
   w: (BUILDING.x1 - BUILDING.x0 - 1) * TILE,
   h: (BUILDING.y1 - BUILDING.y0 - 2) * TILE,
 };
@@ -113,7 +131,7 @@ export const INTERIOR_PX = {
  *
  * Przechodniość sprawdzona `isWalkable`, nie policzona z siatki na oko.
  */
-export const SPAWN = { x: 384, y: 288 };
+export const SPAWN = { x: 384 + 56 * 16, y: 288 + 8 * 16 };
 
 /**
  * Drzewa na placu, w pikselach (podstawa pnia).
@@ -145,9 +163,9 @@ function buildGround() {
   const rng = makeRng(seedFrom('forge-ground'));
   const tiles = [];
 
-  for (let y = 0; y < MAP_H; y++) {
+  for (let y = 0; y < CITY_H; y++) {
     const row = [];
-    for (let x = 0; x < MAP_W; x++) {
+    for (let x = 0; x < CITY_W; x++) {
       row.push(pickTile(x, y, rng));
     }
     tiles.push(row);
@@ -169,8 +187,8 @@ function smoothGreen(tiles, rng) {
   const isGreen = (x, y) => Boolean(tiles[y]?.[x]?.startsWith('grass'));
   const changes = [];
 
-  for (let y = 0; y < MAP_H; y++) {
-    for (let x = 0; x < MAP_W; x++) {
+  for (let y = 0; y < CITY_H; y++) {
+    for (let x = 0; x < CITY_W; x++) {
       const tile = tiles[y][x];
       const grassHere = tile.startsWith('grass');
       if (!grassHere && !tile.startsWith('dirt')) continue;
@@ -189,7 +207,7 @@ function smoothGreen(tiles, rng) {
 }
 
 function pickTile(x, y, rng) {
-  const border = x < 3 || x >= MAP_W - 3 || y < 2 || y >= MAP_H - 2;
+  const border = x < 3 || x >= CITY_W - 3 || y < 2 || y >= CITY_H - 2;
   if (border) return `rock_${rng.int(3)}`;
 
   const inBuildingSpan = x >= BUILDING.x0 && x <= BUILDING.x1;
@@ -259,7 +277,7 @@ function pickTile(x, y, rng) {
   // wydeptany dlatego, że coś go wydeptuje, a pod drzewem i przy skale nikt nie
   // staje. Granica jest rozmyta losowo, żeby nie było widać okręgu ani paska.
   const toTree = nearestTree(x, y);
-  const toEdge = Math.min(x - 3, MAP_W - 4 - x, MAP_H - 3 - y);
+  const toEdge = Math.min(x - 3, CITY_W - 4 - x, CITY_H - 3 - y);
   const green = Math.max(
     1 - toTree / 4.2,
     y > BUILDING.y1 + 2 ? 1 - toEdge / 3.4 : 0
@@ -286,8 +304,8 @@ function buildDecals(tiles) {
   const decals = [];
   const tufts = [];
 
-  for (let y = 0; y < MAP_H; y++) {
-    for (let x = 0; x < MAP_W; x++) {
+  for (let y = 0; y < CITY_H; y++) {
+    for (let x = 0; x < CITY_W; x++) {
       const tile = tiles[y][x];
       const px = x * TILE;
       const py = y * TILE;
@@ -343,7 +361,11 @@ function buildDecals(tiles) {
  */
 function buildProps() {
   const p = [];
-  const add = (key, x, y, body = null, extra = {}) => p.push({ key, x, y, body, ...extra });
+  // Wszystkie współrzędne poniżej są **w układzie miasta**. Przesunięcie na
+  // wielką mapę robimy tu, w jednym miejscu — inaczej trzeba by poprawić
+  // sześćdziesiąt wpisów i pomylić się w kilku.
+  const add = (key, x, y, body = null, extra = {}) =>
+    p.push({ key, x: x + OFF_X, y: y + OFF_Y, body, ...extra });
 
   // --- Wnętrze kuźni ---
   add('hearth', 176, 142, { w: 32, h: 14 }, { noShadow: true });
@@ -477,8 +499,8 @@ export const ROOF = {
 
 /** Prostokąt samego rysunku dachu — używany wyłącznie do jego narysowania. */
 export const ROOF_PX = {
-  x: ROOF.x0 * TILE,
-  y: ROOF.y0 * TILE,
+  x: OFF_X + ROOF.x0 * TILE,
+  y: OFF_Y + ROOF.y0 * TILE,
   w: (ROOF.x1 - ROOF.x0 + 1) * TILE,
   h: (ROOF.y1 - ROOF.y0 + 1) * TILE,
 };
@@ -493,8 +515,8 @@ export const ROOF_PX = {
  * bramie, a nie tam, gdzie akurat kończy się rysunek dachu.
  */
 export const BUILDING_PX = {
-  x: BUILDING.x0 * TILE,
-  y: BUILDING.y0 * TILE,
+  x: OFF_X + BUILDING.x0 * TILE,
+  y: OFF_Y + BUILDING.y0 * TILE,
   w: (BUILDING.x1 - BUILDING.x0 + 1) * TILE,
   h: (BUILDING.y1 - BUILDING.y0 + 1) * TILE,
 };
@@ -543,9 +565,166 @@ export function surfaceAt(world, x, y) {
   return 'dirt';
 }
 
+/**
+ * Składa wielką mapę: teren za murami, a na nim miasto w całości.
+ *
+ * Miasto jest generowane we własnym układzie 48×36 i **wstawiane** przesunięte,
+ * zamiast przeliczać dwieście wpisanych na sztywno współrzędnych. Jedno miejsce
+ * przesunięcia zamiast dwustu okazji do pomyłki.
+ */
+function composeTiles() {
+  const rng = makeRng(seedFrom('teren'));
+  const tiles = [];
+
+  // Warstwa 1: biomy. Trzy obszary za trzema bramami, rozdzielone tym, po której
+  // stronie miasta leży dany punkt.
+  for (let y = 0; y < MAP_H; y++) {
+    const row = [];
+    for (let x = 0; x < MAP_W; x++) {
+      // Nieprzekraczalna grań na krawędzi świata — dopóki mapa nie rośnie dalej.
+      if (x < 2 || y < 2 || x >= MAP_W - 2 || y >= MAP_H - 2) {
+        row.push(`rock_${rng.int(3)}`);
+        continue;
+      }
+      row.push(terrainTile(x, y, rng));
+    }
+    tiles.push(row);
+  }
+
+  // Miasto wchodzi na wierzch, w całości.
+  const city = buildGround();
+  for (let y = 0; y < CITY_H; y++) {
+    for (let x = 0; x < CITY_W; x++) tiles[CITY_OY + y][CITY_OX + x] = city[y][x];
+  }
+
+  carveGates(tiles, rng);
+  return tiles;
+}
+
+/**
+ * Kafel terenu poza miastem — z biomu i z miękkiej plamy gęstości.
+ *
+ * Biom bierze się z tego, po której stronie miasta leży punkt, bo tak samo
+ * bierze się z tego brama, którą się tam dociera. Gracz uczy się „na zachód są
+ * skały" po jednym wyjściu i to jest cała nawigacja, jakiej potrzeba.
+ */
+function terrainTile(x, y, rng) {
+  const region = regionAt(x, y);
+  const n = field(x, y, 3.7);
+
+  // Droga: pas prowadzący od bramy w głąb obszaru. Powstaje **przed** obiektami
+  // i to ona decyduje, co gdzie stoi.
+  if (onRoad(x, y)) return `path_${rng.int(2)}`;
+
+  if (region === 'skalisko') {
+    if (n > 0.62) return `rock_${rng.int(3)}`;
+    return n > 0.4 ? `dirt_${rng.int(4)}` : `grass_${rng.int(3)}`;
+  }
+  if (region === 'mokradla') {
+    return n > 0.52 ? `dirt_${rng.int(4)}` : `grass_${rng.int(3)}`;
+  }
+  // Las i okolice miasta: przewaga trawy, łysiny ubitej ziemi.
+  return n > 0.68 ? `dirt_${rng.int(4)}` : `grass_${rng.int(3)}`;
+}
+
+/** Który obszar leży w tym punkcie. */
+export function regionAt(x, y) {
+  if (y > CITY_OY + CITY_H) return 'las';
+  if (x < CITY_OX) return 'skalisko';
+  if (x > CITY_OX + CITY_W) return 'mokradla';
+  return 'przedmiescie';
+}
+
+// Bramy w murze miasta: południowa, zachodnia i wschodnia. Każda ma dwa kafle
+// prześwitu, tak samo jak brama kuźni — jedna szerokość w całej grze.
+export const GATES = [
+  { key: 'south', x: CITY_OX + 23, y: CITY_OY + CITY_H - 2, w: 2, h: 2 },
+  { key: 'west', x: CITY_OX, y: CITY_OY + 26, w: 3, h: 2 },
+  { key: 'east', x: CITY_OX + CITY_W - 3, y: CITY_OY + 26, w: 3, h: 2 },
+];
+
+/** Wycina prześwity w skalnej granicy miasta i kładzie przed nimi próg. */
+function carveGates(tiles, rng) {
+  for (const gate of GATES) {
+    for (let dy = 0; dy < gate.h; dy++) {
+      for (let dx = 0; dx < gate.w; dx++) {
+        tiles[gate.y + dy][gate.x + dx] = `path_${rng.int(2)}`;
+      }
+    }
+  }
+}
+
+/**
+ * Czy punkt leży na drodze wychodzącej z bramy.
+ *
+ * Droga jest **kręgosłupem obszaru**, nie ozdobą: powstaje przed obiektami,
+ * a wszystko inne układa się względem niej. Wyjście z miasta prowadzi na drogę,
+ * a nie w losowy krzak.
+ */
+function onRoad(x, y) {
+  // Południowa: prosto w dół od bramy, z lekkim wężykiem.
+  const southX = CITY_OX + 24 + Math.round(Math.sin(y * 0.09) * 4);
+  if (y > CITY_OY + CITY_H - 2 && Math.abs(x - southX) < 2) return true;
+  // Zachodnia i wschodnia: w bok od bramy, też wężykiem.
+  const sideY = CITY_OY + 27 + Math.round(Math.sin(x * 0.08) * 3);
+  if (x < CITY_OX && Math.abs(y - sideY) < 2) return true;
+  if (x > CITY_OX + CITY_W - 1 && Math.abs(y - sideY) < 2) return true;
+  return false;
+}
+
+/**
+ * Obiekty poza murami: drzewa, głazy i krzaki.
+ *
+ * Warstwa czwarta, więc **wszystko, co tu powstaje, zależy od poprzednich**.
+ * Gęstość bierze się z biomu i z miękkiej plamy szumu, a rozstawienie
+ * z próbkowania z minimalnym odstępem — dlatego są gęstwiny i polany, a nie
+ * równy posyp. Nic nie stanie na drodze ani na skale.
+ */
+function buildWildProps(tiles) {
+  const rng = makeRng(seedFrom('dzicz'));
+  const out = [];
+
+  const wolne = (x, y) => {
+    const tx = Math.floor(x / TILE);
+    const ty = Math.floor(y / TILE);
+    const tile = tiles[ty]?.[tx];
+    if (!tile) return false;
+    // Nie na skale, nie na drodze, nie w mieście i nie na progu bramy.
+    if (tile.startsWith('rock') || tile.startsWith('path')) return false;
+    if (tx >= CITY_OX - 1 && tx <= CITY_OX + CITY_W && ty >= CITY_OY - 1 && ty <= CITY_OY + CITY_H) return false;
+    return true;
+  };
+
+  for (const region of REGIONS) {
+    // Prostokąt obszaru: wszystko poza miastem po danej stronie.
+    const box = region.dir === 'south'
+      ? { x0: 3 * TILE, y0: (CITY_OY + CITY_H + 1) * TILE, x1: (MAP_W - 3) * TILE, y1: (MAP_H - 3) * TILE }
+      : region.dir === 'west'
+        ? { x0: 3 * TILE, y0: 3 * TILE, x1: (CITY_OX - 1) * TILE, y1: (CITY_OY + CITY_H) * TILE }
+        : { x0: (CITY_OX + CITY_W + 1) * TILE, y0: 3 * TILE, x1: (MAP_W - 3) * TILE, y1: (CITY_OY + CITY_H) * TILE };
+
+    // Drzewa: minimalny odstęp 34 px, więc korony się nie zlewają, a gęstość
+    // steruje szumem — stąd biorą się gęstwiny i polany.
+    const drzewa = scatter(rng, box, 34, 2600, (x, y) =>
+      wolne(x, y) && field(x / TILE, y / TILE, 1.3) < region.tree);
+    for (const p of drzewa) {
+      out.push({ key: 'tree', x: Math.round(p.x), y: Math.round(p.y), body: { w: 8, h: 8 } });
+    }
+
+    // Głazy: rzadsze i większy odstęp, żeby nie robiły alei.
+    const glazy = scatter(rng, box, 52, 1400, (x, y) =>
+      wolne(x, y) && field(x / TILE, y / TILE, 4.1) < region.rock);
+    for (const p of glazy) {
+      out.push({ key: 'boulder', x: Math.round(p.x), y: Math.round(p.y), body: { w: 14, h: 7 } });
+    }
+  }
+
+  return out;
+}
+
 export function buildWorld() {
-  const tiles = buildGround();
-  const props = buildProps();
+  const tiles = composeTiles();
+  const props = [...buildProps(), ...buildWildProps(tiles)];
 
   // Siatka kolizji: najpierw kafle, potem prostokąty pod obiektami.
   const solid = [];
@@ -588,12 +767,12 @@ export function buildWorld() {
     tiles,
     decals: ground.decals,
     tufts: ground.tufts,
-    roof: buildRoof(),
+    roof: buildRoof().map(shift),
     windows: WINDOWS,
     props,
-    lights: buildLights(),
-    flames: buildFlames(),
-    soundSources: buildSoundSources(),
+    lights: buildLights().map(shift),
+    flames: buildFlames().map(shift),
+    soundSources: buildSoundSources().map(shift),
     solid,
     bodies,
   };
@@ -640,3 +819,7 @@ export function creatureAt(world, x0, y0, x1, y1) {
   }
   return null;
 }
+
+
+
+
