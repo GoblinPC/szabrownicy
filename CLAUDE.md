@@ -457,7 +457,75 @@ Kilka błędów w układzie mapy dało się zauważyć dopiero w grze. Stąd:
   ping, korekta pozycji. Powstał po awarii, w której „postać laguje" okazało się
   wygładzaniem czasu w Phaserze, a nie problemem sieci.
 
-**Kolejka, w tej kolejności:**
+## Stan na koniec 2026-07-30
+
+### Świat
+
+**Mapa 160×120 kafli**, miasto na środku, trzy bramy (południe, zachód, wschód)
+ze słupami. Za murami teren generowany warstwami wg `docs/TEREN.md`: biomy →
+drogi z bram → obiekty przez `scatter()` z wymuszonym minimalnym odstępem.
+Las ma polany, krzaki i kwiaty. Miasto jest **strefą bezpieczną** (`CITY_PX`),
+poza nią PvP.
+
+**Miasto ma własny układ współrzędnych** (`CITY_OX`/`CITY_OY`) i wchodzi na wielką
+mapę w całości. Nie przeliczać wpisanych na sztywno liczb kuźni — przesunięcie
+jest w jednym miejscu.
+
+### Żyje
+
+Doba 16 min, pogoda z deszczem, **cienie od słońca wędrujące przez dobę** plus od
+ognia, wiatr w roślinności (własne tempo każdej rośliny), pyłki, motyle, ptaki,
+świetliki i ćmy po zmroku, trawa gnąca się pod nogami.
+
+### Walka
+
+Celowanie myszką (8 kierunków rysunku, trafienie pod dokładnym kątem), łańcuch
+trzech ciosów, **trzy ładunki uniku**, życie bez samoleczenia, śmierć natychmiastowa
+z odrodzeniem w hali na połowie życia, PvP ze strefą bezpieczną.
+
+**Pierwsze zwierzę: dzik.** Cztery stany, każdy widoczny z zewnątrz — włóczy się,
+staje i czerwienieje (zapowiedź), szarżuje po prostej bez skrętu, po chybieniu
+odpoczywa. Wciągnięcie go na drzewo kończy szarżę i ogłusza. To jest **wzorzec dla
+wszystkich przyszłych stworów**.
+
+### Gotowe na serwerze, brak strony klienta
+
+`nodes.js` + `chopNodes()` w `game.js`: drzewa i głazy mają punkty życia, wypadają
+z nich rzeczy, odrastają. **Klient jeszcze tego nie rysuje** — brakuje przewracania
+drzewa, etapów pękania skały i rzeczy leżących na ziemi.
+
+## Co dalej — kolejka na 2026-07-31
+
+1. **Dokończyć zbieranie**: drzewo przewraca się (obrót wokół podstawy) i zostawia
+   pniak, skała pęka etapami, wypadające rzeczy leżą na ziemi i da się je podnieść.
+2. **Przedmioty i plecak-siatka** wg opisu wyżej: kształty, obracanie, przeciąganie.
+3. **Worki po trupie** — z tym wchodzi utrata rzeczy przy śmierci.
+4. **Pokój gracza w karczmie**: skrzynia i łóżko.
+5. **Pięści jako broń startowa** — patrz niżej, decyzja już podjęta.
+6. Menu pod `ESC` z suwakami głośności (zdjęte z rogu ekranu, czekają).
+7. Błyski i dźwięki przy naładowaniu uniku.
+8. Punkty orientacyjne w każdym obszarze (spalone drzewo, iglica, zatopiony wóz).
+
+### Broń startowa: pięści
+
+**Gracz zaczyna bez broni.** Decyzja z 2026-07-30, powód wart zapamiętania:
+
+> **Stan startowy musi być stanem najgorszym.**
+
+Gdyby każdy odradzał się z włócznią, to (a) włócznia przestaje być łupem — nikt jej
+nie podniesie z worka, więc zabicie gracza nie daje nic; (b) śmierć przestaje
+kosztować, bo broń wraca za darmo; (c) pierwsza znaleziona broń przestaje być
+wydarzeniem. Tibia robi dokładnie to i dlatego działa.
+
+Pięści mają być **słabe, ale użyteczne**: niski obrażenia i krótki zasięg (zasięg
+boli bardziej niż liczby — trzeba wejść w zwarcie), ale wystarczą na najsłabsze
+zwierzę i na zbieranie tego, co leży.
+
+Koszt techniczny jest **znikomy**: klatki ciosu powstają z garści, kąta i zasięgu,
+a włócznia jest dorysowywana osobno (`drawSpear`). „Pięści" to te same pozy
+z pominiętym drzewcem i skróconym wyrzutem ręki — nie trzeba rysować nowej postaci.
+
+**Dalsza kolejka, w tej kolejności:**
 
 Lobby jest domknięte. Dalej **walka przed mapą** — kolejność ustalona 2026-07-30
 i świadomie odwrócona względem poprzedniej (najpierw był teren, potem walka).
