@@ -17,7 +17,8 @@
 import { Canvas } from './canvas.js';
 import { c } from './palette.js';
 import { makeRng, seedFrom } from './rng.js';
-import { playerPanel } from './panel.js';
+import { playerPanel, goblinFace, PANEL_W, PANEL_H, BAR_SLOTS, PIP_SLOTS, PORTRAIT, NAME_SLOT, ZONE_SLOT } from './panel.js';
+export { PANEL_W, PANEL_H, BAR_SLOTS, PIP_SLOTS, PORTRAIT, NAME_SLOT, ZONE_SLOT };
 
 const rngFor = (name) => makeRng(seedFrom(name));
 
@@ -218,6 +219,9 @@ export function buildUi() {
   // więc nie ma powodu go rozciągać — a rozciąganie wymusza idealną
   // powtarzalność, czyli dokładnie to, co miało zniknąć.
   add('player_panel', playerPanel('player_panel'));
+  // Twarz do portretu — rysowana osobno, w rozdzielczości portretu. Powiększony
+  // sprite z gry dałby dziewięć wielkich kwadratów zamiast twarzy.
+  add('face_0', goblinFace('face_0'));
 
   // Wypełnienia pasków: jeden pionowy plasterek na rampę, rozciągany w poziomie.
   for (const ramp of ['life', 'stamina', 'food']) {
@@ -229,4 +233,5 @@ export function buildUi() {
 
   return entries;
 }
+
 

@@ -11,6 +11,22 @@ import { createChatInput } from '../ui/chat.js';
 import { bubbleShape, bubbleWidth, BUBBLE_COLORS } from '../render/bubble.js';
 import { DODGE_CHARGES } from '../world/movement.js';
 
+// Uklad panelu gracza. Liczby pochodza z generatora (tools/art/panel.js) i sa
+// tu powtorzone, bo klient nie importuje niczego z narzedzi budowania.
+// Przy zmianie ukladu poprawic w obu miejscach.
+const PANEL_X = 14;
+const PANEL_Y = 14;
+// Interfejs rysujemy w powiekszeniu, tak jak swiat. Kanwa pracuje w pelnej
+// rozdzielczosci monitora, wiec panel szeroki na 232 piksele zajmowalby na
+// ekranie 1920 nieco ponad dziesiata czesc szerokosci - i tego wlasnie
+// uzytkownik nie byl w stanie zobaczyc w grze.
+const UI_SCALE = 3;
+const BAR_SLOTS = [{ key: 'life', x: 78, y: 34, w: 142, h: 22 }];
+const PORTRAIT = { x: 8, y: 8, r: 32 };
+const NAME_SLOT = { x: 78, y: 8, w: 142, h: 20 };
+const PIP_SLOTS = [{ x: 80, y: 62 }, { x: 106, y: 62 }, { x: 132, y: 62 }];
+const ZONE_SLOT = { x: 160, y: 62, w: 60, h: 22 };
+
 // Szerokość nierozciąganego brzegu ramki 9-slice.
 //
 // **Musi zgadzać się z `SLICE` w `tools/art/ui.js`** — to ta sama grafika
@@ -629,45 +645,47 @@ export class HudScene extends Phaser.Scene {
     // Ramka jako sprite dziewięciodzielny — ten sam, którym będą obramowane panel
     // plecaka i okno opcji. Phaser umie 9-slice sam, więc rozciąganie nie rozmywa
     // rogów, choćby pasek miał dowolną szerokość.
-    this.panel = this.add.image(PANEL_X, PANEL_Y, 'ui', 'player_panel')
-      .setOrigin(0, 0)
-      .setScale(UI_SCALE)
-      .setDepth(DEPTH.plate);
+    const at = (x, y) => [PANEL_X + x * UI_SCALE, PANEL_Y + y * UI_SCALE];
 
-    // Wypełnienia pasków rysujemy sami — muszą się zmieniać płynnie, więc nie
-    // mogą być gotowym obrazkiem. Idą **pod** panelem, bo panel ma w sobie
-    // wgłębienia z cieniem i to on ma zostać na wierzchu.
-    this.health = this.add.graphics().setDepth(DEPTH.plate + 1);
+    // Portret **pod** panelem: panel ma wycięte okrągłe gniazdo z cieniem
+    // i to ono ma przykryć krawędzie twarzy.
+    this.portrait = this.add.image(...at(PORTRAIT.x + 8, PORTRAIT.y + 6), 'ui', 'face_0')
+      .setOrigin(0, 0).setScale(UI_SCALE).setDepth(DEPTH.plate - 1);
+
+    // Wypełnienie paska też pod panelem — gniazdo ma zaokrąglone końce i cień
+    // od górnej krawędzi, więc nadmiar wypełnienia chowa się pod nimi.
+    this.health = this.add.graphics().setDepth(DEPTH.plate - 1);
+
+    this.panel = this.add.image(PANEL_X, PANEL_Y, 'ui', 'player_panel')
+      .setOrigin(0, 0).setScale(UI_SCALE).setDepth(DEPTH.plate);
 
     this.healthShown = 1;
     this.healthGhost = 1;
     this.healthValue = 1;
 
-    // Portret w okrągłej ramie panelu: ten sam goblin, którym gra się w świecie.
-    this.portrait = this.add.image(0, 0, 'goblins', 'g0_down_idle0')
-      .setOrigin(0.5, 0.5)
-      .setScale(UI_SCALE * 2)
-      .setDepth(DEPTH.plate + 2);
-
-    this.nameLabel = this.add.bitmapText(0, 0, 'goblin', '', 11)
-      .setScale(UI_SCALE).setTint(TEXT).setDepth(DEPTH.plate + 3);
+    const BAR = BAR_SLOTS[0];
+    this.healthLabel = this.add.bitmapText(...at(BAR.x + 8, BAR.y + 7), 'goblin', '', 11)
+      .setScale(UI_SCALE).setTint(TEXT).setDepth(DEPTH.plate + 1);
+    this.nameLabel = this.add.bitmapText(...at(NAME_SLOT.x + 7, NAME_SLOT.y + 5), 'goblin', '', 11)
+      .setScale(UI_SCALE).setTint(TEXT).setDepth(DEPTH.plate + 1);
 
     // Znaczniki uniku. Pusty i pełny to osobne sprite'y; ładujący się rysujemy
     // przycięciem pełnego, żeby wypełniał się od dołu.
     this.pips = [];
     for (let i = 0; i < DODGE_CHARGES; i++) {
+      const [px, py] = at(PIP_SLOTS[i].x + 2, PIP_SLOTS[i].y + 2);
       this.pips.push({
-        empty: this.add.image(0, 0, 'ui', 'pip_empty')
-          .setOrigin(0, 0).setScale(UI_SCALE).setDepth(DEPTH.plate + 2),
-        full: this.add.image(0, 0, 'ui', 'pip_full')
-          .setOrigin(0, 0).setScale(UI_SCALE).setDepth(DEPTH.plate + 3),
+        full: this.add.image(px, py, 'ui', 'pip_full')
+          .setOrigin(0, 0).setScale(UI_SCALE).setDepth(DEPTH.plate + 1),
       });
     }
     this.dodgeFuel = DODGE_CHARGES;
+
+    this.zone.setPosition(...at(ZONE_SLOT.x + 6, ZONE_SLOT.y + 6)).setScale(UI_SCALE);
   }
 
   setPlayerName(name) {
-    this.playerName = name;
+    this.nameLabel?.setText(name ?? '');
   }
 
   setHealth(hp, maxHp, safe) {
@@ -690,75 +708,38 @@ export class HudScene extends Phaser.Scene {
     this.healthGhost += (this.healthShown - this.healthGhost) * Math.min(1, dt * 2.6);
     if (this.healthGhost < this.healthShown) this.healthGhost = this.healthShown;
 
-    // Cały stan ciała w jednym bloku: pasek życia, a pod nim uniki i nazwa strefy.
-    // Oko ma mieć **jeden adres**, nie trzy rozrzucone po ekranie.
-    // Rozmiar dobrany po uwadze użytkownika, że poprzedniego paska **w ogóle nie
-    // zauważył**. To jest właściwa lekcja o HUD-zie: element czytany kątem oka
-    // musi być wyraźnie większy, niż wydaje się potrzebne, gdy patrzy się na niego
-    // wprost. Poprzedni miał 176×15 i chował się w rogu.
-    const FRAME_W = 232;
-    const FRAME_H = 26;
-    // Lewy górny róg, nie dolny: tam odruchowo szuka się swojego stanu i tam
-    // trzyma go większość gier tego rodzaju.
-    const x = 12;
-    const y = 12;
-    // Wnętrze ramki, licząc jej trzypikselowy brzeg.
-    const bx = x + SLICE;
-    const by = y + SLICE;
-    const bw = FRAME_W - SLICE * 2;
-    const bh = FRAME_H - SLICE * 2;
-
-    this.healthFrame.setPosition(x, y);
+    // Wypelnienie paska zycia. Rysowane pod panelem, ktory ma zaokraglone
+    // gniazdo z cieniem - nadmiar chowa sie pod jego krawedziami.
+    const BAR = BAR_SLOTS[0];
+    const bx = PANEL_X + (BAR.x + 3) * UI_SCALE;
+    const by = PANEL_Y + (BAR.y + 3) * UI_SCALE;
+    const bw = (BAR.w - 6) * UI_SCALE;
+    const bh = (BAR.h - 6) * UI_SCALE;
 
     this.health.clear();
-    this.health.fillStyle(0x231c15, 1);
-    this.health.fillRect(bx, by, bw, bh);
-    // Jasny ślad po świeżej stracie — to on pokazuje wielkość ciosu.
-    this.health.fillStyle(0xffe08a, 0.5);
+    // Jasny slad po swiezej stracie - to on pokazuje wielkosc ciosu.
+    this.health.fillStyle(0xc47a74, 0.85);
     this.health.fillRect(bx, by, Math.round(bw * this.healthGhost), bh);
-    // Zieleń przy pełnym życiu, żar przy resztkach — kolor sam ostrzega.
+    // Rampa life z palety: przygaszona czerwien, nie neon.
     const low = this.healthShown < 0.3;
-    this.health.fillStyle(low ? 0xc43a0d : 0x66913f, 1);
     const filled = Math.round(bw * this.healthShown);
+    this.health.fillStyle(low ? 0x7a3236 : 0xa04a4a, 1);
     this.health.fillRect(bx, by, filled, bh);
-    // Jaśniejszy grzbiet u góry wypełnienia: pasek przestaje być płaską plamą.
-    this.health.fillStyle(low ? 0xf2700f : 0x8ab355, 1);
-    this.health.fillRect(bx, by, filled, 2);
+    this.health.fillStyle(low ? 0xa04a4a : 0xc47a74, 1);
+    this.health.fillRect(bx, by, filled, Math.round(bh * 0.34));
 
-    if (!this.healthLabel) {
-      this.healthLabel = this.add.bitmapText(0, 0, 'goblin', '', 11)
-        .setDepth(DEPTH.plate + 2)
-        .setTint(TEXT);
-    }
-    // Liczba **w pasku**, nie obok niego: obok robi się z niej osobny element,
-    // którego oko musi szukać. W środku jest częścią paska.
-    this.healthLabel.setPosition(bx + 5, by + Math.round((bh - 11) / 2));
     this.healthLabel.setText(this.healthText ?? '');
 
-    // Uniki pod paskiem.
-    //
-    // Ładujący się znacznik **wypełnia się od dołu**, więc widać nie tylko ile
-    // masz, ale ile *zaraz* będziesz miał — a to jest różnica między „mam jeden"
-    // a „za pół sekundy mam dwa", czyli dokładnie ta informacja, na której opiera
-    // się decyzja o wejściu w zwarcie.
-    const py = y + FRAME_H + 4;
+    // Uniki: ladujacy sie znacznik wypelnia sie OD DOLU, wiec widac nie tylko
+    // ile masz, ale ile zaraz bedziesz mial.
     this.pips.forEach((pip, i) => {
-      const px = x + 2 + i * 23;
-      pip.empty.setPosition(px, py);
-      pip.full.setPosition(px, py);
-
       const part = Math.max(0, Math.min(1, this.dodgeFuel - i));
       pip.full.setVisible(part > 0);
       if (part <= 0) return;
       const h = pip.full.height;
       const shown = Math.max(1, Math.round(h * part));
-      // Przycinamy od dołu: widoczny zostaje dolny pasek pełnego rombu.
       pip.full.setCrop(0, h - shown, pip.full.width, shown);
     });
-
-    // Nazwa strefy pod znacznikami — najmniejszy element bloku, bo zmienia się
-    // rzadko. Kolor niesie w niej całą treść.
-    this.zone.setPosition(x + 3, py + 24);
   }
 
   update(time, delta) {
@@ -783,3 +764,5 @@ export class HudScene extends Phaser.Scene {
     }
   }
 }
+
+

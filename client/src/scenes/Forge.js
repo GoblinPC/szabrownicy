@@ -192,6 +192,7 @@ export class ForgeScene extends Phaser.Scene {
       entered.then((result) => {
         const hud = this.scene.get('Hud');
         hud?.setHello(result.name, result.fresh);
+        hud?.setPlayerName(result.name);
         hud?.enableChat((text) => this.net.sendChat(text));
         hud?.setRosterSource(() => this.buildRoster());
       });
@@ -1180,3 +1181,4 @@ export class ForgeScene extends Phaser.Scene {
     this.lastSafe = safe;
   }
 }
+
