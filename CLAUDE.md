@@ -608,13 +608,58 @@ drzewa, etapów pękania skały i rzeczy leżących na ziemi.
 6. Menu pod `ESC` z suwakami głośności (zdjęte z rogu ekranu, czekają).
 7. Błyski i dźwięki przy naładowaniu uniku.
 8. Punkty orientacyjne w każdym obszarze (spalone drzewo, iglica, zatopiony wóz).
-9. **Reguły rozstawiania skał i drzew.** Zgłoszone 2026-07-31 po obejrzeniu mapy
+9. **Trafienie w drzewo jest za trudne.** Zgłoszone z gry 2026-07-31: *uderzam
+   w jego stronę i nie trafiam cały czas, trzeba idealnie pod danym kątem stanąć*.
+   Diagnoza spisana od razu, żeby nie szukać jej od nowa:
+
+   - **Gracz celuje w koronę, a gra sprawdza pień.** Drzewo ma `radius: 7`
+     i `torso: 20` (`world/nodes.js`), czyli cel wielkości pnia — a na ekranie
+     zajmuje 34 px szerokości. To jest główny podejrzany.
+   - Stożek ciosu ma 84° przy cięciach i **60° przy pchnięciu**, liczony od
+     kierunku myszy. Do tego pięść ma teraz zasięg 0,37 × 46 px ≈ 17 px liczone
+     od środka postaci — po odjęciu promienia celu zostaje jakieś 24 px od osi pnia.
+   - Razem daje to wąskie okno w obu wymiarach naraz, i to jest ta „idealna" pozycja.
+
+   Kierunek naprawy: **cele nieżywe mają być wybaczające**. Drzewo i głaz nie
+   uciekają i nie oddają, więc precyzja nic tu nie wnosi — jest samą uciążliwością.
+   Do zrobienia: większy `radius` zasobów (drzewo ~12–14, głaz ~14) i osobny,
+   szerszy stożek dla zasobów niż dla walki. Trudność ma siedzieć w tym, **czym**
+   się rąbie (siekiera kontra pięść), a nie w tym, pod jakim kątem się stoi.
+
+10. **Animacja ciosu pięścią do napisania od nowa.** Ocena użytkownika po
+    obejrzeniu w grze: *tragiczna*. I słusznie — dzisiejsza wersja to **pozy
+    włóczni z odjętym drzewcem**: te same kąty, te same wychylenia, ten sam
+    rytm faz, tylko z pięścią doklejoną w punkcie garści i skróconym wyrzutem
+    ręki. Oszczędność wyszła dokładnie tak, jak takie oszczędności wychodzą.
+
+    Pięść potrzebuje **własnych póz**, nie przeskalowanych cudzych. Pchnięcie
+    włócznią jest ruchem z ramienia po prostej; cios pięścią to obrót całego
+    tułowia, bark idący za ręką, druga ręka przy twarzy i przeniesienie ciężaru
+    na przednią nogę. Nic z tego nie da się dostać mnożnikiem.
+    Do zrobienia razem z tym: `ATTACK_POSES` rozbite na komplet na broń, a nie
+    jeden komplet z poprawką — i wtedy siekiera dostanie zamach z góry, a nie
+    kolejne przebranie pchnięcia.
+
+11. **Reguły rozstawiania skał i drzew.** Zgłoszone 2026-07-31 po obejrzeniu mapy
    w grze: obiekty stoją zbyt losowo — głazy nachodzą na inne obiekty i na styki
    kafli, a zagęszczenie jest takie, że **ledwo da się przejść przez mapę**.
    `scatter()` pilnuje minimalnego odstępu **między obiektami tego samego wywołania**
    i nic poza tym; nie wie o obiektach z innych warstw ani o tym, że przez las ma
    dać się przejść. Do zrobienia: wspólna lista zajętości dla wszystkich warstw,
    odsunięcie od dróg i krawędzi, i gęstość dobrana tak, żeby zostawały przejścia.
+
+### Zasoby w dwóch poziomach
+
+Ustalone 2026-07-31, pomysł użytkownika: *ręką nie rozwalę skały i drzewa*.
+
+- **Duże** — głaz i drzewo — wymagają narzędzia: kilofa i siekiery.
+- **Małe** — luźne kamienie i gałęzie rozrzucone po mapie — idą gołą ręką.
+
+To domyka pętlę startową: zbierasz ręką materiał → robisz siekierę w kuźni →
+dopiero teraz ścinasz drzewa. Pierwsza siekiera przestaje być przedmiotem
+i staje się **wydarzeniem**, czyli dokładnie tym, po co gracz wychodzi z miasta.
+
+Jeszcze nie zrobione. Dziś wszystko rąbie się wszystkim.
 
 ### Broń startowa: pięści
 
