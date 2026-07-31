@@ -122,7 +122,9 @@ function partitionAt(x, y) {
     if (p.dir === 'v') {
       if (x !== p.x || y < p.y0 || y > p.y1) continue;
       if (p.doors.some(([a, b]) => y >= a && y <= b)) return null;
-      return 'v';
+      // Węzeł: z tej pionowej ścianki wychodzi w tym wierszu pozioma.
+      const wychodzi = PARTITIONS.some((q) => q.dir === 'h' && q.y === y && q.x0 === x + 1);
+      return wychodzi ? 'tr' : 'v';
     }
     if (x < p.x0 || x > p.x1) continue;
     if (p.doors.some(([a, b]) => x >= a && x <= b)) continue;
@@ -236,7 +238,7 @@ function nearestTree(x, y) {
 // „sklep: ZA ladą — osiągalne, a nie powinno być".
 const SOLID_TILES = new Set([
   'wall_face', 'wall_window', 'wall_top', 'wall_top_window', 'rock',
-  'part_v', 'part_h',
+  'part_v', 'part_h', 'part_tr',
 ]);
 
 /** Nazwa kafla bez numeru wariantu — po niej rozpoznajemy kolizję. */
@@ -318,6 +320,7 @@ function pickTile(x, y, rng) {
   if (inBuildingSpan && y > BUILDING.y0 + 1 && y < BUILDING.y1) {
     // Ścianki działowe przed podłogą — dzielą halę na cztery pomieszczenia.
     const ścianka = partitionAt(x, y);
+    if (ścianka === 'tr') return 'part_tr';
     if (ścianka === 'v') return 'part_v';
     if (ścianka === 'top') return 'part_h';
     if (ścianka === 'face') return `wall_face_${rng.int(3)}`;

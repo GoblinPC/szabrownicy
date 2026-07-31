@@ -248,41 +248,61 @@ function wallTopWindow(name) {
  */
 function partitionWall(name, dir) {
   const rng = rngFor(name);
-  const t = new Canvas(TILE, TILE);
-  const GRUBOSC = 6;
+  const GRUBOSC = 8;
 
+  // **Pod belką musi leżeć podłoga.**
+  //
+  // To był prawdziwy błąd, nie kwestia gustu: kafel rysował samą belkę, a reszta
+  // pola zostawała przezroczysta. Podłoże wypala się w jedną wielką teksturę bez
+  // tła, więc w tych miejscach zostawała **czarna dziura** — i to ją użytkownik
+  // widział jako „cień". Każdy inny kafel terenu jest kryjący w stu procentach;
+  // te dwa miały 160 przezroczystych pikseli na 256.
+  const t = woodFloor(`${name}-podloga`);
+
+  // Belka jest **jaśniejsza od desek**, tak samo jak ściana zewnętrzna: podłoga
+  // to `wood 1`, ściana `wood 2`. Belka w kolorze podłogi znikała i zostawał
+  // sam ciemny kant, czyli wizualnie rysa w deskach.
   if (dir === 'v') {
     const x0 = Math.round((TILE - GRUBOSC) / 2);
-    // Bal widziany z góry. Jasna krawędź od lewej, ciemna od prawej — to jest
-    // **cieniowanie materiału**, czyli forma samego bala, a nie cień rzucany
-    // na podłogę. Cienie rzuca silnik i wmalowywanie ich w kafel kończy się
-    // tym, czym się skończyło: pasem czerni, który czyta się jako tekstura.
-    t.rect(x0, 0, GRUBOSC, TILE, c('wood', 1));
-    t.vline(x0, 0, TILE - 1, c('wood', 3));
-    t.vline(x0 + 1, 0, TILE - 1, c('wood', 2));
-    // **Jeden** ciemny piksel na kant, nie dwa. Podwójna ciemna kolumna czytała
-    // się jako pas cienia domalowany z boku ścianki — czyli dokładnie to, czego
-    // w kaflu być nie może.
-    t.vline(x0 + GRUBOSC - 1, 0, TILE - 1, c('wood', 0));
-    t.speckle(rng, c('wood', 2), 0.16, { x: x0 + 1, y: 0, w: GRUBOSC - 2, h: TILE });
-    // Poprzeczne styki bali — inaczej ścianka jest gładką rurą.
-    for (let y = 3; y < TILE; y += 6) t.hline(x0 + 1, x0 + GRUBOSC - 2, y, c('wood', 0));
+    t.rect(x0, 0, GRUBOSC, TILE, c('wood', 2));
+    t.vline(x0, 0, TILE - 1, c('wood', 0));                 // obrys od lewej
+    t.vline(x0 + 1, 0, TILE - 1, c('wood', 3));             // światło na kancie
+    t.vline(x0 + GRUBOSC - 1, 0, TILE - 1, c('wood', 0));   // obrys od prawej
+    t.speckle(rng, c('wood', 1), 0.16, { x: x0 + 2, y: 0, w: GRUBOSC - 3, h: TILE });
+    // Poprzeczne styki bali — bez nich belka jest gładką rurą.
+    for (let y = 3; y < TILE; y += 6) t.hline(x0 + 2, x0 + GRUBOSC - 2, y, c('wood', 1));
     return t;
   }
 
-  // Pozioma: korona u góry, ciemniejszy spód, plus **jednopikselowa** kreska
-  // kontaktowa przy podłodze — dokładnie tak, jak robi to `wallFace()`.
-  // To nie jest cień rzucany, tylko styk ściany z deskami.
-  t.rect(0, 2, TILE, GRUBOSC, c('wood', 2));
-  t.hline(0, TILE - 1, 2, c('wood', 4));
-  t.hline(0, TILE - 1, 3, c('wood', 3));
-  t.hline(0, TILE - 1, 2 + GRUBOSC - 1, c('wood', 0));
-  t.speckle(rng, c('wood', 1), 0.18, { x: 0, y: 4, w: TILE, h: GRUBOSC - 3 });
-  for (let x = 2; x < TILE; x += 6) t.vline(x, 3, 2 + GRUBOSC - 2, c('wood', 1));
-  // **Bez kreski z sadzy pod ścianką.** Miała być stykiem, a była czarnym pasem
-  // na całą szerokość kafla, położonym na środku podłogi — czyli dokładnie tym
-  // cieniem wmalowanym w grafikę, którego w kaflach być nie może. Ciemna krawędź
-  // samej belki (`wood 0`, wiersz wyżej) w zupełności wystarcza.
+  if (dir === 'tr') {
+    // Węzeł: pionowa belka plus ramię w prawo. Bez niego pozioma ścianka kończy
+    // się tuż obok pionowej i widać między nimi szparę — a dwie belki, które się
+    // spotykają, muszą być **związane**, nie postawione obok siebie.
+    const x0 = Math.round((TILE - GRUBOSC) / 2);
+    const yc = Math.round((TILE - GRUBOSC) / 2);
+    t.rect(x0, 0, GRUBOSC, TILE, c('wood', 2));
+    t.rect(x0, yc, TILE - x0, GRUBOSC, c('wood', 2));
+    t.vline(x0, 0, TILE - 1, c('wood', 0));
+    t.vline(x0 + 1, 0, TILE - 1, c('wood', 3));
+    // Prawy obrys pionowej belki tylko tam, gdzie nie wychodzi z niej ramię.
+    for (let y = 0; y < TILE; y++) {
+      if (y >= yc && y < yc + GRUBOSC) continue;
+      t.px(x0 + GRUBOSC - 1, y, c('wood', 0));
+    }
+    t.hline(x0 + GRUBOSC, TILE - 1, yc, c('wood', 0));
+    t.hline(x0 + GRUBOSC, TILE - 1, yc + 1, c('wood', 3));
+    t.hline(x0 + GRUBOSC, TILE - 1, yc + GRUBOSC - 1, c('wood', 0));
+    t.speckle(rng, c('wood', 1), 0.16, { x: x0 + 2, y: 0, w: GRUBOSC - 3, h: TILE });
+    return t;
+  }
+
+  const y0 = Math.round((TILE - GRUBOSC) / 2);
+  t.rect(0, y0, TILE, GRUBOSC, c('wood', 2));
+  t.hline(0, TILE - 1, y0, c('wood', 0));
+  t.hline(0, TILE - 1, y0 + 1, c('wood', 3));               // światło na koronie
+  t.hline(0, TILE - 1, y0 + GRUBOSC - 1, c('wood', 0));
+  t.speckle(rng, c('wood', 1), 0.16, { x: 0, y: y0 + 2, w: TILE, h: GRUBOSC - 3 });
+  for (let x = 2; x < TILE; x += 6) t.vline(x, y0 + 2, y0 + GRUBOSC - 2, c('wood', 1));
   return t;
 }
 
@@ -911,6 +931,7 @@ export function buildTiles() {
   // Ścianki działowe karczmy — wąskie, z cieniem rzuconym na podłogę.
   add('part_v', partitionWall('part_v', 'v'));
   add('part_h', partitionWall('part_h', 'h'));
+  add('part_tr', partitionWall('part_tr', 'tr'));
 
   for (let i = 0; i < 2; i++) add(`roof_${i}`, roofShingles(`roof_${i}`, { offset: i }));
   add('roof_beam', roofBeam('roof_beam'));

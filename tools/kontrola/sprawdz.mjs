@@ -18,6 +18,7 @@ import {
 } from '../../client/src/world/forge.js';
 import { FOOT_HALF_W, FOOT_H } from '../../client/src/world/movement.js';
 import { buildNodes, nodeKindOf } from '../../client/src/world/nodes.js';
+import { buildTiles } from '../art/tiles.js';
 
 const w = buildWorld();
 const OX = CITY_OX * TILE;
