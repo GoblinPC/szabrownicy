@@ -134,6 +134,24 @@ i skała tego problemu nie mają: każda z ich 240 komórek ma osobno losowaną
 powierzchnię. Wariant bazy wybiera **hasz pozycji**, nie `(x + y) % n` — ten
 ostatni układa kafle w ukośne pasy.
 
+**Mur bez czoła to nie mur, tylko kamienna podłoga.** Reguła z kuźni (`wall_top`
++ `wall_face`) obowiązuje też skalną granicę miasta. Skała była samą koroną
+oglądaną z góry i pas szeroki na trzy kafle czytał się jako jasny kamienny plac —
+użytkownik nazwał to wprost: *to nie jest obiekt imitujący 3d*. Dziś każda bryła
+skały, pod którą nie ma skały, dostaje `rock_face_lo`, a rząd nad nią
+`rock_face_hi`, plus `rock_scree` z cieniem na ziemi.
+
+- Czoło ma **dwa kafle wysokości**. Przy jednym korona zostawała dwukafelkowym
+  płaskim pasem i dalej dominowała nad ścianką.
+- Czoło rysują **nieregularne bryły i krótkie rysy**, nie pionowe pasy o stałej
+  wysokości rozdzielone ciągłymi kreskami. Ta pierwsza wersja czytała się jako
+  **ostrokół**: równy rytm pionowych linii to znak rozpoznawczy palisady.
+- Warga korony jest **rozsypana, nie ciągła** — pełna jasna kreska na całą długość
+  muru czyta się jako listwa przybita do ściany.
+- Boki skały kantuje `stone 1`, nie `stone 0`. Ciemniejsza wersja robiła przy
+  bramie dwa czarne pasy w miejscu ościeży i przejście wyglądało jak dziura
+  wycięta w tle.
+
 **Znana niedoróbka:** cień kontaktowy trawy i skały jest ucinany, gdy krawędź
 wypadnie w ostatnich pikselach komórki. Widać to sporadycznie jako brakujący
 cień pod pojedynczym fragmentem obrysu.
@@ -571,6 +589,13 @@ drzewa, etapów pękania skały i rzeczy leżących na ziemi.
 6. Menu pod `ESC` z suwakami głośności (zdjęte z rogu ekranu, czekają).
 7. Błyski i dźwięki przy naładowaniu uniku.
 8. Punkty orientacyjne w każdym obszarze (spalone drzewo, iglica, zatopiony wóz).
+9. **Reguły rozstawiania skał i drzew.** Zgłoszone 2026-07-31 po obejrzeniu mapy
+   w grze: obiekty stoją zbyt losowo — głazy nachodzą na inne obiekty i na styki
+   kafli, a zagęszczenie jest takie, że **ledwo da się przejść przez mapę**.
+   `scatter()` pilnuje minimalnego odstępu **między obiektami tego samego wywołania**
+   i nic poza tym; nie wie o obiektach z innych warstw ani o tym, że przez las ma
+   dać się przejść. Do zrobienia: wspólna lista zajętości dla wszystkich warstw,
+   odsunięcie od dróg i krawędzi, i gęstość dobrana tak, żeby zostawały przejścia.
 
 ### Broń startowa: pięści
 

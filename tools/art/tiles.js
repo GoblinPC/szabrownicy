@@ -39,12 +39,12 @@ const rngFor = (name) => makeRng(seedFrom(name));
  * dwoma kaflami nie ma się gdzie pokazać. Zawijanie (`% TILE`) sprawia, że kafel
  * przylega bez szwu sam do siebie — a to on powtarza się najczęściej.
  */
-function blotches(t, rng, shades, { count, rmin, rmax, alpha = 255 }) {
+function blotches(t, rng, shades, { count, rmin, rmax, alpha = 255, aspect = 1 }) {
   for (let i = 0; i < count; i++) {
     const cx = rng.range(0, TILE);
     const cy = rng.range(0, TILE);
     const rx = rng.range(rmin, rmax);
-    const ry = rx * rng.range(0.55, 1.0);
+    const ry = rx * rng.range(0.55, 1.0) * aspect;
     const col = shades[rng.int(shades.length)];
     // Trzy fale doklejone do promienia — czysta elipsa czyta się jako narysowany
     // owal, a nie jako nierówność gruntu. Ta sama sztuczka co przy kałuży.
@@ -382,6 +382,108 @@ function grass(name) {
   return t;
 }
 
+/**
+ * Czoło skalnej ściany — pionowa ścianka pod koroną.
+ *
+ * **Mur bez czoła to nie mur, tylko kamienna podłoga.** Ta sama reguła, która od
+ * początku obowiązuje w kuźni (`wall_top` + `wall_face`), nigdy nie objęła skalnej
+ * granicy miasta: skała była samą koroną oglądaną z góry, więc pas szeroki na trzy
+ * kafle czytał się jako jasny kamienny plac, a nie jako coś, czego nie da się
+ * przejść. Użytkownik nazwał to wprost: *to nie jest obiekt imitujący 3d*.
+ *
+ * Czoło ma **dwa kafle wysokości**, nie jeden. Przy jednym korona zostawała
+ * dwukafelkowym płaskim pasem i dalej dominowała nad ścianką; przy dwóch proporcja
+ * się odwraca i widać ścianę z wąską półką na szczycie.
+ *
+ * `half` to 'hi' (górna połowa, pod samą koroną) albo 'lo' (dolna, przy ziemi).
+ * Ścianka jest **pionowo prążkowana**: to jedyna rzecz, która odróżnia powierzchnię
+ * pionową od poziomej, gdy obie są z tego samego kamienia. Korona ma plamy, czoło
+ * ma słupy — i dlatego widać, gdzie jedno przechodzi w drugie.
+ */
+function rockFace(name, half) {
+  const rng = rngFor(name);
+  const t = new Canvas(TILE, TILE);
+  const hi = half === 'hi';
+
+  // Nieregularne bryły, nie słupy.
+  //
+  // Pierwsza wersja dzieliła czoło na pionowe pasy o stałej wysokości, rozdzielone
+  // ciągłymi ciemnymi kreskami. Wychodził z tego **ostrokół**: równy rytm pionowych
+  // linii to znak rozpoznawczy palisady, a nie skały. Skałę czyta się po plamach
+  // o różnej wielkości i po rysach, które **nie dochodzą do końca**.
+  t.fill(c('stone', 0));
+  blotches(t, rng, [c('soot', 2)], { count: 4, rmin: 2.5, rmax: 5.0, aspect: 1.5 });
+  blotches(t, rng, [c('stone', 1)], { count: 4, rmin: 2.0, rmax: 4.5, aspect: 1.5 });
+  blotches(t, rng, [c('soot', 1)], { count: 3, rmin: 1.5, rmax: 3.5, aspect: 1.4 });
+
+  // Rysy: krótkie, łamane, z wąskim rozjaśnieniem po jednej stronie — to ono
+  // robi z rysy szczelinę o głębokości, a nie kreskę narysowaną na płasko.
+  for (let i = 0; i < 3; i++) {
+    let x = rng.int(TILE);
+    const y0 = rng.int(TILE - 3);
+    const len = rng.between(4, 11);
+    for (let d = 0; d < len && y0 + d < TILE; d++) {
+      t.px(x, y0 + d, c('soot', 0));
+      if (rng.chance(0.55)) t.px(x + 1, y0 + d, c('stone', 2));
+      if (rng.chance(0.28)) x += rng.chance(0.5) ? 1 : -1;
+    }
+  }
+
+  // Półki: krótkie okapy, po dwa na kafel.
+  for (let i = 0; i < 2; i++) {
+    const y = rng.between(2, TILE - 3);
+    const x0 = rng.int(TILE - 4);
+    const w = rng.between(3, 7);
+    t.hline(x0, x0 + w, y, c('stone', 2));
+    t.hline(x0, x0 + w, y + 1, c('soot', 0));
+  }
+
+  // Ciemnieje ku dołowi — u podstawy ściany nie dochodzi światło. Osobnym
+  // przebiegiem półprzezroczystym, żeby nie gubić rysunku pod spodem.
+  for (let y = 0; y < TILE; y++) {
+    const glebokosc = (hi ? y : y + TILE) / (TILE * 2);
+    const a = Math.round(Math.max(0, glebokosc - 0.25) * 150);
+    if (a > 0) for (let x = 0; x < TILE; x++) t.px(x, y, [...hexToRgb(c('soot', 0)), a]);
+  }
+
+  if (hi) {
+    // Warga korony: jasna krawędź na styku góry i czoła. Bez niej korona wtapia
+    // się w ściankę i cała wysokość znika. Rozsypana, nie ciągła — pełna kreska
+    // na całą długość muru czyta się jako listwa przybita do ściany.
+    for (let x = 0; x < TILE; x++) {
+      t.px(x, 0, c('stone', rng.chance(0.65) ? 3 : 2));
+      if (rng.chance(0.5)) t.px(x, 1, c('stone', 2));
+    }
+  } else {
+    // Podstawa: ciemna i **nierówna**, plus osypisko wysypane na ziemię.
+    // Prosta linia u dołu czytała się jak przycięta wycinanka.
+    for (let x = 0; x < TILE; x++) {
+      const h = 1 + ((x * 7919) % 3);
+      for (let d = 0; d < h; d++) t.px(x, TILE - 1 - d, c('soot', d === 0 ? 0 : 1));
+    }
+  }
+  return t;
+}
+
+/** Osypisko u stóp ściany — kładzione na ziemi pod czołem. */
+function rockScree(name) {
+  const rng = rngFor(name);
+  const t = new Canvas(TILE, TILE);
+  for (let i = 0; i < 9; i++) {
+    const x = rng.int(TILE);
+    const y = rng.between(0, 4);
+    const w = rng.between(1, 3);
+    t.hline(x, x + w, y, c('stone', rng.chance(0.5) ? 1 : 2));
+    t.hline(x, x + w, y + 1, c('soot', 0));
+  }
+  // Cień rzucany przez ścianę — słabnie w dół.
+  for (let y = 0; y < 5; y++) {
+    const a = [150, 110, 75, 45, 20][y];
+    for (let x = 0; x < TILE; x++) if (rng.chance(0.85)) t.px(x, y, [...hexToRgb(c('soot', 0)), a]);
+  }
+  return t;
+}
+
 // --- Warstwa nakładkowa (trawa i droga na ziemi) ------------------------------
 //
 // Siatka nakładek jest **przesunięta o pół kafla** względem siatki świata, więc
@@ -487,7 +589,10 @@ function surfaceOverlay(name, kind, mask, phase) {
           t.px(x, y, c('stone', rng.chance(0.6) ? 2 : 3));
           if (isIn(x, y + 1)) t.px(x, y + 1, c('stone', 1));
         }
-        if (!isIn(x - 1, y) || !isIn(x + 1, y)) t.px(x, y, c('stone', 0));
+        // Boki: ciemniejszy kant, ale **nie prawie czarny**. Wersja z `stone 0`
+        // robiła przy bramie dwa czarne pasy w miejscu ościeży i przejście
+        // wyglądało jak dziura wycięta w tle, a nie jak brama w murze.
+        if (!isIn(x - 1, y) || !isIn(x + 1, y)) t.px(x, y, c('stone', 1));
         if (!isIn(x, y + 1)) {
           // Podstawa i cień. Cień skały jest dłuższy niż trawy, bo skała jest
           // wyższa — dwa piksele kryjące i trzeci zanikający.
@@ -763,6 +868,11 @@ export function buildTiles() {
   for (let i = 0; i < 2; i++) add(`path_${i}`, path(`path_${i}`));
   for (let i = 0; i < 3; i++) add(`grass_${i}`, grass(`grass_${i}`));
   for (let i = 0; i < 3; i++) add(`rock_${i}`, rockWall(`rock_${i}`));
+  // Czoło ściany: dwa kafle wysokości, po trzy warianty na połowę.
+  for (const half of ['hi', 'lo']) {
+    for (let i = 0; i < 3; i++) add(`rock_face_${half}_${i}`, rockFace(`rock_face_${half}_${i}`, half));
+  }
+  for (let i = 0; i < 3; i++) add(`rock_scree_${i}`, rockScree(`rock_scree_${i}`));
 
   // Nakładki: piętnaście układów rogów (zero rogów to pusty kafel, którego nie ma
   // po co rysować) razy cztery fazy szumu. Fazę wybiera pozycja komórki, więc

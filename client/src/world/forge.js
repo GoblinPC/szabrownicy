@@ -411,6 +411,27 @@ function buildOverlay(tiles) {
     }
   }
 
+  // Czoło skalnej ściany.
+  //
+  // Liczone na **siatce świata**, nie na przesuniętej siatce nakładek: czoło jest
+  // pionową ścianką pod koroną, więc musi stać w całych kaflach, a nie w połówkach.
+  // Dwa kafle wysokości — przy jednym korona zostawała szerokim płaskim pasem
+  // i dalej czytała się jako kamienna podłoga.
+  const skala = (x, y) => Boolean(tiles[y]?.[x]?.startsWith('rock'));
+  const wariant = (x, y) => (((x * 2654435761) ^ (y * 40503)) >>> 0) % 3;
+  for (let y = 0; y < MAP_H; y++) {
+    for (let x = 0; x < MAP_W; x++) {
+      if (!skala(x, y)) continue;
+      if (!skala(x, y + 1)) {
+        // Ostatni rząd skały: dolna połowa czoła plus osypisko na ziemi pod nim.
+        cells.push({ key: `rock_face_lo_${wariant(x, y)}`, x: x * TILE, y: y * TILE });
+        cells.push({ key: `rock_scree_${wariant(x, y + 1)}`, x: x * TILE, y: (y + 1) * TILE });
+      } else if (!skala(x, y + 2)) {
+        cells.push({ key: `rock_face_hi_${wariant(x, y)}`, x: x * TILE, y: y * TILE });
+      }
+    }
+  }
+
   return { base, cells };
 }
 

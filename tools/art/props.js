@@ -465,8 +465,19 @@ function logPile() {
   return finish(t);
 }
 
-function tree() {
-  const rng = rngFor('tree');
+/**
+ * Drzewo. `damage` 0-2 to **nacięcie w pniu**, nie ubytek w koronie.
+ *
+ * Rąbie się pień, więc to on ma pokazywać postęp. Pierwsza myśl — przerzedzać
+ * koronę — jest gorsza z dwóch powodów: korona zmienia się w miejscu, w które
+ * gracz nie celuje, a przerzedzone drzewo z daleka czyta się jako **inny gatunek
+ * drzewa**, nie jako drzewo nadcięte.
+ *
+ * Klin wchodzi od lewej, bo tak stoi drwal. Przy drugim etapie sięga za oś pnia
+ * i widać, że jeszcze jeden cios go obali.
+ */
+function tree(damage = 0) {
+  const rng = rngFor(`tree${damage}`);
   const t = new Canvas(34, 46);
   // Pień z korzeniami.
   t.rect(14, 30, 6, 15, c('wood', 1));
@@ -474,6 +485,24 @@ function tree() {
   t.vline(16, 32, 44, c('wood', 3));
   t.line(14, 42, 10, 45, c('wood', 1));
   t.line(19, 42, 23, 45, c('wood', 1));
+
+  if (damage > 0) {
+    // Klin: trójkąt wycięty z pnia, z jasnym świeżym drewnem w środku i ciemnym
+    // dnem. Sam ciemny wykrój czytałby się jako dziura, nie jako rana.
+    const deep = damage === 1 ? 3 : 5;
+    for (let i = 0; i < deep; i++) {
+      const h = deep - i;
+      for (let j = -h; j <= h; j++) {
+        t.px(14 + i, 39 + j, c('wood', i === deep - 1 ? 0 : 4));
+      }
+    }
+    t.px(14, 36, c('wood', 4));
+    t.px(14, 42, c('wood', 4));
+    // Wióry pod nacięciem.
+    for (let i = 0; i < 3 + damage * 2; i++) {
+      t.px(10 + rng.int(6), 43 + rng.int(3), c('wood', rng.chance(0.5) ? 3 : 4));
+    }
+  }
 
   // Korona z kilku zachodzących na siebie kęp.
   const blobs = [[17, 14, 15, 12], [9, 20, 9, 8], [25, 20, 9, 8], [17, 24, 12, 8], [12, 10, 7, 6], [23, 11, 7, 6]];
