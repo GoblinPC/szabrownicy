@@ -122,14 +122,14 @@ function partitionAt(x, y) {
     if (p.dir === 'v') {
       if (x !== p.x || y < p.y0 || y > p.y1) continue;
       if (p.doors.some(([a, b]) => y >= a && y <= b)) return null;
-      return 'face';
+      return 'v';
     }
     if (x < p.x0 || x > p.x1) continue;
     if (p.doors.some(([a, b]) => x >= a && x <= b)) continue;
     // Ścianka pozioma ma **koronę i czoło**, tak samo jak ściana zewnętrzna —
     // sam pas widziany z góry czytałby się jako listwa na podłodze.
     if (y === p.y) return 'top';
-    if (y === p.y + 1) return 'face';
+    return null;
   }
   return null;
 }
@@ -230,7 +230,14 @@ function nearestTree(x, y) {
   return best;
 }
 
-const SOLID_TILES = new Set(['wall_face', 'wall_window', 'wall_top', 'wall_top_window', 'rock']);
+// Ścianki działowe **muszą tu być**. Bez nich nowy kafel wygląda jak ściana
+// i przepuszcza gracza na wylot — a że gra nie zgłasza takiego błędu, wychodzi
+// dopiero wtedy, gdy ktoś przejdzie przez mur. Złapane kontrolą świata:
+// „sklep: ZA ladą — osiągalne, a nie powinno być".
+const SOLID_TILES = new Set([
+  'wall_face', 'wall_window', 'wall_top', 'wall_top_window', 'rock',
+  'part_v', 'part_h',
+]);
 
 /** Nazwa kafla bez numeru wariantu — po niej rozpoznajemy kolizję. */
 const baseName = (name) => name.replace(/_\d+$/, '').replace(/_soot\d?$/, '');
@@ -311,7 +318,8 @@ function pickTile(x, y, rng) {
   if (inBuildingSpan && y > BUILDING.y0 + 1 && y < BUILDING.y1) {
     // Ścianki działowe przed podłogą — dzielą halę na cztery pomieszczenia.
     const ścianka = partitionAt(x, y);
-    if (ścianka === 'top') return 'wall_top';
+    if (ścianka === 'v') return 'part_v';
+    if (ścianka === 'top') return 'part_h';
     if (ścianka === 'face') return `wall_face_${rng.int(3)}`;
 
     // Kamień tylko na przedpiecku, gdzie ma sens ogniowy — na desce pod kuźnią
@@ -598,6 +606,13 @@ function buildProps() {
   add('barrel', 288, 118, { w: 12, h: 8 });
   add('crate', 304, 130, { w: 14, h: 8 });
 
+  // Schody na górę, do pokoi — **w prawym górnym rogu salonu**.
+  //
+  // Nie w warsztacie i nie w osobnej klatce: stoją naprzeciwko bramy, więc widać
+  // je od razu po wejściu. Pokoje są miejscem, do którego idzie się celowo,
+  // ale najpierw trzeba wiedzieć, że istnieją.
+  add('stairs', 480, 122, { w: 28, h: 10 });
+
   // POMIESZCZENIE 3 — SKLEP. Kafle x 33-41, y 4-10 (px 528-671, y 64-175).
   //
   // Lada **w poprzek pomieszczenia**, półki za nią: karczmarz stoi po swojej
@@ -625,7 +640,6 @@ function buildProps() {
   // celowo, a nie mija po drodze.
   add('workbench', 566, 224, { w: 30, h: 8 });
   add('tanrack', 640, 224, { w: 24, h: 8 });
-  add('stairs', 648, 290, { w: 28, h: 10 });
   add('crate', 546, 282, { w: 14, h: 8 });
   add('barrel', 566, 292, { w: 12, h: 8 });
   add('bucket', 596, 286, { w: 10, h: 6 });
@@ -638,8 +652,13 @@ function buildProps() {
   add('torch', 296, 63, null, { noShadow: true });
   add('torch', 500, 63, null, { noShadow: true });
   add('torch', 660, 63, null, { noShadow: true });
-  add('torch', 90, 190, null, { noShadow: true });
-  add('torch', 678, 230, null, { noShadow: true });
+  // Pochodnie wiszą **wyłącznie na ścianach zwróconych do gracza**, czyli na
+  // licach poziomych. Dwie wisiały wcześniej na ścianach bocznych i wyglądały,
+  // jakby stały na ich grzbiecie — bo ścianę biegnącą północ-południe widzi się
+  // w rzucie 3/4 od góry i nie ma na niej lica, na którym wspornik mógłby usiąść.
+  // Jedna z nich siedziała dodatkowo na oknie.
+  add('torch', 128, 63, null, { noShadow: true });      // kuźnia, ściana północna
+  add('torch', 600, 191, null, { noShadow: true });     // warsztat, lico ścianki
 
   // Brama nie ma własnej kolizji — dziura w kaflach muru pokrywa się co do piksela
   // z prześwitem w jej rysunku, więc mur wystarczy.
@@ -689,49 +708,94 @@ function buildProps() {
 }
 
 /**
+ * Co się na czym pali — **jedno źródło prawdy** dla ognia, światła i dźwięku.
+ *
+ * Wcześniej płomienie i światła były osobnymi listami współrzędnych wpisanych
+ * ręcznie. Przy pierwszym przesunięciu paleniska płomień został na starym
+ * miejscu, dwadzieścia pikseli obok, i nikt tego nie zauważył aż do gry.
+ * To nie był błąd liczby, tylko **błąd konstrukcji**: fakt „palenisko stoi tutaj"
+ * był zapisany w trzech miejscach naraz i nic nie sprawdzało, czy się zgadzają.
+ *
+ * Teraz ogień jest **cechą obiektu**. Przesunięcie paleniska zabiera ze sobą
+ * płomień, światło i dźwięk, bo wszystkie trzy z niego wynikają.
+ *
+ * `flameDy` to ile pikseli nad punktem zaczepienia siedzi dolna krawędź płomienia,
+ * `lights` to lampy liczone od tego samego punktu.
+ */
+const FIRE_KINDS = {
+  hearth: {
+    anim: 'flame_big',
+    // Pięć, nie dwadzieścia cztery. Przy 24 płomień lądował o kafel za wysoko,
+    // na kominie — bo przepisałem tu przez pomyłkę odsunięcie **światła**
+    // paleniska, a nie jego ognia. Ogień pali się w otworze, tuż nad podstawą;
+    // światło siedzi wyżej, w środku bryły.
+    flameDy: 5,
+    lights: [
+      { dy: 24, radius: 132, color: [255, 150, 48], intensity: 1.0, flicker: 0.22 },
+      { dy: 12, radius: 62, color: [255, 220, 130], intensity: 0.9, flicker: 0.3 },
+    ],
+    sound: { radius: 260, strength: 1.0 },
+  },
+  campfire: {
+    anim: 'flame_mid',
+    flameDy: 5,
+    lights: [{ dy: 8, radius: 104, color: [255, 158, 55], intensity: 0.95, flicker: 0.26 }],
+    sound: { radius: 220, strength: 0.75 },
+  },
+  torch: {
+    anim: 'flame_small',
+    flameDy: 10,
+    lights: [{ dy: 7, radius: 76, color: [255, 165, 60], intensity: 0.78, flicker: 0.19 }],
+  },
+};
+
+/** Obiekty, które się palą — w kolejności z listy `props`. */
+function burningProps(props) {
+  return props.filter((prop) => FIRE_KINDS[prop.key]);
+}
+
+/**
+ * Animowane płomienie. Liczone z obiektów, nie wypisane.
+ *
+ * `depth` musi być większe niż obiektu, na którym płonie — inaczej palenisko
+ * zasłania własny ogień. Stąd `y + 1`: głębokość obiektu to jego `y`.
+ */
+function buildFlames(props) {
+  return burningProps(props).map((prop) => {
+    const fire = FIRE_KINDS[prop.key];
+    return { anim: fire.anim, x: prop.x, y: prop.y - fire.flameDy, depth: prop.y + 1 };
+  });
+}
+
+/**
  * Źródła światła. `flicker` to siła migotania (0 = stabilne), `phase` rozsuwa
  * fazy, żeby pochodnie nie pulsowały zgodnie jak jedna.
+ *
+ * Faza bierze się z **położenia**, a nie z ręcznie wpisanej liczby: dwa ognie
+ * nigdy nie stoją w tym samym miejscu, więc nigdy nie dostaną tej samej fazy,
+ * a dołożenie pochodni nie wymaga wymyślania kolejnej wartości.
  */
-function buildLights() {
+function buildLights(props) {
   // `indoor` liczone z obrysu hali, nie wpisane ręcznie — inaczej przesunięcie
   // budynku zostawiłoby ogień „pod dachem" na środku placu. Decyduje o dwóch
   // rzeczach naraz: czy ogień przygasa w dzień i czy w dzień rzuca cień.
-  const podDachem = (x, y) => x >= BUILDING.x0 * TILE && x <= (BUILDING.x1 + 1) * TILE
-    && y >= BUILDING.y0 * TILE && y <= (BUILDING.y1 + 1) * TILE;
-  return [
-    { x: 176, y: 118, radius: 132, color: [255, 150, 48], intensity: 1.0, flicker: 0.22, phase: 0 },
-    { x: 176, y: 130, radius: 62, color: [255, 220, 130], intensity: 0.9, flicker: 0.3, phase: 1.4 },
-    { x: 296, y: 56, radius: 78, color: [255, 165, 60], intensity: 0.8, flicker: 0.18, phase: 2.1 },
-    { x: 500, y: 56, radius: 78, color: [255, 165, 60], intensity: 0.8, flicker: 0.18, phase: 3.7 },
-    { x: 660, y: 56, radius: 78, color: [255, 165, 60], intensity: 0.8, flicker: 0.18, phase: 5.2 },
-    { x: 90, y: 183, radius: 72, color: [255, 165, 60], intensity: 0.75, flicker: 0.2, phase: 0.9 },
-    { x: 678, y: 223, radius: 72, color: [255, 165, 60], intensity: 0.75, flicker: 0.2, phase: 4.4 },
-    // Wspólny ogień w sali. Mniejszy zasięg niż palenisko kowala, bo ma oświetlać
-    // ławy dookoła, a nie całą halę — inaczej kuźnia przestaje być ciemna i traci
-    // to, po czym się ją poznaje.
-    { x: 372, y: 140, radius: 96, color: [255, 162, 62], intensity: 0.85, flicker: 0.26, phase: 3.3 },
-    { x: 384, y: 426, radius: 104, color: [255, 158, 55], intensity: 0.95, flicker: 0.26, phase: 2.8 },
-    // Trzy niebieskie światła przy portalach zeszły razem z nimi. Jedynym źródłem
-    // światła na placu jest teraz ognisko — i tak ma zostać, dopóki nie stanie tam
-    // coś, co naprawdę świeci.
-  ].map((light) => ({ ...light, indoor: podDachem(light.x, light.y) }));
-}
+  // Obrys hali w **układzie świata**, bo obiekty są już przesunięte.
+  const podDachem = (x, y) => x >= OFF_X + BUILDING.x0 * TILE && x <= OFF_X + (BUILDING.x1 + 1) * TILE
+    && y >= OFF_Y + BUILDING.y0 * TILE && y <= OFF_Y + (BUILDING.y1 + 1) * TILE;
 
-/** Animowane płomienie doklejone do paleniska, pochodni i ogniska. */
-function buildFlames() {
-  // `y` to dolna krawędź płomienia, `depth` musi być większe niż obiektu, na
-  // którym płonie — inaczej palenisko zasłania własny ogień.
-  return [
-    { anim: 'flame_big', x: 176, y: 137, depth: 143 },
-    // Wspólny ogień na środku sali — ten, przy którym się siada.
-    { anim: 'flame_mid', x: 372, y: 143, depth: 149 },
-    { anim: 'flame_mid', x: 384, y: 429, depth: 435 },
-    { anim: 'flame_small', x: 296, y: 53, depth: 64 },
-    { anim: 'flame_small', x: 500, y: 53, depth: 64 },
-    { anim: 'flame_small', x: 660, y: 53, depth: 64 },
-    { anim: 'flame_small', x: 90, y: 180, depth: 191 },
-    { anim: 'flame_small', x: 678, y: 220, depth: 231 },
-  ];
+  const out = [];
+  for (const prop of burningProps(props)) {
+    for (const light of FIRE_KINDS[prop.key].lights) {
+      out.push({
+        ...light,
+        x: prop.x,
+        y: prop.y - light.dy,
+        phase: ((prop.x * 0.37 + prop.y * 0.71) % (Math.PI * 2)),
+        indoor: podDachem(prop.x, prop.y),
+      });
+    }
+  }
+  return out;
 }
 
 /**
@@ -739,16 +803,14 @@ function buildFlames() {
  * jest znacznie większy niż zasięg jego blasku — palenisko słychać z drugiego
  * końca hali, choć oświetla tylko swój kąt.
  */
-function buildSoundSources() {
-  return [
-    { type: 'fire', x: 176, y: 130, radius: 260, strength: 1.0 },  // palenisko
-    { type: 'fire', x: 384, y: 426, radius: 220, strength: 0.75 }, // ognisko na placu
-    { type: 'fire', x: 296, y: 56, radius: 110, strength: 0.3 },
-    { type: 'fire', x: 500, y: 56, radius: 110, strength: 0.3 },
-    { type: 'fire', x: 660, y: 56, radius: 110, strength: 0.3 },
-    { type: 'fire', x: 90, y: 183, radius: 110, strength: 0.3 },
-    { type: 'fire', x: 678, y: 223, radius: 110, strength: 0.3 },
-  ];
+function buildSoundSources(props) {
+  // Też z obiektów. Pochodnia bez wpisu `sound` dostaje domyślny, cichy zasięg —
+  // inaczej dołożenie pochodni cichłoby po niej samej.
+  return burningProps(props).map((prop) => {
+    const fire = FIRE_KINDS[prop.key];
+    const sound = fire.sound ?? { radius: 110, strength: 0.3 };
+    return { type: 'fire', x: prop.x, y: prop.y - fire.flameDy, ...sound };
+  });
 }
 
 /**
@@ -1124,9 +1186,12 @@ export function buildWorld() {
     roof: buildRoof().map(shift),
     windows: WINDOWS,
     props,
-    lights: buildLights().map(shift),
-    flames: buildFlames().map(shift),
-    soundSources: buildSoundSources().map(shift),
+    // Ogień, światło i dźwięk liczone z **gotowej listy obiektów**, która ma już
+    // współrzędne świata — dlatego bez `shift`. Przesunięcie miasta jest w nich
+    // zawarte, bo `add()` nakłada je przy tworzeniu obiektu.
+    lights: buildLights(props),
+    flames: buildFlames(props),
+    soundSources: buildSoundSources(props),
     solid,
     bodies,
     // Zapora zasobu po numerze — po niej obie strony gaszą kolizję po ścięciu.

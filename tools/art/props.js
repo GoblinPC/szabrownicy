@@ -815,21 +815,34 @@ function counter(name) {
  * z ciemniejącym podcieniem wystarczy, żeby czytało się „w górę".
  */
 function stairs(name) {
-  const t = new Canvas(30, 26);
+  const rng = rngFor(name);
+  const t = new Canvas(30, 30);
+
+  // Pierwsza wersja zwężała stopnie ku górze i wychodziła z tego pochylnia
+  // z paskami — użytkownik nie rozpoznał, co to jest. Schody czyta się po
+  // **stopniach o równej szerokości i wyraźnym podcieniu pod każdym**: to cień
+  // pod nosem stopnia mówi, że jedno jest wyżej od drugiego, a nie zbieżność.
+  const KROK = 5;
   for (let i = 0; i < 5; i++) {
-    const y = 21 - i * 4;
-    const x = 2 + i * 2;
-    t.rect(x, y, 26 - i * 3, 4, c('wood', 2));
-    t.hline(x, x + 25 - i * 3, y, c('wood', 3));
-    t.hline(x, x + 25 - i * 3, y + 3, c('wood', 0));
+    const y = 25 - i * KROK;
+    t.rect(3, y - 3, 24, 4, c('wood', 2));           // podnóżek
+    t.hline(3, 26, y - 3, c('wood', 4));             // światło na krawędzi stopnia
+    t.hline(3, 26, y, c('wood', 0));                 // podcień — najważniejszy piksel
+    t.hline(3, 26, y + 1, c('soot', 1));
+    t.speckle(rng, c('wood', 1), 0.14, { x: 4, y: y - 2, w: 22, h: 2 });
   }
-  // Ciemność u szczytu — tam, dokąd prowadzą.
-  t.rect(10, 1, 18, 5, c('soot', 1));
-  t.hline(10, 27, 1, c('soot', 0));
-  // Poręcz po lewej.
-  t.line(1, 24, 11, 3, c('wood', 1));
-  t.line(2, 24, 12, 3, c('wood', 0));
-  void name;
+
+  // Policzki po bokach — bez nich stopnie wiszą w powietrzu.
+  t.rect(1, 2, 3, 27, c('wood', 1));
+  t.rect(26, 2, 3, 27, c('wood', 1));
+  t.vline(1, 2, 28, c('wood', 0));
+  t.vline(28, 2, 28, c('wood', 0));
+
+  // Otwór na górze: ciemność, do której prowadzą. Bez niej schody kończą się
+  // w połowie i wyglądają jak podest.
+  t.rect(4, 0, 22, 5, c('soot', 1));
+  t.rect(5, 0, 20, 3, c('soot', 0));
+  t.hline(4, 25, 5, c('wood', 3));                   // próg u szczytu
   return finish(t);
 }
 

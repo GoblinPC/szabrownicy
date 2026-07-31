@@ -232,6 +232,57 @@ function wallTopWindow(name) {
   return t;
 }
 
+/**
+ * Ścianka działowa wewnątrz karczmy — **wąska**, z cieniem na podłodze.
+ *
+ * Pierwsza wersja używała zwykłego `wall_face` na całą szerokość kafla
+ * i użytkownik nazwał to wprost: *wyglądają jak jaśniejsza podłoga*. I słusznie —
+ * pas desek o tej samej szerokości co podłoga, bez cienia i bez krawędzi,
+ * niczym się od niej nie różni.
+ *
+ * Ścianka ma więc **sześć pikseli grubości**, a nie szesnaście, jasną koronę
+ * u góry i **cień rzucony na podłogę** pod sobą. Dopiero cień robi wysokość:
+ * bez niego nawet wąski pas czyta się jako listwa wmalowana w deski.
+ *
+ * @param dir 'v' ścianka biegnąca północ-południe, 'h' wschód-zachód
+ */
+function partitionWall(name, dir) {
+  const rng = rngFor(name);
+  const t = new Canvas(TILE, TILE);
+  const GRUBOSC = 6;
+
+  if (dir === 'v') {
+    const x0 = Math.round((TILE - GRUBOSC) / 2);
+    // Bal widziany z góry. Jasna krawędź od lewej, ciemna od prawej — to jest
+    // **cieniowanie materiału**, czyli forma samego bala, a nie cień rzucany
+    // na podłogę. Cienie rzuca silnik i wmalowywanie ich w kafel kończy się
+    // tym, czym się skończyło: pasem czerni, który czyta się jako tekstura.
+    t.rect(x0, 0, GRUBOSC, TILE, c('wood', 1));
+    t.vline(x0, 0, TILE - 1, c('wood', 3));
+    t.vline(x0 + 1, 0, TILE - 1, c('wood', 2));
+    t.vline(x0 + GRUBOSC - 2, 0, TILE - 1, c('wood', 0));
+    // Kant od strony ciemnej — najciemniejszy odcień drewna, nie sadza:
+    // obrys ma być najciemniejszym odcieniem materiału, nigdy czernią.
+    t.vline(x0 + GRUBOSC - 1, 0, TILE - 1, c('wood', 0));
+    t.speckle(rng, c('wood', 2), 0.16, { x: x0 + 1, y: 0, w: GRUBOSC - 2, h: TILE });
+    // Poprzeczne styki bali — inaczej ścianka jest gładką rurą.
+    for (let y = 3; y < TILE; y += 6) t.hline(x0 + 1, x0 + GRUBOSC - 2, y, c('wood', 0));
+    return t;
+  }
+
+  // Pozioma: korona u góry, ciemniejszy spód, plus **jednopikselowa** kreska
+  // kontaktowa przy podłodze — dokładnie tak, jak robi to `wallFace()`.
+  // To nie jest cień rzucany, tylko styk ściany z deskami.
+  t.rect(0, 2, TILE, GRUBOSC, c('wood', 2));
+  t.hline(0, TILE - 1, 2, c('wood', 4));
+  t.hline(0, TILE - 1, 3, c('wood', 3));
+  t.hline(0, TILE - 1, 2 + GRUBOSC - 1, c('wood', 0));
+  t.speckle(rng, c('wood', 1), 0.18, { x: 0, y: 4, w: TILE, h: GRUBOSC - 3 });
+  for (let x = 2; x < TILE; x += 6) t.vline(x, 3, 2 + GRUBOSC - 2, c('wood', 1));
+  t.hline(0, TILE - 1, 2 + GRUBOSC, c('soot', 0));
+  return t;
+}
+
 /** Wieńcząca belka ściany widziana z góry. */
 function wallTop(name) {
   const rng = rngFor(name);
@@ -854,6 +905,9 @@ export function buildTiles() {
   add('wall_window', wallWindow('wall_window'));
   add('wall_top_window', wallTopWindow('wall_top_window'));
   add('wall_top', wallTop('wall_top'));
+  // Ścianki działowe karczmy — wąskie, z cieniem rzuconym na podłogę.
+  add('part_v', partitionWall('part_v', 'v'));
+  add('part_h', partitionWall('part_h', 'h'));
 
   for (let i = 0; i < 2; i++) add(`roof_${i}`, roofShingles(`roof_${i}`, { offset: i }));
   add('roof_beam', roofBeam('roof_beam'));

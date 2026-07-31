@@ -16,8 +16,13 @@ const RESOLUTION = 2; // piksele świata na jeden piksel maski
 // Ciepły mrok hali — wartość dzienna. Wnętrze zmienia się z dobą znacznie mniej
 // niż plac, bo oświetla je palenisko, a nie niebo: przez bramę i okna wpada tyle
 // światła, żeby było widać różnicę, ale hala nigdy nie robi się jasna.
-export const AMBIENT_FORGE = [122, 96, 84];
-export const FORGE_NIGHT = 0.74; // ile zostaje z tej jasności w środku nocy
+// Podniesione ze 122,96,84 po zgłoszeniu z gry: *strasznie ciemno jest w tej
+// karczmie, niby klimat, ale aż oczy bolą*. Ciemne wnętrze ma być **nastrojem,
+// a nie przeszkodą** — gracz spędza tu czas przy kowadle i przy ladzie, więc
+// musi widzieć, co robi. Ciepły odcień zostaje, bo to on niesie klimat; rośnie
+// sama jasność.
+export const AMBIENT_FORGE = [158, 126, 108];
+export const FORGE_NIGHT = 0.8;  // ile zostaje z tej jasności w środku nocy
 
 // Ile mocy zostaje pochodni w samo południe. Zero wygląda źle — pochodnia jednak
 // się pali i widać ją po ciepłym odcieniu na murze; pełna moc w dzień wygląda
@@ -243,10 +248,17 @@ export class Lighting {
     ctx.globalCompositeOperation = 'source-over';
     ctx.fillStyle = `rgb(${yard.join(',')})`;
     ctx.fillRect(0, 0, w, h);
+    // Przygaszamy **cały budynek**, nie samą podłogę.
+    //
+    // Prostokąt `interior` opisuje deski, a mury leżą poza nim — dostawały więc
+    // kolor nieba i w dzień świeciły jak oświetlone słońcem, mimo że są ścianami
+    // ciemnej hali. Użytkownik nazwał to wprost: *ściany dookoła są rozświetlone
+    // na maxa jakby były na słońcu*. Do testu „czy jestem w środku" dalej służy
+    // `interior`, bo tam chodzi o podłogę, po której się chodzi.
     ctx.fillStyle = `rgb(${forge.join(',')})`;
     ctx.fillRect(
-      toMaskX(this.interior.x), toMaskY(this.interior.y),
-      this.interior.w / RESOLUTION, this.interior.h / RESOLUTION
+      toMaskX(this.building.x), toMaskY(this.building.y),
+      this.building.w / RESOLUTION, this.building.h / RESOLUTION
     );
 
     // 2. Źródła światła, dodawane do maski.

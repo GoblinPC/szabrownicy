@@ -260,9 +260,29 @@
     "h": 32
    }
   },
-  "rack": {
+  "stairs": {
    "frame": {
     "x": 91,
+    "y": 65,
+    "w": 30,
+    "h": 30
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 30,
+    "h": 30
+   },
+   "sourceSize": {
+    "w": 30,
+    "h": 30
+   }
+  },
+  "rack": {
+   "frame": {
+    "x": 122,
     "y": 65,
     "w": 20,
     "h": 28
@@ -282,7 +302,7 @@
   },
   "tanrack": {
    "frame": {
-    "x": 112,
+    "x": 143,
     "y": 65,
     "w": 26,
     "h": 28
@@ -302,7 +322,7 @@
   },
   "well": {
    "frame": {
-    "x": 139,
+    "x": 170,
     "y": 65,
     "w": 24,
     "h": 26
@@ -322,7 +342,7 @@
   },
   "board": {
    "frame": {
-    "x": 164,
+    "x": 195,
     "y": 65,
     "w": 22,
     "h": 26
@@ -337,26 +357,6 @@
    },
    "sourceSize": {
     "w": 22,
-    "h": 26
-   }
-  },
-  "stairs": {
-   "frame": {
-    "x": 187,
-    "y": 65,
-    "w": 30,
-    "h": 26
-   },
-   "rotated": false,
-   "trimmed": false,
-   "spriteSourceSize": {
-    "x": 0,
-    "y": 0,
-    "w": 30,
-    "h": 26
-   },
-   "sourceSize": {
-    "w": 30,
     "h": 26
    }
   },
