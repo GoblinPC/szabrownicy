@@ -744,8 +744,10 @@ function drawFrame(variant, dir, kind, frame, step = 0, aim = null, weapon = 'sp
     // Bez tego goblin wymachuje ręką dokładnie tak jak z włócznią, tylko bez
     // niej — i wygląda to jak brakujący sprite, nie jak cios pięścią.
     if (weapon === 'fists') {
+      // Wyrzut ręki skrócony do **długości ramienia**. Pierwsza wersja zostawiała
+      // 0,62 i cios dalej czytał się jak pchnięcie włócznią bez włóczni.
       p.hand = [
-        Math.round(8 + (p.hand[0] - 8) * 0.62),
+        Math.round(8 + (p.hand[0] - 8) * 0.42),
         p.hand[1],
       ];
     }
@@ -759,8 +761,16 @@ function drawFrame(variant, dir, kind, frame, step = 0, aim = null, weapon = 'sp
   // obowiązuje też tutaj — inaczej drzewce siedziałoby o piksel wyżej niż garść,
   // która je trzyma.
   const blade = new Canvas(ATTACK_W, BODY_H);
-  // Ramię wychodzi z barku, a bark jedzie razem z odchyleniem tułowia.
-  const shoulderX = ATTACK_OX + (dir === 'up' ? 5 : 10) + (p.lean ?? 0);
+
+  // **Pięści biją na zmianę.** Co drugie ogniwo łańcucha idzie dalszą ręką: bark
+  // przesuwa się na drugą stronę tułowia, a całe ramię ląduje POD sylwetką, tak
+  // samo jak przy widoku z tyłu. Bez tego goblin młóci w kółko tą samą ręką
+  // i widać, że to jedna animacja odtwarzana trzy razy.
+  //
+  // Włócznia zostaje w jednej ręce — trzyma się ją oburącz i przekładanie jej
+  // z ręki do ręki między pchnięciami nie miałoby sensu.
+  const dalszaRek = weapon === 'fists' && step % 2 === 1;
+  const shoulderX = ATTACK_OX + (dir === 'up' || dalszaRek ? 5 : 10) + (p.lean ?? 0);
   const handX = ATTACK_OX + p.hand[0];
   const handY = p.hand[1] + BODY_PAD_T;
   drawArmTo(blade, variant, shoulderX, 18 + p.bodyY + BODY_PAD_T, handX, handY);
@@ -772,7 +782,7 @@ function drawFrame(variant, dir, kind, frame, step = 0, aim = null, weapon = 'sp
   // Ciało przyszło już z własnym marginesem, więc przesuwamy je o tyle mniej.
   const bodyX = ATTACK_OX - BODY_PAD_X;
 
-  if (dir === 'up') {
+  if (dir === 'up' || dalszaRek) {
     // Widok z tyłu: patrzymy postaci w plecy, więc miecz i trzymająca go ręka są
     // po **drugiej stronie** ciała niż kamera i muszą iść POD nie. Rysowane na
     // wierzchu wyglądały jak broń przypięta do pleców — było widać ten kawałek

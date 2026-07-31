@@ -149,8 +149,13 @@ export const ATTACK_STEPS = [
  * to skrócony zasięg decyduje o tym, że walka bez broni jest inna: trzeba wejść
  * w zwarcie, czyli w miejsce, z którego dzik zdąży uderzyć pierwszy.
  */
+// Liczby dobrane po obejrzeniu w grze, nie z rachunku. Pierwsza wersja miała
+// zasięg 0,52 i wypad 0,7 — użytkownik zgłosił od razu, że **bije za daleko,
+// za mocno i wyrywa go do przodu**, czyli że cios pięścią dalej zachowuje się
+// jak pchnięcie włócznią. Pięść ma sięgać mniej więcej na długość ręki:
+// przy zasięgu włóczni 46–56 px daje to jakieś 17–21 px, czyli nieco ponad kafel.
 export const WEAPONS = {
-  fists: { range: 0.52, damage: 0.45, lunge: 0.7, frames: 'p' },
+  fists: { range: 0.37, damage: 0.28, lunge: 0.34, frames: 'p' },
   spear: { range: 1, damage: 1, lunge: 1, frames: 'a' },
 };
 
@@ -563,7 +568,9 @@ export function advance(world, body, keys, dt, aim = null) {
     // W chwili uderzenia prędkość narzuca wypad, a nie klawisze. To ten wypad
     // sprawia, że w cios wygląda jak włożony ciężar — bez niego postać stoi jak
     // słup i maha ręką. Rąbnięcie z góry wypada najdalej.
-    const lunge = ATTACK_STEPS[attackStep(body)].lunge;
+    // Wypad też zależy od broni. Pchnięcie włócznią rzuca całym ciałem do przodu;
+    // przy pięści taki sam wyrzut czyta się jak szarża, a nie jak cios.
+    const lunge = ATTACK_STEPS[attackStep(body)].lunge * weaponOf(body.weapon).lunge;
     body.vx = body.atkDx * lunge;
     body.vy = body.atkDy * lunge;
   } else {

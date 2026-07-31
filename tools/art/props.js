@@ -697,6 +697,48 @@ function iconStone() {
   return finish(t);
 }
 
+/**
+ * Podpowiedź „E" — **klawisz**, nie napis.
+ *
+ * Pierwsza wersja była zwykłym napisem z fontu gry, wstawionym w świat. Wyszła
+ * gigantyczna i musiała: napis wielkości interfejsu, powiększony jeszcze przez
+ * zoom kamery (2–4×), jest kilka razy większy niż postać. Podpowiedź stojąca
+ * w świecie musi być rysowana **w skali świata**, czyli mieć kilkanaście pikseli,
+ * a nie kilkadziesiąt.
+ *
+ * Kształt bierze się z dymka czatu: jasne pole, ciemny obrys, ścięte narożniki.
+ * Dzięki temu czyta się jako „to samo, co mowa" — czyli jako coś doczepionego do
+ * miejsca w świecie, a nie jako element panelu.
+ */
+function keyCap() {
+  const t = new Canvas(11, 11);
+  const obrys = c('soot', 0);
+  const pole = c('parchment');
+
+  // Pole ze ściętymi narożnikami — te same dwa piksele co w dymku czatu.
+  t.rect(1, 0, 9, 11, pole);
+  t.rect(0, 1, 11, 9, pole);
+  t.frame(1, 0, 9, 1, obrys);
+  t.hline(1, 9, 0, obrys);
+  t.hline(1, 9, 10, obrys);
+  t.vline(0, 1, 9, obrys);
+  t.vline(10, 1, 9, obrys);
+  t.px(1, 1, obrys);
+  t.px(9, 1, obrys);
+  t.px(1, 9, obrys);
+  t.px(9, 9, obrys);
+
+  // Spód ciemniejszy — klawisz ma grubość, inaczej jest naklejką.
+  t.hline(2, 8, 9, c('stone', 3));
+
+  // Litera E, 3x5, ręcznie. Font gry jest tu za duży i ma inne proporcje.
+  const litera = ['###', '#..', '###', '#..', '###'];
+  litera.forEach((row, y) => {
+    for (let x = 0; x < 3; x++) if (row[x] === '#') t.px(4 + x, 3 + y, obrys);
+  });
+  return t;
+}
+
 /** Surowe mięso: 1x1. Czerwone z jasnym tłuszczem i kością — żeby nie było kamieniem. */
 function iconMeat() {
   const rng = rngFor('icon_meat');
@@ -1135,6 +1177,7 @@ export function buildProps() {
   add('item_wood', itemWood());
   add('item_stone', itemStone());
   add('item_meat', itemMeat());
+  add('key_e', keyCap());
   add('icon_wood', iconWood());
   add('icon_stone', iconStone());
   add('icon_spear', iconSpear());

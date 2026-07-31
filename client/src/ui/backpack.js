@@ -197,15 +197,15 @@ export function createBackpack({ onMove, onDrop, onEat }) {
     render();
   }
 
-  // Zjedzenie dwuklikiem. Bez guzika i bez menu: dopóki jadalna jest jedna rzecz,
-  // menu kontekstowe byłoby listą z jedną pozycją.
-  box.addEventListener('dblclick', (event) => {
-    const itemEl = event.target.closest('.bag-item');
-    if (!itemEl) return;
-    const id = Number(itemEl.dataset.id);
-    const item = bag.items.find((it) => it.id === id);
-    if (item && ITEMS[item.kind]?.food) onEat?.(id);
-  });
+  // Dwuklik liczymy **sami**, a nie zdarzeniem `dblclick`.
+  //
+  // Pierwsze kliknięcie zaczyna przeciąganie, a puszczenie przycisku odrysowuje
+  // siatkę od zera — więc drugie kliknięcie trafia już w **nowy** element i
+  // przeglądarka nie ma czego sparować w dwuklik. Zgłoszone z gry: „lewym się
+  // podnosi item i nie da się zjeść". Porównujemy numer przedmiotu, bo on
+  // przeżywa odrysowanie, a węzeł nie.
+  let lastClick = { id: -1, at: 0 };
+  const DBL_MS = 400;
 
   box.addEventListener('pointerdown', (event) => {
     const itemEl = event.target.closest('.bag-item');
@@ -220,6 +220,16 @@ export function createBackpack({ onMove, onDrop, onEat }) {
       if (fits(bag, item.kind, rot, item.x, item.y, item.id)) onMove?.(id, item.x, item.y, rot);
       return;
     }
+
+    const id = Number(itemEl.dataset.id);
+    const item = bag.items.find((it) => it.id === id);
+    const now = performance.now();
+    if (item && ITEMS[item.kind]?.food && id === lastClick.id && now - lastClick.at < DBL_MS) {
+      lastClick = { id: -1, at: 0 };
+      onEat?.(id);
+      return;
+    }
+    lastClick = { id, at: now };
     startDrag(event, itemEl);
   });
 

@@ -24,9 +24,11 @@ export class Drops {
     // Podpowiedź podnoszenia: jedna na całą grę, przestawiana nad najbliższą
     // rzecz. Napis przy każdym leżącym przedmiocie zamieniłby polanę po wyrębie
     // w ścianę liter — a i tak podnieść można tylko to, przy czym się stoi.
-    this.hint = scene.add.bitmapText(0, 0, 'goblin', 'E', 11)
+    // Rysowana klatka, nie napis fontem interfejsu: podpowiedź stoi **w świecie**,
+    // więc powiększa ją zoom kamery. Napis wielkości HUD-u wychodził przy zoomie
+    // 3× kilka razy większy niż postać.
+    this.hint = scene.add.image(0, 0, 'props', 'key_e')
       .setOrigin(0.5, 1)
-      .setTint(0xe8dcc0)
       .setDepth(9200)
       .setAlpha(0);
     this.hintAlpha = 0;

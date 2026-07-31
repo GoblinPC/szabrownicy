@@ -21,6 +21,19 @@ const BAR_W = 100;
 const BAR_H = 18;
 const PIP_STEP = 21;
 
+// Pasek głodu: węższy i niższy od paska życia, bo głód jest wolniejszy i mniej
+// pilny — dwa równe paski obok siebie czytają się jako dwie równie ważne rzeczy.
+//
+// **Wysokość musi przekraczać `SLICE * 2`.** Pierwsza wersja miała 9 przy `SLICE`
+// równym 6, więc wnętrze ramki wychodziło ujemne i pasek był po prostu pusty.
+const FOOD_W = 62;
+const FOOD_H = 16;
+// Odstępy pionowe, liczone od górnej krawędzi panelu. Trzymane w jednym miejscu,
+// bo znaczniki uniku nachodziły na pasek głodu dokładnie dlatego, że każdy
+// element liczył swoje przesunięcie osobno.
+const FOOD_Y = 18 + 3;          // pod paskiem życia (BAR_H = 18)
+const PIP_Y = FOOD_Y + FOOD_H + 4;
+
 // Szerokość nierozciąganego brzegu ramki 9-slice.
 //
 // **Musi zgadzać się z `SLICE` w `tools/art/ui.js`** — to ta sama grafika
@@ -672,7 +685,7 @@ export class HudScene extends Phaser.Scene {
     this.pips = [];
     for (let i = 0; i < DODGE_CHARGES; i++) {
       const px = PANEL_X + i * PIP_STEP * UI_SCALE;
-      const py = PANEL_Y + (BAR_H + 4) * UI_SCALE;
+      const py = PANEL_Y + PIP_Y * UI_SCALE;
       this.pips.push({
         empty: this.add.image(px, py, 'ui', 'pip_empty')
           .setOrigin(0, 0).setScale(UI_SCALE).setDepth(DEPTH.plate),
@@ -688,8 +701,8 @@ export class HudScene extends Phaser.Scene {
     // paski obok siebie czytają się jako dwie równie ważne rzeczy. Rampa `food`
     // istniała w palecie od początku i czekała dokładnie na to.
     this.foodFrame = this.add.nineslice(
-      PANEL_X, PANEL_Y + (BAR_H + 2) * UI_SCALE, 'ui', 'frame_slot',
-      Math.round(BAR_W * 0.62), 9, SLICE, SLICE, SLICE, SLICE
+      PANEL_X, PANEL_Y + FOOD_Y * UI_SCALE, 'ui', 'frame_slot',
+      FOOD_W, FOOD_H, SLICE, SLICE, SLICE, SLICE
     ).setOrigin(0, 0).setScale(UI_SCALE).setDepth(DEPTH.plate);
     this.foodBar = this.add.graphics().setDepth(DEPTH.plate - 1);
     this.foodValue = 1;
@@ -727,9 +740,9 @@ export class HudScene extends Phaser.Scene {
     this.foodShown += (this.foodValue - this.foodShown) * Math.min(1, dt * 10);
 
     const ix = PANEL_X + SLICE * UI_SCALE;
-    const iy = PANEL_Y + (BAR_H + 2) * UI_SCALE + SLICE * UI_SCALE;
-    const iw = (Math.round(BAR_W * 0.62) - SLICE * 2) * UI_SCALE;
-    const ih = (9 - SLICE * 2) * UI_SCALE;
+    const iy = PANEL_Y + (FOOD_Y + SLICE) * UI_SCALE;
+    const iw = (FOOD_W - SLICE * 2) * UI_SCALE;
+    const ih = (FOOD_H - SLICE * 2) * UI_SCALE;
 
     this.foodBar.clear();
     this.foodBar.fillStyle(0x2b2113, 1);
