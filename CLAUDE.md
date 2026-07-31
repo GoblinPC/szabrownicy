@@ -653,7 +653,29 @@ drzewa, etapów pękania skały i rzeczy leżących na ziemi.
     interfejsu cudzego pojemnika — tego samego, który potem obsłuży skrzynię
     w pokoju w karczmie.
 
-13. **Reguły rozstawiania skał i drzew.** Zgłoszone 2026-07-31 po obejrzeniu mapy
+13. **Uniki jako pasek, nie kryształy.** Ustalone 2026-07-31 po obejrzeniu
+    zmniejszonych rombów: mają to być **trzy segmenty jednego zielonego paska**,
+    w tej samej ramce i tej samej konwencji co życie i głód. Powód jest dobry
+    i wart zapamiętania: HUD ma być **jednym przyrządem**, a nie zbiorem odznak.
+    Romb obok dwóch pasków czyta się jako osobny system, choćby był mały.
+    Ładowanie ma dalej być płynne, więc segment wypełnia się częściowo — dokładnie
+    tak jak dziś kryształ, tylko w kształcie paska. `dodgeFuel` to już ułamek 0–3,
+    więc po stronie danych nie ma nic do zmiany.
+
+14. **Cienie do zmiękczenia — brama rzuca ostry prostokąt.** Zgłoszone
+    2026-07-31: *ciemny prostokąt kanciasty jak Minecraft*. Cień rzucany to
+    **sylwetka obiektu położona na ziemi**, więc obiekt, którego sylwetka jest
+    prostokątem — brama, mur, słup — daje na placu prostokąt o ostrej krawędzi.
+    Przy drzewie tego nie widać, bo korona sama jest nieregularna.
+
+    Do zrobienia: rozmycie krawędzi cienia rosnące z odległością od podstawy
+    (cień przy stopach jest ostry, dalej coraz bardziej rozmyty — tak zachowuje
+    się prawdziwy półcień) i zmniejszenie krycia dużych, jednolitych sylwetek.
+    Uwaga: CLAUDE.md już wcześniej notuje pokrewny szew — **granica ciepłego
+    wnętrza i chłodnego placu też jest ostrym prostokątem**. To ta sama rodzina
+    problemu i warto ją ruszyć jednym podejściem.
+
+15. **Reguły rozstawiania skał i drzew.** Zgłoszone 2026-07-31 po obejrzeniu mapy
    w grze: obiekty stoją zbyt losowo — głazy nachodzą na inne obiekty i na styki
    kafli, a zagęszczenie jest takie, że **ledwo da się przejść przez mapę**.
    `scatter()` pilnuje minimalnego odstępu **między obiektami tego samego wywołania**
