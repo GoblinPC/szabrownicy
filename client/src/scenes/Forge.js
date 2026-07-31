@@ -41,8 +41,12 @@ const ATTACK_BUFFER_MS = 140;
  */
 function klatkaMoba(state, step) {
   if (state.k === 'snake') {
-    const uderza = state.st === 'spot' || state.st === 'leap';
-    return `snake${uderza ? 1 : 0}`;
+    // **Zwój tylko w bezruchu.** Wąż w ruchu jest wyprostowany — zwinięty kłębek
+    // sunący po trawie czyta się jako toczona kulka, i dokładnie tak zgłoszono
+    // to z gry. Ta sama klatka obsługuje pełzanie i uderzenie, bo obie to jedno:
+    // wyprostowane ciało z łbem w przód.
+    const wyprostowana = state.w || state.st === 'spot' || state.st === 'leap';
+    return `snake${wyprostowana ? 1 : 0}`;
   }
   if (state.k === 'boar' || state.k === 'wolf') {
     return `${state.k}_${state.f ?? 'down'}${step}`;

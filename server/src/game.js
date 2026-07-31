@@ -306,7 +306,10 @@ export class Game {
   spawnWildlife() {
     let id = 100;
     let placed = 0;
-    for (let attempt = 0; attempt < 4000 && placed < 14; attempt++) {
+    // Ile zwierząt na mapie. Czternaście przy mapie 160×120 kafli znaczyło jedno
+    // zwierzę na kilkanaście ekranów — dało się przejść las i nie spotkać nikogo,
+    // a wtedy nie ma znaczenia, jak ciekawe są ich zachowania.
+    for (let attempt = 0; attempt < 9000 && placed < 30; attempt++) {
       const x = 60 + Math.random() * (WORLD_W - 120);
       const y = 60 + Math.random() * (WORLD_H - 120);
       if (inSafeZone(x, y)) continue;
