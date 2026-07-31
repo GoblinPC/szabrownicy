@@ -875,6 +875,13 @@ export function buildWorld() {
     solid.push(row);
   }
 
+  // Zapory zbieralnych zasobów dostają **numer zasobu**, ten sam co w `nodes.js`.
+  //
+  // Bez tego ścięte drzewo znika z ekranu, a jego zapora zostaje: gracz obchodzi
+  // pustą kolizję i wygląda to jak zwykły błąd. Numer musi lecieć tą samą
+  // kolejnością co `buildNodes()`, więc licznik idzie po `props` w tej samej
+  // pętli i po tym samym warunku.
+  let nodeId = 0;
   const bodies = props
     .filter((prop) => prop.body)
     .map((prop) => ({
@@ -883,6 +890,20 @@ export function buildWorld() {
       y0: prop.y - prop.body.h,
       y1: prop.y,
     }));
+
+  // Numerowanie osobno, bo `bodies` jest już przefiltrowane, a zasoby liczą się
+  // po **wszystkich** obiektach.
+  const nodeBody = new Map();
+  let bodyIndex = 0;
+  for (const prop of props) {
+    if (!prop.body) continue;
+    if (prop.key === 'tree' || prop.key === 'boulder') {
+      bodies[bodyIndex].node = nodeId;
+      nodeBody.set(nodeId, bodies[bodyIndex]);
+      nodeId++;
+    }
+    bodyIndex++;
+  }
 
   // Kukła treningowa nie jest obiektem z listy `props` — jej stan prowadzi serwer —
   // ale stoi na placu i ma być zaporą jak każdy inny sprzęt. Przez pierwszą wersję
@@ -919,6 +940,8 @@ export function buildWorld() {
     soundSources: buildSoundSources().map(shift),
     solid,
     bodies,
+    // Zapora zasobu po numerze — po niej obie strony gaszą kolizję po ścięciu.
+    nodeBody,
   };
 }
 
@@ -943,6 +966,9 @@ export function isWalkable(world, x0, y0, x1, y1, ghost = false) {
   }
   for (const b of world.bodies) {
     if (ghost && b.creature) continue;
+    // Ścięte drzewo i rozbity głaz przestają zawadzać. Flagę przestawia ta
+    // strona, która wie o stanie zasobu: serwer z `hurtNodes`, klient z migawki.
+    if (b.down) continue;
     if (x1 > b.x0 && x0 < b.x1 && y1 > b.y0 && y0 < b.y1) return false;
   }
   return true;

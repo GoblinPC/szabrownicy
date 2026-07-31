@@ -1,6 +1,6 @@
 // Wczytanie assetów i przygotowanie animacji.
 
-import { ATTACK_STEPS, AIMS } from '../world/movement.js';
+import { ATTACK_STEPS, AIMS, WEAPONS } from '../world/movement.js';
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -60,18 +60,24 @@ export class BootScene extends Phaser.Scene {
 
       // Ciosów jest pięć kierunków, a sylwetek cztery: ukos to ta sama postać
       // z bokiem, tylko z drzewcem obróconym. Dlatego osobna pętla.
-      for (const aim of AIMS) {
-        ATTACK_STEPS.forEach((step, index) => {
-          this.anims.create({
-            key: `g${variant.id}_${aim}_atk${index}`,
-            frames: step.phases.map((phase, frame) => ({
-              key: 'goblins',
-              frame: `g${variant.id}_${aim}_a${index}f${frame}`,
-              duration: phase.ms,
-            })),
-            repeat: 0,
+      // Po jednym komplecie na broń. Litera w nazwie klatki (`a` włócznia,
+      // `p` pięść) idzie z `WEAPONS` w `world/movement.js`, więc dołożenie broni
+      // to jeden wpis w tabeli i jedna pętla rysunkowa — bez listy wyjątków
+      // w kodzie animacji.
+      for (const [nazwa, spec] of Object.entries(WEAPONS)) {
+        for (const aim of AIMS) {
+          ATTACK_STEPS.forEach((step, index) => {
+            this.anims.create({
+              key: `g${variant.id}_${aim}_atk${index}_${nazwa}`,
+              frames: step.phases.map((phase, frame) => ({
+                key: 'goblins',
+                frame: `g${variant.id}_${aim}_${spec.frames}${index}f${frame}`,
+                duration: phase.ms,
+              })),
+              repeat: 0,
+            });
           });
-        });
+        }
       }
     }
 

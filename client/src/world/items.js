@@ -23,6 +23,9 @@ export const ITEMS = {
   // po trzech drzewach widać, że plecak się kończy.
   wood: { w: 2, h: 1, icon: 'icon_wood', name: 'kłoda' },
   stone: { w: 1, h: 1, icon: 'icon_stone', name: 'kamień' },
+  // Mięso zajmuje jedną kratkę i to jest celowo tanio: głód ma być rozwiązywalny,
+  // ale **musisz je najpierw upolować**. Trudność siedzi w zdobyciu, nie w noszeniu.
+  meat: { w: 1, h: 1, icon: 'icon_meat', name: 'mięso', food: 42 },
   // Dzida zajmuje pół plecaka i to jest jej koszt. Nosisz broń albo nosisz łup.
   spear: { w: 1, h: 4, icon: 'icon_spear', name: 'dzida' },
 };

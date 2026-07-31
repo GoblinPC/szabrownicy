@@ -505,6 +505,38 @@ function drawHeadgear(t, v, dir, p) {
  * Ostrze ma jasne pasmo i ciemniejszy grzbiet po jednej stronie. Bez tego jest
  * jednolitą kreską i nie widać, że to płaskie ostrze, a nie pręt.
  */
+/**
+ * Zaciśnięta pięść zamiast broni.
+ *
+ * **Stan startowy musi być stanem najgorszym**, więc gracz zaczyna bez niczego
+ * w rękach. Koszt rysunkowy jest tu znikomy i to była cała podstawa tej decyzji:
+ * pozy zostają te same, znika drzewce, a garść dostaje kilka pikseli więcej.
+ *
+ * Pięść jest **wyraźnie większa od dłoni z pozy spoczynkowej** i ma kostki
+ * z jaśniejszego odcienia. Bez tego cios pięścią wygląda jak wyciągnięta ręka,
+ * na której zapomniano narysować broń — a ma wyglądać jak uderzenie.
+ *
+ * Kierunek uderzenia liczymy z tego samego kąta co drzewce, więc kostki zawsze
+ * są od strony, w którą leci cios.
+ */
+function drawFist(t, v, hx, hy, degrees) {
+  const [skinDark, skinMid, skinLight] = v.skin;
+  const angle = (degrees * Math.PI) / 180;
+  const dx = Math.cos(angle);
+  const dy = Math.sin(angle);
+
+  t.rect(hx - 1, hy - 1, 3, 3, skinMid);
+  t.px(hx - 1, hy + 1, skinDark);
+  t.px(hx + 1, hy + 1, skinDark);
+  // Kostki od strony ciosu.
+  const kx = Math.round(hx + dx * 1.6);
+  const ky = Math.round(hy + dy * 1.6);
+  t.px(kx, ky, skinLight ?? skinMid);
+  t.px(Math.round(kx - dy), Math.round(ky + dx), skinMid);
+  // Nadgarstek z tyłu — bez niego pięść odkleja się od ramienia.
+  t.px(Math.round(hx - dx * 2), Math.round(hy - dy * 2), skinDark);
+}
+
 function drawSpear(t, hx, hy, degrees, reach, butt = 6) {
   const angle = (degrees * Math.PI) / 180;
   const dx = Math.cos(angle);
@@ -703,11 +735,20 @@ function fitReach(hand, angle, reach) {
  * @param dir sylwetka ciała: `down`, `up` albo `side`
  * @param aim kierunek ciosu z `ATTACK_AIMS` — obraca samo drzewce i skraca zasięg
  */
-function drawFrame(variant, dir, kind, frame, step = 0, aim = null) {
+function drawFrame(variant, dir, kind, frame, step = 0, aim = null, weapon = 'spear') {
   const p = pose(kind, frame, dir, step);
   if (kind === 'attack') {
     if (aim) p.angle += aim.turn;
     p.reach = fitReach(p.hand, p.angle, p.reach * (aim?.reach ?? 1));
+    // Pięść nie ma zasięgu poza garścią, więc wyrzut ręki trzeba **skrócić**.
+    // Bez tego goblin wymachuje ręką dokładnie tak jak z włócznią, tylko bez
+    // niej — i wygląda to jak brakujący sprite, nie jak cios pięścią.
+    if (weapon === 'fists') {
+      p.hand = [
+        Math.round(8 + (p.hand[0] - 8) * 0.62),
+        p.hand[1],
+      ];
+    }
   }
   const body = drawBody(variant, dir, kind, frame, p);
   if (kind !== 'attack') return body;
@@ -723,7 +764,8 @@ function drawFrame(variant, dir, kind, frame, step = 0, aim = null) {
   const handX = ATTACK_OX + p.hand[0];
   const handY = p.hand[1] + BODY_PAD_T;
   drawArmTo(blade, variant, shoulderX, 18 + p.bodyY + BODY_PAD_T, handX, handY);
-  drawSpear(blade, handX, handY, p.angle, p.reach);
+  if (weapon === 'fists') drawFist(blade, variant, handX, handY, p.angle);
+  else drawSpear(blade, handX, handY, p.angle, p.reach);
   const bladeArt = blade.outline(OUTLINE);
 
   const sheet = new Canvas(ATTACK_W, BODY_H);
@@ -764,12 +806,19 @@ export function buildGoblins() {
     // Ciosy mają własne kierunki, bo jest ich więcej niż sylwetek: ukos powstaje
     // z tej samej sylwetki bocznej, tylko z drzewcem obróconym o 46 stopni.
     // Nazwa: `a<ogniwo>f<klatka>`.
+    // Dwa komplety: `a` z włócznią, `p` z pięścią. Nazwa broni siedzi w nazwie
+    // klatki, więc podmiana uzbrojenia to podmiana przedrostka — nie ma osobnej
+    // logiki wyboru sprite'a ani listy wyjątków.
     for (const aim of ATTACK_AIMS) {
       for (let s = 0; s < ATTACK_STEPS; s++) {
         for (let f = 0; f < ATTACK_FRAMES; f++) {
           entries.push({
             name: `g${variant.id}_${aim.name}_a${s}f${f}`,
-            canvas: drawFrame(variant, aim.body, 'attack', f, s, aim),
+            canvas: drawFrame(variant, aim.body, 'attack', f, s, aim, 'spear'),
+          });
+          entries.push({
+            name: `g${variant.id}_${aim.name}_p${s}f${f}`,
+            canvas: drawFrame(variant, aim.body, 'attack', f, s, aim, 'fists'),
           });
         }
       }

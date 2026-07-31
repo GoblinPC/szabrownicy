@@ -20,14 +20,14 @@ import { ITEMS, sizeOf, fits } from '../world/items.js';
 const CELL = 48;
 const ICON_PX = 16;
 
-export function createBackpack({ onMove, onDrop }) {
+export function createBackpack({ onMove, onDrop, onEat }) {
   const box = document.createElement('div');
   box.id = 'backpack';
   box.innerHTML = `
     <div id="bag-panel">
       <div id="bag-title">plecak</div>
       <div id="bag-grid"></div>
-      <div id="bag-hint">przeciągnij &nbsp;·&nbsp; <b>PPM</b> obróć &nbsp;·&nbsp; wyrzuć poza siatkę</div>
+      <div id="bag-hint">przeciągnij &nbsp;·&nbsp; <b>PPM</b> obróć &nbsp;·&nbsp; <b>2×LPM</b> zjedz &nbsp;·&nbsp; wyrzuć poza siatkę</div>
     </div>
   `;
 
@@ -196,6 +196,16 @@ export function createBackpack({ onMove, onDrop }) {
     // gdzie naprawdę leży, i gracz od razu widzi, że się nie zmieściło.
     render();
   }
+
+  // Zjedzenie dwuklikiem. Bez guzika i bez menu: dopóki jadalna jest jedna rzecz,
+  // menu kontekstowe byłoby listą z jedną pozycją.
+  box.addEventListener('dblclick', (event) => {
+    const itemEl = event.target.closest('.bag-item');
+    if (!itemEl) return;
+    const id = Number(itemEl.dataset.id);
+    const item = bag.items.find((it) => it.id === id);
+    if (item && ITEMS[item.kind]?.food) onEat?.(id);
+  });
 
   box.addEventListener('pointerdown', (event) => {
     const itemEl = event.target.closest('.bag-item');

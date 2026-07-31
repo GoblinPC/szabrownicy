@@ -13,10 +13,10 @@ import {
   isWalkable,
 } from '../../client/src/world/forge.js';
 import {
-  advance, poseOf, KEY_MASK, inAttackArc, ATTACK_STEPS,
+  advance, poseOf, KEY_MASK, inAttackArc, ATTACK_STEPS, weaponOf,
 } from '../../client/src/world/movement.js';
 import { buildNodes, NODE_KINDS } from '../../client/src/world/nodes.js';
-import { makeBag, addItem, fits } from '../../client/src/world/items.js';
+import { makeBag, addItem, fits, ITEMS } from '../../client/src/world/items.js';
 
 export const TICK_HZ = 20;
 const TICK_MS = 1000 / TICK_HZ;
@@ -72,7 +72,15 @@ const VIEW_RANGE = 700;
 // Zasięg podnoszenia z ziemi. Trochę większy od promienia stopy, żeby nie trzeba
 // było celować w kłodę — ale mniejszy od zasięgu ciosu, bo podnoszenie ma być
 // osobną czynnością, nie skutkiem ubocznym machania.
-const PICK_RANGE = 15;
+const PICK_RANGE = 22;
+
+// Głód. Pełny pasek starczy na jakieś piętnaście minut gry — mniej więcej dobę
+// w świecie. Wyprawa po drewno mieści się spokojnie, dwie już nie.
+const FOOD_MAX = 100;
+const FOOD_DRAIN = FOOD_MAX / (15 * 60);   // punktów na sekundę
+// Pusty żołądek zabiera całe życie w niecałe dwie minuty. Ma boleć, ale ma też
+// zostawić czas na dobiegnięcie do czegoś jadalnego.
+const STARVE_DPS = 1.0;
 
 // --- Gracz: życie, śmierć, strefa bezpieczna ----------------------------------
 //
@@ -277,6 +285,23 @@ export class Game {
     }
   }
 
+  /** Rzeczy wypadające w danym punkcie — wspólne dla zasobów i dla zwierząt. */
+  dropAt(x, y, kind, count, now) {
+    for (let i = 0; i < count; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const d = 4 + Math.random() * 10;
+      const id = this.nextDrop++;
+      this.drops.set(id, {
+        id,
+        item: kind,
+        x: Math.round(x + Math.cos(a) * d),
+        y: Math.round(y + Math.sin(a) * d * 0.6),
+        ready: now + 300,
+        until: now + 120_000,
+      });
+    }
+  }
+
   /** Rzeczy wypadające ze ściętego zasobu — rozrzucone wokół jego podstawy. */
   spawnDrop(node, spec, now) {
     const [lo, hi] = spec.dropCount;
@@ -350,20 +375,84 @@ export class Game {
    * w którym podnoszenie przestanie być automatyczne, bo wtedy pojawi się decyzja
    * „co zostawiam".
    */
-  pickDrops(player, now) {
-    if (player.hp <= 0) return;
-    for (const [id, drop] of this.drops) {
+  /** Najbliższa rzecz w zasięgu podniesienia, albo `null`. */
+  reachableDrop(player, now) {
+    let best = null;
+    let bestD = Infinity;
+    for (const drop of this.drops.values()) {
       if (now < drop.ready) continue;
       const dx = drop.x - player.x;
       const dy = (drop.y - player.y) * 1.6;   // rzut 3/4: w pionie jest ciaśniej
-      if (dx * dx + dy * dy > PICK_RANGE * PICK_RANGE) continue;
-      // **Pełny plecak zostawia rzecz na ziemi.** To jest cały sens siatki:
-      // miejsce jest zasobem, więc gdy się skończy, łup przestaje wchodzić sam
-      // i trzeba coś wyrzucić. Bez tego kratki byłyby ozdobą.
-      if (!addItem(player.bag, drop.item)) continue;
-      player.bagSeq++;
-      player.pickSeq++;
-      this.drops.delete(id);
+      const d = dx * dx + dy * dy;
+      if (d > PICK_RANGE * PICK_RANGE || d >= bestD) continue;
+      bestD = d;
+      best = drop;
+    }
+    return best;
+  }
+
+  /**
+   * Podniesienie **na żądanie**, nie przez wejście na rzecz.
+   *
+   * Pierwsza wersja wciągała wszystko, po czym się przeszło. Wygodne i złe:
+   * przy plecaku, w którym miejsce jest zasobem, wciąganie łupu bez pytania
+   * zabiera graczowi dokładnie tę decyzję, dla której siatka powstała — a przy
+   * ucieczce z pełnym plecakiem zbierało śmieci wbrew niemu.
+   */
+  pickRequest(player, now) {
+    if (player.hp <= 0) return;
+    const drop = this.reachableDrop(player, now);
+    if (!drop) return;
+    // Pełny plecak zostawia rzecz na ziemi. To jest cały sens siatki: gdy miejsce
+    // się kończy, łup przestaje wchodzić i trzeba coś wyrzucić.
+    if (!addItem(player.bag, drop.item)) return;
+    player.bagSeq++;
+    player.pickSeq++;
+    this.drops.delete(drop.id);
+  }
+
+  /**
+   * Zjedzenie z plecaka.
+   *
+   * Jedzenie jest jedynym sposobem na głód i **nie regeneruje życia** — to dwie
+   * różne rzeczy i mieszanie ich zabiłoby jedną z nich. Życie leczą mikstury,
+   * łóżko i czas; głód leczy tylko jedzenie.
+   */
+  eatItem(player, id) {
+    const i = player.bag.items.findIndex((it) => it.id === id);
+    if (i < 0) return false;
+    const spec = ITEMS[player.bag.items[i].kind];
+    if (!spec?.food) return false;
+    player.bag.items.splice(i, 1);
+    player.food = Math.min(FOOD_MAX, player.food + spec.food);
+    player.bagSeq++;
+    player.foodSeq = (player.foodSeq ?? 0) + 1;
+    return true;
+  }
+
+  /**
+   * Głód.
+   *
+   * Wzorzec negatywny podany wprost przez użytkownika: głód w Ruście, o który
+   * wszyscy mają w nosie, bo trudno od niego umrzeć i prawie nic nie odbiera.
+   * Tutaj pusty żołądek **zabija** — powoli, ale bez zatrzymania, i nie da się
+   * tego przeczekać, bo życie samo się nie regeneruje.
+   *
+   * Tempo dobrane tak, żeby pełny pasek starczał na jakieś piętnaście minut gry,
+   * czyli mniej więcej jedną dobę w świecie. Wyprawa po drewno mieści się w tym
+   * spokojnie, dwie już nie — i to jest ta chwila, w której trzeba zapolować.
+   */
+  stepHunger(player, dt, now) {
+    if (player.hp <= 0) return;
+    player.food = Math.max(0, player.food - FOOD_DRAIN * dt);
+    if (player.food > 0) return;
+    player.starve = (player.starve ?? 0) + STARVE_DPS * dt;
+    // Obrażenia naliczamy całymi punktami, żeby pasek życia nie drgał ułamkami
+    // dwadzieścia razy na sekundę.
+    if (player.starve >= 1) {
+      const ile = Math.floor(player.starve);
+      player.starve -= ile;
+      this.hurt(player, ile, 0, 0, now);
     }
   }
 
@@ -424,6 +513,33 @@ export class Game {
     };
   }
 
+  /**
+   * Czym gracz właśnie bije.
+   *
+   * Na razie **wprost z plecaka**: jest w nim dzida, to nią. Docelowo będzie
+   * osobne pole na broń w ręce, ale dopóki jest jedna broń w grze, osobny slot
+   * byłby interfejsem bez wyboru. Ważne jest to, co już działa: broń jest
+   * przedmiotem, więc da się ją stracić — a to jest cała różnica względem
+   * dzidy przyspawanej do postaci.
+   */
+  refreshWeapon(player) {
+    const ma = player.bag.items.some((it) => it.kind === 'spear');
+    player.weapon = ma ? 'spear' : null;
+  }
+
+  /**
+   * Wyłącza zapory ściętych zasobów i włącza je z powrotem po odrośnięciu.
+   *
+   * Bez tego po rozbitym głazie zostaje **pusty prostokąt, w który się wchodzi** —
+   * gracz obchodzi coś, czego nie widać. Zgłoszone z gry natychmiast.
+   */
+  syncNodeBodies() {
+    if (!this.world.nodeBody) return;
+    for (const [id, body] of this.world.nodeBody) {
+      body.down = (this.hurtNodes.get(id)?.hp ?? 1) <= 0;
+    }
+  }
+
   /** Odrastanie i sprzątanie tego, czego nikt nie podniósł. */
   stepNodes(now) {
     for (const [id, state] of this.hurtNodes) {
@@ -468,6 +584,9 @@ export class Game {
       // Który cios łańcucha trafił. Rąbnięcie z góry zabiera prawie trzy razy
       // tyle co lekkie cięcie i odrzuca dwa razy mocniej.
       const step = ATTACK_STEPS[player.atkStrikeStep ?? 0] ?? ATTACK_STEPS[0];
+      // Broń mnoży obrażenia. Pięść zabiera niecałą połowę tego co włócznia —
+      // ale prawdziwą różnicę robi zasięg, liczony w `inAttackArc()`.
+      const dmg = step.damage * weaponOf(player.weapon).damage;
 
       // Martwy nie bije.
       if (player.hp <= 0) continue;
@@ -476,7 +595,7 @@ export class Game {
         if (mob.hp <= 0) continue;
         if (!this.reaches(player, mob)) continue;
 
-        mob.hp = Math.max(0, mob.hp - step.damage);
+        mob.hp = Math.max(0, mob.hp - dmg);
         if (!mob.anchored) {
           mob.vx += player.atkDx * step.knockback;
           mob.vy += player.atkDy * step.knockback;
@@ -488,6 +607,10 @@ export class Game {
         // razu, zwierzę jest zdobyczą i las ma się z niego wyczerpywać.
         if (mob.hp === 0) {
           mob.deadUntil = now + (mob.kind === 'boar' ? BOAR.respawnMs : RESPAWN_MS);
+          // **Z dzika wypada mięso.** To jedyne źródło jedzenia w grze, więc to
+          // ono zamyka głód w pętlę: żeby jeść, trzeba polować, a żeby polować,
+          // trzeba wyjść ze strefy bezpiecznej.
+          if (mob.kind === 'boar') this.dropAt(mob.x, mob.y, 'meat', 2 + Math.floor(Math.random() * 2), now);
         }
       }
 
@@ -509,7 +632,7 @@ export class Game {
         // Zabójstwo poznajemy po **wyniku `hurt()`**, a nie po życiu celu po
         // fakcie: odrodzenie jest natychmiastowe, więc zaraz po ciosie ofiara ma
         // już połowę życia i warunek `hp === 0` nigdy by nie zadziałał.
-        if (this.hurt(target, step.damage, player.atkDx, player.atkDy, now)) {
+        if (this.hurt(target, dmg, player.atkDx, player.atkDy, now)) {
           player.kills++;
         }
       }
@@ -794,6 +917,14 @@ export class Game {
       // w ogóle był, rozstrzyga ta struktura. Przy grze, w której łupi się innych
       // graczy, nie ma innej możliwości.
       bag: makeBag(),
+      // Głód. Pełny na start, bo pierwsze minuty mają iść na rozejrzenie się,
+      // a nie na natychmiastowe szukanie żarcia.
+      food: FOOD_MAX,
+      maxFood: FOOD_MAX,
+      starve: 0,
+      // Broń. `null` znaczy pięści — **stan startowy jest stanem najgorszym**,
+      // więc brak informacji ma znaczyć „gołe ręce", nie „włócznia".
+      weapon: null,
       // Znacznik zmiany zawartości: klient odświeża siatkę tylko wtedy, gdy coś
       // się naprawdę zmieniło, a nie dwadzieścia razy na sekundę.
       bagSeq: 0,
@@ -901,11 +1032,15 @@ export class Game {
     // Trafienia dopiero po ruchu wszystkich graczy: cios ma sięgać z pozycji,
     // na której postać naprawdę stoi po wypadzie, a nie sprzed niego.
     const now = Date.now();
+    // Broń **przed** rozliczeniem ciosów: to, co gracz trzyma, decyduje o zasięgu
+    // i obrażeniach tego uderzenia, a nie następnego.
+    for (const player of this.players.values()) this.refreshWeapon(player);
     this.resolveHits(now);
     this.stepMobs(now, TICK_MS / 1000);
     this.stepPlayers();
-    for (const player of this.players.values()) this.pickDrops(player, now);
+    for (const player of this.players.values()) this.stepHunger(player, TICK_MS / 1000, now);
     this.stepNodes(now);
+    this.syncNodeBodies();
   }
 
   /** Opis gracza dla innych — bez prędkości, bo jej nie potrzebują do rysowania. */
@@ -920,6 +1055,10 @@ export class Game {
       // Kierunek ciosu osobno od sylwetki: ukos używa tego samego boku, więc
       // z samego `f` nie dałoby się poznać, że ktoś dźga na ukos.
       k: player.aimName ?? player.facing,
+      // Broń widoczna dla wszystkich: po sylwetce ma być widać, czy ktoś idzie
+      // z dzidą, czy z gołymi rękami. To jest informacja, po której podejmuje
+      // się decyzję, czy zaczepiać.
+      w: player.weapon ?? '',
       m: player.moving ? 1 : 0,
       l: player.flip ? 1 : 0,
       // Znacznik ciosu. Odbiorca porównuje go z poprzednim i po zmianie odpala

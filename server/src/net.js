@@ -361,6 +361,19 @@ export function attachGame(sockets, dataDir, variantCount = 6, { guests = false 
           game.dropItem(session.player, message.i, Date.now());
           return;
         }
+        if (message.a === 'eat') {
+          if (!Number.isInteger(message.i)) return;
+          game.eatItem(session.player, message.i);
+          return;
+        }
+        return;
+      }
+
+      // Podniesienie z ziemi na żądanie. Bez parametrów: serwer sam wybiera
+      // **najbliższą rzecz w zasięgu**, bo inaczej klient mógłby wskazać
+      // dowolną i zbierać z drugiego końca mapy.
+      if (message.t === 'pick') {
+        game.pickRequest(session.player, Date.now());
         return;
       }
 
@@ -469,6 +482,13 @@ export function attachGame(sockets, dataDir, variantCount = 6, { guests = false 
           ddx: Math.round((me.dodgeDx ?? 0) * 1000) / 1000,
           ddy: Math.round((me.dodgeDy ?? 0) * 1000) / 1000,
           is: me.pickSeq,
+          // Głód i broń. Obie liczy wyłącznie serwer.
+          fd: Math.round(me.food),
+          mfd: me.maxFood,
+          w: me.weapon ?? '',
+          // Czy jest co podnieść pod nogami — po tym klient zapala podpowiedź.
+          // Liczy serwer, bo to on wie, co naprawdę leży i czy już wolno to wziąć.
+          pk: game.reachableDrop(me, Date.now()) ? 1 : 0,
         },
         ps: all.filter((p) => p.id !== me.id),
         ms: mobs,

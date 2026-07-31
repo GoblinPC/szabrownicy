@@ -370,6 +370,25 @@ samego atlasu co reszta grafiki.
 **Kolejność:** najpierw muszą istnieć przedmioty i coś, z czego się je zdobywa.
 Plecak zbudowany przed nimi jest pustą siatką, której nie da się przetestować.
 
+**Stan na 2026-07-31: mechanika działa, wygląd nie.** Siatka, kształty, obracanie,
+wyrzucanie i rozstrzyganie po stronie serwera są zrobione (`world/items.js`,
+`ui/backpack.js`). Panel jest jednak zwykłym pudełkiem z CSS — użytkownik zgłosił
+to od razu:
+
+> miało to być bardziej z pikseli zbudowany plecak i miał wyglądać jak plecak,
+> albo jak worek, a w środku sloty
+
+Do poprawienia: **panel ma być narysowany**, tak jak reszta gry — worek albo
+plecak z klapą, szwami i rzemieniami, wygenerowany w `tools/art/`, a kratki mają
+siedzieć **w nim**, nie zamiast niego. Ramka z `border: 1px solid` i tło
+`rgba(...)` to jedyne miejsce w grze, w którym coś nie pochodzi z zamkniętej
+palety i widać to natychmiast. Sama siatka i mechanika zostają — to zmiana skóry,
+nie zasad.
+
+**Uwaga na potem:** interfejs w HTML nie zwalnia z rysowania. Czat i suwaki mogły
+być zwykłymi kontrolkami, bo to przyrządy; plecak jest **przedmiotem w świecie**,
+na który patrzy się dłużej niż na cokolwiek poza samą postacią.
+
 ### Pokój w karczmie zamiast baz
 
 Pomysł użytkownika i **przyjmuję go jako obowiązujący**, bo rozwiązuje problem,

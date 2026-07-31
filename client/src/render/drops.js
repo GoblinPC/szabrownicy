@@ -6,19 +6,30 @@
 // grze, w której łupi się innych graczy, o zawartości ziemi musi rozstrzygać
 // serwer, tak samo jak potem o zawartości plecaka.
 
-const KLATKI = { wood: 'item_wood', stone: 'item_stone' };
+const KLATKI = { wood: 'item_wood', stone: 'item_stone', meat: 'item_meat' };
 
-// Kołysanie w pionie. Bardzo małe, ale bez niego rzecz na ziemi wtapia się
-// w podłoże i gracz jej po prostu nie zauważa — a to jedyne, co po ścięciu
-// drzewa ma go do siebie przyciągnąć.
-const BOB_PX = 1.5;
-const BOB_HZ = 1.8;
+// Rzeczy na ziemi **leżą nieruchomo**.
+//
+// Pierwsza wersja kołysała nimi w pionie, żeby rzucały się w oczy. Odrzucone:
+// unoszący się kamień przeczy temu, co widać dookoła — cała reszta świata trzyma
+// się ziemi, a cienie i plamy kontaktowe są tu po to, żeby nic nie pływało.
+// Zauważalność załatwia podpowiedź podnoszenia, a nie ruch przedmiotu.
 
 export class Drops {
   constructor(scene, shadows) {
     this.scene = scene;
     this.shadows = shadows;
-    this.items = new Map();   // id → { sprite, shadow, x, y, faza }
+    this.items = new Map();   // id → { sprite, shadow, x, y }
+
+    // Podpowiedź podnoszenia: jedna na całą grę, przestawiana nad najbliższą
+    // rzecz. Napis przy każdym leżącym przedmiocie zamieniłby polanę po wyrębie
+    // w ścianę liter — a i tak podnieść można tylko to, przy czym się stoi.
+    this.hint = scene.add.bitmapText(0, 0, 'goblin', 'E', 11)
+      .setOrigin(0.5, 1)
+      .setTint(0xe8dcc0)
+      .setDepth(9200)
+      .setAlpha(0);
+    this.hintAlpha = 0;
   }
 
   apply(list) {
@@ -39,14 +50,7 @@ export class Drops {
           squash: 0.5,
           width: sprite.width + 2,
         });
-        item = {
-          sprite,
-          shadow,
-          x: drop.x,
-          y: drop.y,
-          // Własna faza kołysania, żeby kupka rzeczy nie pulsowała jednym rytmem.
-          faza: (drop.x * 0.7 + drop.y * 1.3) % (Math.PI * 2),
-        };
+        item = { sprite, shadow, x: drop.x, y: drop.y };
         this.items.set(drop.i, item);
       }
     }
@@ -59,10 +63,38 @@ export class Drops {
     }
   }
 
-  update(time) {
-    const t = (time / 1000) * BOB_HZ * Math.PI * 2;
+  /**
+   * Podpowiedź podnoszenia.
+   *
+   * **Delikatnie**, na prośbę użytkownika: litera zapala się i gaśnie płynnie
+   * i unosi się tuż nad rzeczą. Skokowe pojawienie się napisu czyta się jak
+   * komunikat interfejsu, a to ma być cecha przedmiotu, na który się patrzy.
+   *
+   * @param dt sekundy
+   * @param mozna czy serwer potwierdza, że jest co podnieść — o tym rozstrzyga on,
+   *   bo to on wie, czy rzecz już wolno wziąć i czy jeszcze leży
+   */
+  updateHint(dt, x, y, mozna) {
+    const cel = mozna ? this.nearest(x, y, 26) : null;
+    this.hintAlpha += ((cel ? 1 : 0) - this.hintAlpha) * Math.min(1, dt * 9);
+    this.hint.setAlpha(this.hintAlpha * 0.85);
+    if (!cel) return;
+    this.hint.setPosition(Math.round(cel.x), Math.round(cel.y) - 9);
+    this.hint.setDepth(cel.y + 1);
+  }
+
+  /** Najbliższa rzecz do gracza — po niej ustawiamy podpowiedź „E". */
+  nearest(x, y, range) {
+    let best = null;
+    let bestD = range * range;
     for (const item of this.items.values()) {
-      item.sprite.y = item.y + Math.sin(t + item.faza) * BOB_PX;
+      const dx = item.x - x;
+      const dy = (item.y - y) * 1.6;
+      const d = dx * dx + dy * dy;
+      if (d >= bestD) continue;
+      bestD = d;
+      best = item;
     }
+    return best;
   }
 }

@@ -697,6 +697,31 @@ function iconStone() {
   return finish(t);
 }
 
+/** Surowe mięso: 1x1. Czerwone z jasnym tłuszczem i kością — żeby nie było kamieniem. */
+function iconMeat() {
+  const rng = rngFor('icon_meat');
+  const t = new Canvas(CELL, CELL);
+  t.ellipse(8, 9, 6, 5, c('blood'));
+  t.ellipse(8, 8, 5, 4, c('life', 3));
+  t.ellipse(7, 7, 3, 2, c('life', 4));
+  // Kość wystająca z jednej strony — sylwetka ma mówić „mięso", zanim zadziała kolor.
+  t.rect(11, 3, 2, 5, c('parchment'));
+  t.ellipse(12, 3, 2, 2, c('parchment'));
+  t.px(12, 3, c('bone'));
+  t.speckle(rng, c('life', 2), 0.14, { x: 3, y: 5, w: 11, h: 9 });
+  return finish(t);
+}
+
+/** Mięso leżące na ziemi. */
+function itemMeat() {
+  const t = new Canvas(10, 7);
+  t.ellipse(5, 4, 4, 3, c('life', 2));
+  t.ellipse(5, 3, 3, 2, c('life', 3));
+  t.px(4, 2, c('life', 4));
+  t.rect(7, 1, 2, 3, c('parchment'));
+  return finish(t);
+}
+
 /** Dzida: 1x4. Pion, bo tak leży w plecaku najkrótszym bokiem do przodu. */
 function iconSpear() {
   const t = new Canvas(CELL, CELL * 4);
@@ -1109,9 +1134,11 @@ export function buildProps() {
   add('stump', stump());
   add('item_wood', itemWood());
   add('item_stone', itemStone());
+  add('item_meat', itemMeat());
   add('icon_wood', iconWood());
   add('icon_stone', iconStone());
   add('icon_spear', iconSpear());
+  add('icon_meat', iconMeat());
   add('fence', fence());
   add('campfire', campfire());
   add('gate', gateArch());

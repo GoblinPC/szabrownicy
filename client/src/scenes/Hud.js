@@ -682,6 +682,19 @@ export class HudScene extends Phaser.Scene {
     }
     this.dodgeFuel = DODGE_CHARGES;
 
+    // Pasek głodu pod paskiem życia, węższy i niższy.
+    //
+    // Węższy **celowo**: głód jest wolniejszy i mniej pilny od życia, a dwa równe
+    // paski obok siebie czytają się jako dwie równie ważne rzeczy. Rampa `food`
+    // istniała w palecie od początku i czekała dokładnie na to.
+    this.foodFrame = this.add.nineslice(
+      PANEL_X, PANEL_Y + (BAR_H + 2) * UI_SCALE, 'ui', 'frame_slot',
+      Math.round(BAR_W * 0.62), 9, SLICE, SLICE, SLICE, SLICE
+    ).setOrigin(0, 0).setScale(UI_SCALE).setDepth(DEPTH.plate);
+    this.foodBar = this.add.graphics().setDepth(DEPTH.plate - 1);
+    this.foodValue = 1;
+    this.foodShown = 1;
+
     // Licznika surowców tu nie ma i nie będzie.
     //
     // Przez pół dnia stał tu napis „drewno 3  kamien 2" jako zaślepka. Zszedł
@@ -702,6 +715,40 @@ export class HudScene extends Phaser.Scene {
 
   setDodge(fuel) {
     this.dodgeFuel = Math.max(0, Math.min(DODGE_CHARGES, fuel));
+  }
+
+  setFood(food, maxFood) {
+    this.foodValue = maxFood > 0 ? Math.max(0, Math.min(1, food / maxFood)) : 0;
+  }
+
+  updateFood(delta) {
+    if (!this.foodBar) return;
+    const dt = Math.min(delta, 60) / 1000;
+    this.foodShown += (this.foodValue - this.foodShown) * Math.min(1, dt * 10);
+
+    const ix = PANEL_X + SLICE * UI_SCALE;
+    const iy = PANEL_Y + (BAR_H + 2) * UI_SCALE + SLICE * UI_SCALE;
+    const iw = (Math.round(BAR_W * 0.62) - SLICE * 2) * UI_SCALE;
+    const ih = (9 - SLICE * 2) * UI_SCALE;
+
+    this.foodBar.clear();
+    this.foodBar.fillStyle(0x2b2113, 1);
+    this.foodBar.fillRect(ix, iy, iw, ih);
+    const filled = Math.round(iw * this.foodShown);
+    // Pusty żołądek **miga**, bo od tej chwili odbiera życie i nie da się tego
+    // przeczekać: życie samo się nie regeneruje, więc informacja musi dojść.
+    const glod = this.foodShown <= 0.001;
+    const puls = glod ? 0.5 + 0.5 * Math.sin(this.time.now / 140) : 1;
+    this.foodBar.fillStyle(this.foodShown < 0.25 ? 0x6e5630 : 0x977a45, puls);
+    this.foodBar.fillRect(ix, iy, filled, ih);
+    this.foodBar.fillStyle(0xbda06a, puls);
+    this.foodBar.fillRect(ix, iy, filled, Math.round(ih * 0.34));
+    if (glod) {
+      // Pusta ramka pulsuje na czerwono — bez tego zerowy pasek jest po prostu
+      // niewidoczny i nie różni się od „nie ma tu nic".
+      this.foodBar.fillStyle(0x7a3236, 0.35 + 0.35 * Math.sin(this.time.now / 140));
+      this.foodBar.fillRect(ix, iy, iw, ih);
+    }
   }
 
   updateHealth(delta) {
@@ -754,6 +801,7 @@ export class HudScene extends Phaser.Scene {
     this.updateLog(time);
     this.updateRoster(time);
     this.updateHealth(delta ?? 16);
+    this.updateFood(delta ?? 16);
     this.updateBanner(time);
   }
 

@@ -229,6 +229,7 @@ export class ForgeScene extends Phaser.Scene {
     this.backpack = createBackpack({
       onMove: (id, x, y, rot) => this.net.bagMove(id, x, y, rot),
       onDrop: (id) => this.net.bagDrop(id),
+      onEat: (id) => this.net.bagEat(id),
     });
     // Ramki z menedżera tekstur, nie z cache'u JSON: `load.atlas()` oddaje metryki
     // Phaserowi, a nie do `cache.json`, więc czytanie ich stamtąd dawało pustkę
@@ -259,6 +260,14 @@ export class ForgeScene extends Phaser.Scene {
       this.input.keyboard.resetKeys();
     });
     this.input.keyboard.on('keydown-ESC', () => this.backpack.close());
+
+    // Podnoszenie z ziemi. Osobny klawisz, a nie wejście na rzecz: przy plecaku,
+    // w którym miejsce jest zasobem, wciąganie łupu bez pytania zabiera graczowi
+    // dokładnie tę decyzję, dla której siatka powstała.
+    this.input.keyboard.on('keydown-E', () => {
+      if (document.activeElement?.tagName === 'INPUT') return;
+      this.net.pick();
+    });
 
     // O tym, czy pokazać formularz, decyduje serwer, nie klient — dzięki temu
     // wyłączenie logowania na czas testów nie da się włączyć podmianą pliku
@@ -908,7 +917,7 @@ export class ForgeScene extends Phaser.Scene {
     this.nodes.apply(this.net.nodes ?? [], Date.now());
     this.nodes.update(Date.now());
     this.drops.apply(this.net.drops ?? []);
-    this.drops.update(time);
+    this.drops.updateHint(dt, this.px, this.py, this.net.canPick);
     this.backpack.apply(this.net.bag);
     this.predictHits(time);
     this.updateDodge(time);
@@ -1099,6 +1108,9 @@ export class ForgeScene extends Phaser.Scene {
     // Cios sięga po **kierunek celowania** (pięć nazw, w tym dwa ukosy), a chód
     // i spoczynek po sylwetkę ciała (trzy). Ukos nie ma własnej postawy — i mieć
     // nie musi, bo to ten sam bok, tylko z drzewcem pod innym kątem.
+    // Broń z serwera. Pusto znaczy pięści — **stan startowy jest stanem
+    // najgorszym**, więc brak informacji ma znaczyć „gołe ręce".
+    const bron = this.net.weapon || 'fists';
     const key = pose.attacking
       ? `g${this.variant}_${pose.aim}_atk`
       : `g${this.variant}_${this.facing}_` + (moving ? 'run' : 'idle');
@@ -1113,7 +1125,7 @@ export class ForgeScene extends Phaser.Scene {
     if (pose.attacking && seq > (this.shownAtkSeq ?? 0)) {
       this.shownAtkSeq = seq;
       const step = attackStep(body);
-      this.player.play(`${key}${step}`);
+      this.player.play(`${key}${step}_${bron}`);
       this.spawnSlash(this, pose.aim, pose.flip, step);
     } else if (!pose.attacking && this.player.anims.currentAnim?.key !== key) {
       this.player.play(key);
@@ -1216,15 +1228,21 @@ export class ForgeScene extends Phaser.Scene {
       // Cios po kierunku celowania, chód i spoczynek po sylwetce — tak samo jak
       // u własnej postaci.
       const aim = sample.k ?? sample.f;
+      // Broń widać po sylwetce także u innych: idąca w twoją stronę postać
+      // z dzidą to inna decyzja niż postać z gołymi rękami.
+      const bronOb = sample.w || 'fists';
       const key = struck
         ? `g${sample.variant}_${aim}_atk`
         : `g${sample.variant}_${sample.f}_` + (sample.m ? 'run' : 'idle');
 
       if (struck) {
-        other.sprite.play(key);
+        other.sprite.play(`${key}${attackStep(sample) ?? 0}_${bronOb}`);
         this.spawnSlash(other, aim, Boolean(sample.l));
       } else if (!other.sprite.anims.isPlaying
-        || !other.sprite.anims.currentAnim?.key.endsWith('_atk')) {
+        // `includes`, nie `endsWith`: klucz ciosu kończy się teraz nazwą broni
+        // (`..._atk0_fists`), więc dopasowanie do końca przestało go łapać
+        // i animacja ciosu była ucinana w pierwszej klatce.
+        || !other.sprite.anims.currentAnim?.key.includes('_atk')) {
         // Animacji ciosu nie przerywamy w połowie — dopiero gdy dobiegnie końca,
         // wracamy do biegu albo spoczynku.
         if (other.sprite.anims.currentAnim?.key !== key) other.sprite.play(key);
@@ -1255,6 +1273,7 @@ export class ForgeScene extends Phaser.Scene {
     hud?.setDiagnostics(this.net.stats());
     hud?.setHealth(this.net.hp ?? 0, this.net.maxHp ?? 100, this.net.safe);
     hud?.setDodge(dodgeFuel(this.net.body ?? {}));
+    hud?.setFood(this.net.food ?? 100, this.net.maxFood ?? 100);
 
     // Plakietki rysuje HUD, bo jego kamera nie jest powiększana — dzięki temu
     // nick zostaje mały i ostry niezależnie od zoomu świata.

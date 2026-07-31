@@ -137,6 +137,22 @@ export class Net {
     this.send({ t: 'bag', a: 'drop', i: id });
   }
 
+  bagEat(id) {
+    this.send({ t: 'bag', a: 'eat', i: id });
+  }
+
+  /**
+   * Podniesienie z ziemi.
+   *
+   * Bez parametrów: **serwer sam wybiera najbliższą rzecz w zasięgu**. Gdyby
+   * klient wskazywał którą, mógłby wskazać dowolną i zbierać z drugiego końca
+   * mapy — a przy grze, w której łupi się innych graczy, to jest dokładnie ten
+   * rodzaj rzeczy, którym ktoś się zajmie.
+   */
+  pick() {
+    this.send({ t: 'pick' });
+  }
+
   sendChat(text) {
     const clean = String(text ?? '').replace(/\s+/g, ' ').trim().slice(0, MAX_CHAT_CHARS);
     if (!clean) return { ok: false, reason: null };   // puste — bez komentarza
@@ -384,6 +400,12 @@ export class Net {
     // mogą wypaść między migawkami i sama zmiana siatki nie powiedziałaby,
     // ile razy coś doszło.
     if (message.bg) this.bag = message.bg;
+    this.weapon = message.you.w ?? '';
+    this.canPick = Boolean(message.you.pk);
+    if (typeof message.you.fd === 'number') {
+      this.food = message.you.fd;
+      this.maxFood = message.you.mfd ?? 100;
+    }
     if (typeof message.you.is === 'number') {
       if (message.you.is > this.pickSeq) this.onPickUp?.();
       this.pickSeq = message.you.is;

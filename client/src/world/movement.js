@@ -138,6 +138,27 @@ export const ATTACK_STEPS = [
   },
 ];
 
+/**
+ * Broń jako **mnożniki**, nie osobne łańcuchy ciosów.
+ *
+ * Ruch zostaje ten sam — zamach, uderzenie, wyprowadzenie, powrót — a różnicę
+ * robią zasięg i obrażenia. Trzy osobne trajektorie na broń kosztowałyby trzy
+ * razy więcej klatek i i tak dawałyby to samo odczucie.
+ *
+ * **Zasięg boli bardziej niż liczby.** Pięści mają połowę obrażeń włóczni, ale
+ * to skrócony zasięg decyduje o tym, że walka bez broni jest inna: trzeba wejść
+ * w zwarcie, czyli w miejsce, z którego dzik zdąży uderzyć pierwszy.
+ */
+export const WEAPONS = {
+  fists: { range: 0.52, damage: 0.45, lunge: 0.7, frames: 'p' },
+  spear: { range: 1, damage: 1, lunge: 1, frames: 'a' },
+};
+
+/** Opis broni, z bezpiecznym powrotem do pięści. */
+export function weaponOf(name) {
+  return WEAPONS[name] ?? WEAPONS.fists;
+}
+
 const LAST_STEP = ATTACK_STEPS.length - 1;
 
 /** Całkowity czas danego ciosu z łańcucha. */
@@ -192,7 +213,10 @@ export function inAttackArc(body, dx, dy, radius = 0) {
   // stanu: rozliczenie trafienia dzieje się tik po zaznaczeniu cięcia, więc
   // postać może już być w kolejnym ogniwie łańcucha.
   const step = ATTACK_STEPS[body.atkStrikeStep ?? attackStep(body)] ?? ATTACK_STEPS[0];
-  const range = step.range ?? ATTACK_RANGE;
+  // Zasięg z broni, którą trzyma bijący. Domyślnie pięści — **stan startowy jest
+  // stanem najgorszym**, więc brak informacji o broni ma znaczyć „gołe ręce",
+  // a nie „włócznia".
+  const range = (step.range ?? ATTACK_RANGE) * weaponOf(body.weapon).range;
   const arcCos = step.arc ? Math.cos((step.arc / 2) * (Math.PI / 180)) : ATTACK_ARC_COS;
 
   const distance = Math.hypot(dx, dy);
