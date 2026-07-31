@@ -72,7 +72,67 @@ const BUILDING = { x0: 5, x1: 42, y0: 2, y1: 19 };
 // Prześwit bramy ma dokładnie dwa kafle, bo tyle samo ma otwór w jej rysunku.
 const GATE = { x0: 23, x1: 24 };
 // Kamienny przedpiecek wokół paleniska — jedyne miejsce w hali bez desek.
-const APRON = { x0: 8, x1: 15, y0: 6, y1: 11 };
+const APRON = { x0: 8, x1: 12, y0: 5, y1: 9 };
+
+/**
+ * Ścianki działowe — karczma to **cztery pomieszczenia**, nie jedna hala.
+ *
+ * Sala 37×15 kafli, umeblowana samymi meblami pod ścianami, czyta się jak
+ * magazyn. Użytkownik nazwał to wprost i miał rację. Podział zrobiony według
+ * reguł, których brakowało poprzedniemu podejściu:
+ *
+ * - **Prostokąty na siatce, kąty proste.** Żadnych kształtów „z tego, co zostało".
+ * - **Najpierw powiązania, potem meble.** Kto tu wchodzi, po co i którędy wyjdzie.
+ * - **Pusta przestrzeń jest narzędziem.** Przedsionek za bramą zostaje wolny,
+ *   bo to z niego gracz odczytuje, gdzie jest i dokąd może pójść. Poprzednia
+ *   wersja zapełniała go zapasami — dokładnie odwrotnie, niż trzeba.
+ * - **Powiązane stanowiska razem.** Kowal ma wszystko w dwóch krokach, sklep ma
+ *   ladę i półki w jednym pomieszczeniu, warsztaty stoją osobno od szynku.
+ *
+ * Diagram powiązań (brama na dole, w sali wspólnej):
+ *
+ *      KUŹNIA ──drzwi── SALA WSPÓLNA ──drzwi── SKLEP
+ *                            │                (lada, karczmarz)
+ *                          BRAMA
+ *                            │
+ *                        ──drzwi── WARSZTAT I POKOJE (schody na górę)
+ *
+ * Sala wspólna jest **węzłem**: z niej widać wszystkie troje drzwi i do niej
+ * wraca się po każdej czynności. To jest ten jeden punkt, po którym gracz
+ * orientuje się we wnętrzu.
+ */
+const PARTITIONS = [
+  // Zachodnia ścianka: oddziela kuźnię. Drzwi na wysokości ogniska sali.
+  { dir: 'v', x: 16, y0: BUILDING.y0 + 2, y1: BUILDING.y1 - 1, doors: [[10, 11]] },
+  // Wschodnia ścianka: oddziela skrzydło sklepu i warsztatów. Dwoje drzwi,
+  // po jednych do każdego z pomieszczeń — inaczej do warsztatu chodziłoby się
+  // przez sklep, a to jest droga, której nikt nie projektuje naprawdę.
+  // Drzwi do sklepu na wysokości y 9-10, czyli **poniżej lady** — wchodzący
+  // ląduje po stronie klienta. Przy drzwiach wyżej wchodziłoby się karczmarzowi
+  // za plecy, a wtedy lada niczego nie oddziela.
+  { dir: 'v', x: 32, y0: BUILDING.y0 + 2, y1: BUILDING.y1 - 1, doors: [[9, 10], [14, 15]] },
+  // Pozioma ścianka w skrzydle wschodnim: sklep na północy, warsztaty na południu.
+  // Bez drzwi — to dwa osobne pomieszczenia, każde z własnym wejściem z sali.
+  { dir: 'h', y: 11, x0: 33, x1: BUILDING.x1 - 1, doors: [] },
+];
+
+/** Czy pole zajmuje ścianka działowa, i jaki kafel na nim leży. */
+function partitionAt(x, y) {
+  for (const p of PARTITIONS) {
+    if (p.dir === 'v') {
+      if (x !== p.x || y < p.y0 || y > p.y1) continue;
+      if (p.doors.some(([a, b]) => y >= a && y <= b)) return null;
+      return 'face';
+    }
+    if (x < p.x0 || x > p.x1) continue;
+    if (p.doors.some(([a, b]) => x >= a && x <= b)) continue;
+    // Ścianka pozioma ma **koronę i czoło**, tak samo jak ściana zewnętrzna —
+    // sam pas widziany z góry czytałby się jako listwa na podłodze.
+    if (y === p.y) return 'top';
+    if (y === p.y + 1) return 'face';
+  }
+  return null;
+}
 
 /**
  * Okienka w ścianach. Każde opisane jest **odcinkiem otworu** (`a` i `b`)
@@ -249,6 +309,11 @@ function pickTile(x, y, rng) {
 
   // Wnętrze hali.
   if (inBuildingSpan && y > BUILDING.y0 + 1 && y < BUILDING.y1) {
+    // Ścianki działowe przed podłogą — dzielą halę na cztery pomieszczenia.
+    const ścianka = partitionAt(x, y);
+    if (ścianka === 'top') return 'wall_top';
+    if (ścianka === 'face') return `wall_face_${rng.int(3)}`;
+
     // Kamień tylko na przedpiecku, gdzie ma sens ogniowy — na desce pod kuźnią
     // nikt by ognia nie rozpalał. Reszta hali to deski.
     //
@@ -455,6 +520,19 @@ function buildOverlay(tiles) {
  * Obiekty świata. `x`/`y` to punkt zaczepienia na dole pośrodku, `body` opisuje
  * prostokąt kolizji liczony od tego punktu w górę.
  */
+/**
+ * Przedsionek — pas przy bramie, w którym **nic nie stoi**.
+ *
+ * Wpisany jako reguła, a nie jako dobre chęci, bo dobre chęci już raz zawiodły:
+ * dosypywanie zapasów w wolne miejsca postawiło stos kłód wprost w wejściu.
+ * Prostokąt jest sprawdzany po zbudowaniu listy obiektów i błąd wywala się
+ * od razu, a nie po wejściu do gry.
+ *
+ * Sięga trzy kafle w głąb sali i po kaflu na boki od prześwitu bramy: tyle
+ * potrzeba, żeby wchodzący widział salę, zanim w coś wejdzie.
+ */
+const ENTRANCE_CLEAR = { x0: 352, x1: 416, y0: 256, y1: 304 };
+
 function buildProps() {
   const p = [];
   // Wszystkie współrzędne poniżej są **w układzie miasta**. Przesunięcie na
@@ -463,21 +541,94 @@ function buildProps() {
   const add = (key, x, y, body = null, extra = {}) =>
     p.push({ key, x: x + OFF_X, y: y + OFF_Y, body, ...extra });
 
-  // --- Wnętrze kuźni ---
-  add('hearth', 176, 142, { w: 32, h: 14 }, { noShadow: true });
-  add('bellows', 236, 138, { w: 20, h: 8 });
-  add('anvil', 384, 208, { w: 14, h: 8 });
-  add('trough', 300, 250, { w: 20, h: 9 });
-  add('workbench', 566, 148, { w: 30, h: 8 });
-  add('shelf', 470, 118, { w: 26, h: 8 });
-  add('rack', 646, 176, { w: 18, h: 8 });
-  add('barrel', 120, 236, { w: 12, h: 8 });
-  add('barrel', 136, 248, { w: 12, h: 8 });
-  add('crate', 600, 252, { w: 14, h: 8 });
-  add('crate', 618, 264, { w: 14, h: 8 });
-  add('bucket', 332, 268, { w: 10, h: 6 });
-  add('logs', 210, 286, { w: 22, h: 8 });
-  add('crate', 156, 176, { w: 14, h: 8 });
+  // --- Wnętrze karczmy: cztery strefy ---
+  //
+  // Hala miała wcześniej kowadło **na środku sali** i resztę sprzętu rozsypaną
+  // po kątach. Użytkownik nazwał to wprost: *są porozrzucane jak po huraganie*.
+  // Układ ma teraz jedną regułę, wziętą z tego, jak ludzie używają wnętrz:
+  //
+  //   **przy ścianach stoi to, co się obsługuje;
+  //    na środku to, wokół czego się siada.**
+  //
+  // Kowal stoi między paleniskiem a kowadłem i robi dwa kroki — nie przechodzi
+  // przez pół karczmy z rozgrzanym żelazem. Stąd kowadło wróciło pod palenisko.
+  //
+  // Wnętrze ma 38×15 kafli (x 80–688, y 64–304), a brama jest w południowej
+  // ścianie na x=384. Oś wejścia zostaje przechodnia: idąc od bramy w górę
+  // trafiasz między stół a ladę, a nie w mebel.
+
+  // POMIESZCZENIE 1 — KUŹNIA. Kafle x 6-15 (px 96-255), drzwi w ściance na y 10-11.
+  //
+  // Kolejność na podłodze jest **kolejnością czynności**, nie estetyką: kowal
+  // bierze żelazo z ognia, kładzie na kowadle, studzi w korycie. Wszystko
+  // w dwóch krokach, plecami do ścianki.
+  add('hearth', 168, 118, { w: 32, h: 14 }, { noShadow: true });
+  add('bellows', 224, 116, { w: 20, h: 8 });
+  add('coal', 112, 128, { w: 20, h: 6 });
+  add('anvil', 168, 176, { w: 14, h: 8 });
+  add('trough', 116, 186, { w: 20, h: 9 });
+  add('rack', 232, 170, { w: 18, h: 8 });           // gotowe wyroby przy ściance
+  add('logs', 124, 268, { w: 22, h: 8 });           // opał w kącie
+  add('crate', 232, 268, { w: 14, h: 8 });
+  add('barrel', 234, 244, { w: 12, h: 8 });
+
+  // POMIESZCZENIE 2 — SALA WSPÓLNA. Kafle x 17-31 (px 272-511).
+  //
+  // **Węzeł całego wnętrza**: brama wchodzi tu na dole, a z sali widać wszystkie
+  // troje drzwi. Ogień stoi na środku i jest punktem orientacyjnym — pierwszą
+  // rzeczą, którą widzi wchodzący.
+  //
+  // Przedsionek (px 352-416, y 256-304) zostaje **pusty**. To nie jest dziura
+  // do zapełnienia, tylko miejsce, z którego gracz odczytuje, gdzie jest.
+  add('campfire', 392, 152, { w: 16, h: 7 }, { noShadow: true });
+  add('cookpot', 432, 154, { w: 16, h: 8 });
+  add('bench', 392, 122, { w: 26, h: 6 });          // za ogniem
+  add('bench', 340, 168, { w: 26, h: 6 });          // z lewej
+  add('bench', 444, 172, { w: 26, h: 6 });          // z prawej
+  add('stool', 356, 186, { w: 10, h: 6 });
+  add('stool', 428, 188, { w: 10, h: 6 });
+
+  // Stół — po zachodniej stronie sali, poza osią wejścia.
+  add('table', 316, 246, { w: 40, h: 10 });
+  add('stool', 288, 264, { w: 10, h: 6 });
+  add('stool', 344, 264, { w: 10, h: 6 });
+  add('stool', 316, 210, { w: 10, h: 6 });
+
+  // Zapasy szynku — w kącie północno-zachodnim sali, przy ściance kuźni.
+  add('barrel', 288, 118, { w: 12, h: 8 });
+  add('crate', 304, 130, { w: 14, h: 8 });
+
+  // POMIESZCZENIE 3 — SKLEP. Kafle x 33-41, y 4-10 (px 528-671, y 64-175).
+  //
+  // Lada **w poprzek pomieszczenia**, półki za nią: karczmarz stoi po swojej
+  // stronie, gracz po swojej i nie wchodzi za ladę. Dopiero taki układ czyta się
+  // jako sklep — sama lada pod ścianą to mebel.
+  // Lada idzie **przez całe pomieszczenie**, bez przejścia.
+  //
+  // Pierwsza wersja miała jedną ladę na środku i dało się ją obejść z obu stron —
+  // czyli nie była ladą, tylko stołem. Lada jest granicą: karczmarz stoi po
+  // swojej stronie, gracz po swojej. Trzy segmenty zamykają szerokość pokoju,
+  // a zostające po bokach szpary mają po kilka pikseli i stopa się w nie nie mieści.
+  add('shelf', 556, 84, { w: 26, h: 8 });           // półki za ladą
+  add('shelf', 616, 84, { w: 26, h: 8 });
+  add('counter', 552, 128, { w: 44, h: 10 });
+  add('counter', 597, 128, { w: 44, h: 10 });
+  add('counter', 642, 128, { w: 44, h: 10 });
+  add('barrel', 536, 100, { w: 12, h: 8 });         // zapasy po stronie karczmarza
+  add('crate', 660, 104, { w: 14, h: 8 });
+  add('crate', 540, 168, { w: 14, h: 8 });          // po stronie klienta
+  add('barrel', 656, 168, { w: 12, h: 8 });
+
+  // POMIESZCZENIE 4 — WARSZTATY I POKOJE. Kafle x 33-41, y 12-18 (px 528-671).
+  //
+  // Schody w rogu, najdalej od drzwi: pokoje są miejscem, do którego się idzie
+  // celowo, a nie mija po drodze.
+  add('workbench', 566, 224, { w: 30, h: 8 });
+  add('tanrack', 640, 224, { w: 24, h: 8 });
+  add('stairs', 648, 290, { w: 28, h: 10 });
+  add('crate', 546, 282, { w: 14, h: 8 });
+  add('barrel', 566, 292, { w: 12, h: 8 });
+  add('bucket', 596, 286, { w: 10, h: 6 });
 
   // Pochodnie na ścianach — druga warstwa oświetlenia wnętrza.
   // Obiekty, które same świecą, nie rzucają cienia: nie ma czego rzucać, bo
@@ -521,6 +672,19 @@ function buildProps() {
   // mapa jak w Tibii, wszystko do przejścia na piechotę. Stojące tu wcześniej
   // słupki były zaszłością po pomyśle osobnych stref za przejściami.
 
+  // Kontrola przedsionka. Liczona z prostokątów kolizji, nie z punktów zaczepienia —
+  // stos kłód zaczepiony obok bramy i tak wchodziłby w nią bokiem.
+  for (const prop of p) {
+    if (!prop.body) continue;
+    const x = prop.x - OFF_X;
+    const y = prop.y - OFF_Y;
+    const box = { x0: x - prop.body.w / 2, x1: x + prop.body.w / 2, y0: y - prop.body.h, y1: y };
+    if (box.x1 > ENTRANCE_CLEAR.x0 && ENTRANCE_CLEAR.x1 > box.x0
+      && box.y1 > ENTRANCE_CLEAR.y0 && ENTRANCE_CLEAR.y1 > box.y0) {
+      throw new Error(`Obiekt "${prop.key}" (${x}, ${y}) stoi w przedsionku bramy`);
+    }
+  }
+
   return p;
 }
 
@@ -542,6 +706,10 @@ function buildLights() {
     { x: 660, y: 56, radius: 78, color: [255, 165, 60], intensity: 0.8, flicker: 0.18, phase: 5.2 },
     { x: 90, y: 183, radius: 72, color: [255, 165, 60], intensity: 0.75, flicker: 0.2, phase: 0.9 },
     { x: 678, y: 223, radius: 72, color: [255, 165, 60], intensity: 0.75, flicker: 0.2, phase: 4.4 },
+    // Wspólny ogień w sali. Mniejszy zasięg niż palenisko kowala, bo ma oświetlać
+    // ławy dookoła, a nie całą halę — inaczej kuźnia przestaje być ciemna i traci
+    // to, po czym się ją poznaje.
+    { x: 372, y: 140, radius: 96, color: [255, 162, 62], intensity: 0.85, flicker: 0.26, phase: 3.3 },
     { x: 384, y: 426, radius: 104, color: [255, 158, 55], intensity: 0.95, flicker: 0.26, phase: 2.8 },
     // Trzy niebieskie światła przy portalach zeszły razem z nimi. Jedynym źródłem
     // światła na placu jest teraz ognisko — i tak ma zostać, dopóki nie stanie tam
@@ -555,6 +723,8 @@ function buildFlames() {
   // którym płonie — inaczej palenisko zasłania własny ogień.
   return [
     { anim: 'flame_big', x: 176, y: 137, depth: 143 },
+    // Wspólny ogień na środku sali — ten, przy którym się siada.
+    { anim: 'flame_mid', x: 372, y: 143, depth: 149 },
     { anim: 'flame_mid', x: 384, y: 429, depth: 435 },
     { anim: 'flame_small', x: 296, y: 53, depth: 64 },
     { anim: 'flame_small', x: 500, y: 53, depth: 64 },

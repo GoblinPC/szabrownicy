@@ -697,6 +697,187 @@ function iconStone() {
   return finish(t);
 }
 
+// --- Wyposażenie karczmy -----------------------------------------------------
+//
+// Hala przestaje być halą z kowadłem na środku i dostaje **strefy**: kuźnię przy
+// palenisku, wspólny ogień z ławami, ladę sklepikarza, warsztaty i schody do
+// pokoi. Reguła układu jest jedna i wynika z tego, jak ludzie używają wnętrz:
+// **przy ścianach stoi to, co się obsługuje, na środku to, wokół czego się siada**.
+// Kowadło na środku sali było błędem dokładnie tego rodzaju — kowal stoi między
+// paleniskiem a kowadłem i robi dwa kroki, a nie przechodzi przez pół karczmy.
+
+/** Ława — długa, bez oparcia. Mebel wspólny, nie krzesło. */
+function bench(name) {
+  const rng = rngFor(name);
+  const t = new Canvas(28, 12);
+  // Nogi najpierw, żeby siedzisko je przykryło na styku.
+  for (const x of [3, 23]) {
+    t.rect(x, 6, 3, 6, c('wood', 1));
+    t.px(x, 11, c('wood', 0));
+  }
+  t.rect(1, 4, 26, 4, c('wood', 2));
+  t.hline(1, 26, 4, c('wood', 3));           // światło na krawędzi siedziska
+  t.hline(1, 26, 7, c('wood', 0));           // cień pod nim
+  t.vline(1, 4, 7, c('wood', 1));
+  t.vline(26, 4, 7, c('wood', 1));
+  t.speckle(rng, c('wood', 1), 0.12, { x: 2, y: 5, w: 24, h: 2 });   // słoje
+  return finish(t);
+}
+
+/** Stołek — jedno miejsce. Okrągły blat na trzech nogach. */
+function stool(name) {
+  const t = new Canvas(12, 12);
+  for (const [x, h] of [[2, 5], [9, 5], [5, 6]]) {
+    t.rect(x, 6, 2, h, c('wood', 1));
+    t.px(x, 11, c('wood', 0));
+  }
+  t.ellipse(6, 5, 5, 3, c('wood', 2));
+  t.ellipse(6, 4, 4, 2, c('wood', 3));
+  t.hline(2, 9, 7, c('wood', 0));
+  void name;
+  return finish(t);
+}
+
+/** Stół — długi blat z desek, przy którym się je. */
+function tableLong(name) {
+  const rng = rngFor(name);
+  const t = new Canvas(44, 20);
+  for (const x of [4, 37]) {
+    t.rect(x, 12, 4, 8, c('wood', 1));
+    t.hline(x, x + 3, 19, c('wood', 0));
+  }
+  // Blat: trzy deski, styki widoczne — to one mówią „stół", a nie „skrzynia".
+  t.rect(1, 4, 42, 9, c('wood', 2));
+  t.hline(1, 42, 4, c('wood', 3));
+  t.hline(1, 42, 12, c('wood', 0));
+  for (const y of [7, 10]) t.hline(2, 41, y, c('wood', 1));
+  t.vline(1, 4, 12, c('wood', 1));
+  t.vline(42, 4, 12, c('wood', 1));
+  t.speckle(rng, c('wood', 3), 0.06, { x: 2, y: 5, w: 40, h: 7 });
+  return finish(t);
+}
+
+/**
+ * Garnek na trójnogu — do gotowania nad wspólnym ogniem.
+ *
+ * Sylwetka musi mówić „tu się gotuje" **bez ognia pod spodem**, bo płomień
+ * rysuje osobna warstwa i przy dziennym świetle bywa ledwo widoczny. Stąd
+ * pałąk i szeroki brzuch: kocioł czyta się nawet zimny.
+ */
+function cookpot(name) {
+  const rng = rngFor(name);
+  const t = new Canvas(20, 22);
+  // Trójnóg.
+  t.line(2, 21, 9, 10, c('iron', 1));
+  t.line(17, 21, 10, 10, c('iron', 1));
+  t.line(10, 21, 10, 12, c('iron', 0));
+  // Kocioł: szerszy u góry, zaokrąglony u dołu.
+  t.ellipse(10, 14, 7, 5, c('iron', 1));
+  t.ellipse(10, 13, 6, 4, c('iron', 2));
+  t.hline(4, 16, 10, c('iron', 0));          // krawędź otworu
+  t.hline(5, 15, 9, c('iron', 3));
+  // Pałąk nad garnkiem.
+  t.line(4, 9, 10, 5, c('iron', 2));
+  t.line(16, 9, 10, 5, c('iron', 2));
+  // Zawartość — ciemna, z jednym błyskiem. Bez niej garnek jest pusty.
+  t.hline(6, 14, 11, c('soot', 2));
+  t.px(8, 11, c('ember', 2));
+  t.speckle(rng, c('soot', 1), 0.14, { x: 4, y: 12, w: 13, h: 6 });
+  return finish(t);
+}
+
+/** Lada sklepikarza — blat z frontem, przez który się handluje. */
+function counter(name) {
+  const rng = rngFor(name);
+  const t = new Canvas(46, 22);
+  // Front: deski pionowe, bo to jest ścianka, nie blat.
+  t.rect(1, 8, 44, 13, c('wood', 1));
+  for (let x = 3; x < 44; x += 5) t.vline(x, 9, 20, c('wood', 0));
+  t.hline(1, 44, 20, c('soot', 0));
+  // Blat wystający poza front — okap robi grubość.
+  t.rect(0, 4, 46, 5, c('wood', 2));
+  t.hline(0, 45, 4, c('wood', 3));
+  t.hline(0, 45, 8, c('wood', 0));
+  // Okucia narożne.
+  for (const x of [2, 41]) {
+    t.rect(x, 10, 3, 2, c('iron', 2));
+    t.px(x + 1, 10, c('iron', 4));
+  }
+  t.speckle(rng, c('wood', 2), 0.1, { x: 2, y: 9, w: 42, h: 10 });
+  return finish(t);
+}
+
+/**
+ * Schody na górę — do pokoi.
+ *
+ * Rysowane **z boku i w skrócie**, bo w rzucie 3/4 schody widziane wprost z góry
+ * są nieczytelne: wychodzi z nich drabina położona na podłodze. Kilka stopni
+ * z ciemniejącym podcieniem wystarczy, żeby czytało się „w górę".
+ */
+function stairs(name) {
+  const t = new Canvas(30, 26);
+  for (let i = 0; i < 5; i++) {
+    const y = 21 - i * 4;
+    const x = 2 + i * 2;
+    t.rect(x, y, 26 - i * 3, 4, c('wood', 2));
+    t.hline(x, x + 25 - i * 3, y, c('wood', 3));
+    t.hline(x, x + 25 - i * 3, y + 3, c('wood', 0));
+  }
+  // Ciemność u szczytu — tam, dokąd prowadzą.
+  t.rect(10, 1, 18, 5, c('soot', 1));
+  t.hline(10, 27, 1, c('soot', 0));
+  // Poręcz po lewej.
+  t.line(1, 24, 11, 3, c('wood', 1));
+  t.line(2, 24, 12, 3, c('wood', 0));
+  void name;
+  return finish(t);
+}
+
+/** Rama do wyprawiania skór — pod przyszłe zbroje ze skóry. */
+function tanRack(name) {
+  const rng = rngFor(name);
+  const t = new Canvas(26, 28);
+  // Rama.
+  t.rect(1, 2, 3, 26, c('wood', 1));
+  t.rect(22, 2, 3, 26, c('wood', 1));
+  t.rect(1, 2, 24, 3, c('wood', 2));
+  t.hline(1, 24, 2, c('wood', 3));
+  // Skóra rozpięta na rzemieniach — nieregularny czworobok, nie prostokąt.
+  const skóra = [[6, 7], [19, 6], [20, 21], [7, 23]];
+  for (let y = 6; y < 24; y++) {
+    const k = (y - 6) / 17;
+    const x0 = Math.round(skóra[0][0] + (skóra[3][0] - skóra[0][0]) * k);
+    const x1 = Math.round(skóra[1][0] + (skóra[2][0] - skóra[1][0]) * k);
+    t.hline(x0, x1, y, c('earth', 3));
+  }
+  t.speckle(rng, c('earth', 4), 0.12, { x: 6, y: 7, w: 14, h: 16 });
+  t.speckle(rng, c('earth', 2), 0.1, { x: 6, y: 7, w: 14, h: 16 });
+  // Rzemienie naciągające skórę do ramy.
+  for (const y of [9, 14, 19]) {
+    t.hline(4, 6, y, c('wood', 0));
+    t.hline(19, 22, y, c('wood', 0));
+  }
+  return finish(t);
+}
+
+/** Kupa węgla przy palenisku — paliwo, nie ozdoba. */
+function coalPile(name) {
+  const rng = rngFor(name);
+  const t = new Canvas(22, 12);
+  for (let i = 0; i < 26; i++) {
+    const x = 2 + rng.int(18);
+    const y = 4 + rng.int(7);
+    const r = 1 + rng.int(2);
+    t.ellipse(x, y, r, Math.max(1, r - 1), c('soot', rng.chance(0.5) ? 1 : 2));
+  }
+  // Kilka błysków — węgiel jest błyszczący i bez tego jest dziurą w podłodze.
+  for (let i = 0; i < 5; i++) t.px(3 + rng.int(16), 5 + rng.int(5), c('soot', 4));
+  // Dwa żarzące się kawałki przy samym dole.
+  t.px(8, 10, c('ember', 1));
+  t.px(15, 9, c('ember', 1));
+  return finish(t);
+}
+
 // --- Małe zasoby: to, co zbiera się gołą ręką --------------------------------
 //
 // **Ręką nie rozwalę skały i drzewa.** Duże zasoby wymagają narzędzia, małe idą
@@ -1284,6 +1465,16 @@ export function buildProps() {
   add('item_stone', itemStone());
   add('item_meat', itemMeat());
   add('key_e', keyCap());
+
+  // Wyposażenie karczmy.
+  add('bench', bench('bench'));
+  add('stool', stool('stool'));
+  add('table', tableLong('table'));
+  add('cookpot', cookpot('cookpot'));
+  add('counter', counter('counter'));
+  add('stairs', stairs('stairs'));
+  add('tanrack', tanRack('tanrack'));
+  add('coal', coalPile('coal'));
 
   // Małe zasoby: po dwa warianty, żeby las nie powtarzał jednego rysunku.
   for (let i = 0; i < 2; i++) add(`branch${i}`, branch(`branch${i}`));
