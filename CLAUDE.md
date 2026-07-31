@@ -675,7 +675,32 @@ drzewa, etapów pękania skały i rzeczy leżących na ziemi.
     wnętrza i chłodnego placu też jest ostrym prostokątem**. To ta sama rodzina
     problemu i warto ją ruszyć jednym podejściem.
 
-15. **Reguły rozstawiania skał i drzew.** Zgłoszone 2026-07-31 po obejrzeniu mapy
+15. **Klimat: mgła i „efekty jak w grach".** Zgłoszone 2026-07-31 —
+    *antyaliasing, ambient occlusion, lekka mgła i inne tego typu rzeczy*.
+
+    Nazwy trzeba przetłumaczyć na to, co ma sens w pixel arcie, bo dosłownie
+    dwie z nich są **szkodliwe**: antyaliasing rozmywa piksele i psuje wszystko,
+    na czym stoi ten projekt (`pixelArt: true`), a klasyczne AO liczy się z
+    geometrii 3D, której tu nie ma. Ale to, o co użytkownikowi chodzi — **głębia
+    i klimat** — da się zrobić i częściowo już działa:
+
+    - **Ambient occlusion już jest** i nazywa się plamą kontaktową pod obiektem
+      (`shadows.js`). Do wzmocnienia: przyciemnienie w miejscach zamkniętych —
+      pod okapami, w kątach murów, w gęstwinie.
+    - **Mgła** — pierwsza rzecz do zrobienia i najtańsza: warstwa nad podłożem,
+      gęstniejąca nad trawą o świcie, ścieląca się przy ziemi, ruszająca się
+      wolniej niż deszcz. Naturalnie wpina się w `daylight.js` (najgęstsza tuż
+      przed wschodem) i w `weather.js` (po deszczu).
+    - **Głębia ostrości ubogiego człowieka**: przygaszenie i odbarwienie tego,
+      co daleko od gracza — ta sama sztuczka co `overcast()` w `lighting.js`.
+    - **Promienie światła** przez okna i przez korony drzew — te same kliny, co
+      już liczy widoczność przez okna, tylko rysowane zamiast wycinane.
+    - **Cząstki tła**: kurz w słupie światła, spadające liście, iskry znad ognia.
+
+    Kolejność ma znaczenie: **najpierw zmiękczenie cieni (punkt 14), potem mgła.**
+    Mgła położona na ostre prostokątne cienie tylko je uwypukli.
+
+16. **Reguły rozstawiania skał i drzew.** Zgłoszone 2026-07-31 po obejrzeniu mapy
    w grze: obiekty stoją zbyt losowo — głazy nachodzą na inne obiekty i na styki
    kafli, a zagęszczenie jest takie, że **ledwo da się przejść przez mapę**.
    `scatter()` pilnuje minimalnego odstępu **między obiektami tego samego wywołania**
