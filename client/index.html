@@ -138,13 +138,37 @@
     background: rgba(11, 9, 8, .55);
     z-index: 11;
   }
-  #bag-panel {
+  #bag-wrap { display: flex; gap: 12px; align-items: flex-start; }
+  #bag-panel, #bag-forge {
     padding: 14px 16px 10px;
     background: rgba(20, 16, 15, .96);
     border: 1px solid #453b37;
     border-radius: 5px;
     box-shadow: 0 0 0 1px #14100f, 0 14px 40px rgba(0, 0, 0, .6);
   }
+  #bag-forge { min-width: 210px; }
+  /* Z dala od kowadła lista jest przygaszona, a nie schowana: gracz ma wiedzieć,
+     że kuźnia istnieje i czego będzie potrzebował, zanim tam dojdzie. */
+  #bag-forge.bag-forge--far { opacity: .45; }
+  #forge-list { display: grid; gap: 4px; }
+  .forge-row {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 5px 7px;
+    border: 1px solid #453b37;
+    border-radius: 3px;
+    background: rgba(69, 59, 55, .35);
+    cursor: pointer;
+  }
+  .forge-row:hover { border-color: #f2700f; }
+  .forge-row--no { opacity: .5; cursor: default; }
+  .forge-row--no:hover { border-color: #453b37; }
+  .forge-icon { image-rendering: pixelated; flex: none; }
+  .forge-text { display: grid; gap: 2px; font-size: 11px; }
+  .forge-text b { color: #e8dcc0; font-weight: normal; letter-spacing: 1px; }
+  .forge-cost { font-size: 10px; color: #a08d7e; }
+  .forge-lack { color: #a04a4a; }
   #bag-title {
     font-size: 12px;
     letter-spacing: 4px;

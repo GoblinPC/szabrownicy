@@ -9,14 +9,16 @@
 // Świat i kolizje pochodzą z tego samego pliku co u klienta.
 
 import {
-  buildWorld, SPAWN, WORLD_W, WORLD_H, TRAINING_DUMMY, CITY_PX,
+  buildWorld, SPAWN, WORLD_W, WORLD_H, TRAINING_DUMMY, CITY_PX, CITY_OX, CITY_OY,
   isWalkable,
 } from '../../client/src/world/forge.js';
 import {
   advance, poseOf, KEY_MASK, inAttackArc, ATTACK_STEPS, weaponOf,
 } from '../../client/src/world/movement.js';
 import { buildNodes, NODE_KINDS, NODE_ARC, NODE_REACH_BONUS } from '../../client/src/world/nodes.js';
-import { makeBag, addItem, fits, ITEMS } from '../../client/src/world/items.js';
+import {
+  makeBag, addItem, fits, ITEMS, RECIPES, hasTool, canCraft, craft,
+} from '../../client/src/world/items.js';
 
 export const TICK_HZ = 20;
 const TICK_MS = 1000 / TICK_HZ;
@@ -81,6 +83,13 @@ const FOOD_DRAIN = FOOD_MAX / (15 * 60);   // punktów na sekundę
 // Pusty żołądek zabiera całe życie w niecałe dwie minuty. Ma boleć, ale ma też
 // zostawić czas na dobiegnięcie do czegoś jadalnego.
 const STARVE_DPS = 1.0;
+
+// Kowadło w kuźni — jedyne miejsce, w którym da się kuć. Współrzędne w układzie
+// miasta (`add('anvil', 384, 208)` w `world/forge.js`) przesunięte na wielką mapę;
+// gdyby kuźnia się przesunęła, ta liczba musi pójść razem z nią.
+const ANVIL = { x: 384 + CITY_OX * 16, y: 208 + CITY_OY * 16 };
+// Zasięg z zapasem: gracz ma stanąć przy kowadle, a nie trafić w piksel.
+const ANVIL_RANGE = 46;
 
 // --- Gracz: życie, śmierć, strefa bezpieczna ----------------------------------
 //
@@ -269,6 +278,17 @@ export class Game {
       const state = this.nodeState(node);
       if (state.hp <= 0) continue;
       if (!this.reachesNode(player, node)) continue;
+
+      // **Ręką nie rozwalisz drzewa ani skały.**
+      //
+      // Cios idzie, dźwięk leci, ale zasób nie traci życia. Znacznik `blockSeq`
+      // mówi klientowi, żeby pokazał odbicie zamiast wióra — bez tego brak
+      // reakcji czyta się jako chybienie i gracz szuka lepszego kąta zamiast
+      // zrozumieć, że brakuje mu narzędzia.
+      if (!hasTool(player.bag, NODE_KINDS[node.kind].tool)) {
+        player.blockSeq = (player.blockSeq ?? 0) + 1;
+        continue;
+      }
 
       const hp = Math.max(0, state.hp - 1);
       this.hurtNodes.set(node.id, { hp, downUntil: 0, at: now });
@@ -501,6 +521,32 @@ export class Game {
       until: now + 120_000,
     });
     return true;
+  }
+
+  /**
+   * Kucie przy kowadle.
+   *
+   * Kuć wolno **tylko w kuźni**, i to nie jest utrudnienie: to jest powód, dla
+   * którego miasto jest miastem. Zbierasz w lesie, wracasz do kuźni, wychodzisz
+   * z narzędziem — i ta droga tam i z powrotem jest pętlą gry, a nie przerwą
+   * w niej. Gdyby dało się kuć w krzakach, kuźnia byłaby dekoracją.
+   */
+  craftItem(player, index) {
+    const recipe = RECIPES[index];
+    if (!recipe) return false;
+    if (!this.atAnvil(player)) return false;
+    if (!canCraft(player.bag, recipe)) return false;
+    if (!craft(player.bag, recipe)) return false;
+    player.bagSeq++;
+    player.craftSeq = (player.craftSeq ?? 0) + 1;
+    return true;
+  }
+
+  /** Czy gracz stoi na tyle blisko kowadła, żeby przy nim pracować. */
+  atAnvil(player) {
+    const dx = player.x - ANVIL.x;
+    const dy = (player.y - ANVIL.y) * 1.5;
+    return dx * dx + dy * dy <= ANVIL_RANGE * ANVIL_RANGE;
   }
 
   /** Opis plecaka dla właściciela. Nikt inny go nie dostaje. */

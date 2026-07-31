@@ -13,6 +13,7 @@
 
 import { makeRng, seedFrom } from '../util/rng.js';
 import { field, scatter, REGIONS, inClearing } from './terrain.js';
+import { nodeKindOf } from './nodes.js';
 
 /**
  * Kukła treningowa na placu, na prawo od bramy.
@@ -849,6 +850,26 @@ function buildWildProps(tiles) {
       out.push({ key: 'boulder', x: Math.round(p.x), y: Math.round(p.y), body: { w: 14, h: 7 } });
     }
 
+    // Gałęzie i luźne kamienie — **to, po co wychodzi się z miasta pierwszy raz**.
+    //
+    // Gęste i z małym odstępem, bo mają być łatwe do znalezienia: to jest jedyne
+    // źródło materiału na pierwsze narzędzie, a szukanie go po całej mapie nie
+    // jest ciekawe, tylko żmudne. Trudność zaczyna się dopiero za nimi.
+    //
+    // Gałęzie leżą pod drzewami, kamienie przy skałach — jedno i drugie ma
+    // wyglądać na **skutek czegoś**, a nie na posyp po mapie.
+    const gałęzie = scatter(rng, box, 26, 2200, (x, y) =>
+      wolne(x, y) && field(x / TILE, y / TILE, 1.3) < region.tree + 0.12);
+    for (const p of gałęzie) {
+      out.push({ key: `branch${rng.int(2)}`, x: Math.round(p.x), y: Math.round(p.y) });
+    }
+
+    const kamyki = scatter(rng, box, 26, 2200, (x, y) =>
+      wolne(x, y) && field(x / TILE, y / TILE, 4.1) < region.rock + 0.18);
+    for (const p of kamyki) {
+      out.push({ key: `pebbles${rng.int(2)}`, x: Math.round(p.x), y: Math.round(p.y) });
+    }
+
     // Krzaki: **wchodzą także na polany** i to jest ich zadanie. Polana bez
     // niczego jest łysiną; polana z krzakami i kwiatami jest miejscem.
     // Nie zastawiają drogi ciałem — przez krzak da się przejść.
@@ -875,13 +896,17 @@ export function buildWorld() {
     solid.push(row);
   }
 
-  // Zapory zbieralnych zasobów dostają **numer zasobu**, ten sam co w `nodes.js`.
+  // **Numer zasobu stempluje się na obiekcie**, raz, tutaj.
   //
-  // Bez tego ścięte drzewo znika z ekranu, a jego zapora zostaje: gracz obchodzi
-  // pustą kolizję i wygląda to jak zwykły błąd. Numer musi lecieć tą samą
-  // kolejnością co `buildNodes()`, więc licznik idzie po `props` w tej samej
-  // pętli i po tym samym warunku.
+  // Ta liczba jest identyfikatorem w sieci, więc obie strony muszą ją wyliczyć
+  // identycznie. Wcześniej ta sama reguła była wypisana w trzech pętlach i
+  // trzymały się razem tylko przypadkiem — bo każdy zasób miał zaporę. Pierwszy
+  // zasób bez kolizji (leżąca gałąź) rozjechałby numerację po cichu.
   let nodeId = 0;
+  for (const prop of props) {
+    if (nodeKindOf(prop.key)) prop.node = nodeId++;
+  }
+
   const bodies = props
     .filter((prop) => prop.body)
     .map((prop) => ({
@@ -889,20 +914,14 @@ export function buildWorld() {
       x1: prop.x + prop.body.w / 2,
       y0: prop.y - prop.body.h,
       y1: prop.y,
+      node: prop.node,
     }));
 
-  // Numerowanie osobno, bo `bodies` jest już przefiltrowane, a zasoby liczą się
-  // po **wszystkich** obiektach.
+  // Zapory zasobów po numerze — po nich obie strony gaszą kolizję po ścięciu.
+  // Małe zasoby zapory nie mają i nie potrzebują: przez gałąź się przechodzi.
   const nodeBody = new Map();
-  let bodyIndex = 0;
-  for (const prop of props) {
-    if (!prop.body) continue;
-    if (prop.key === 'tree' || prop.key === 'boulder') {
-      bodies[bodyIndex].node = nodeId;
-      nodeBody.set(nodeId, bodies[bodyIndex]);
-      nodeId++;
-    }
-    bodyIndex++;
+  for (const body of bodies) {
+    if (body.node !== undefined) nodeBody.set(body.node, body);
   }
 
   // Kukła treningowa nie jest obiektem z listy `props` — jej stan prowadzi serwer —

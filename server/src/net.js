@@ -366,6 +366,11 @@ export function attachGame(sockets, dataDir, variantCount = 6, { guests = false 
           game.eatItem(session.player, message.i);
           return;
         }
+        if (message.a === 'craft') {
+          if (!Number.isInteger(message.i)) return;
+          game.craftItem(session.player, message.i);
+          return;
+        }
         return;
       }
 
@@ -489,6 +494,12 @@ export function attachGame(sockets, dataDir, variantCount = 6, { guests = false 
           // Czy jest co podnieść pod nogami — po tym klient zapala podpowiedź.
           // Liczy serwer, bo to on wie, co naprawdę leży i czy już wolno to wziąć.
           pk: game.reachableDrop(me, Date.now()) ? 1 : 0,
+          // Czy stoimy przy kowadle. Po tym klient pokazuje listę wyrobów —
+          // i po tym samym warunku serwer pozwala kuć, więc nie da się ich
+          // rozjechać.
+          an: game.atAnvil(me) ? 1 : 0,
+          // Znacznik ciosu odbitego od zasobu bez narzędzia.
+          bs: me.blockSeq ?? 0,
         },
         ps: all.filter((p) => p.id !== me.id),
         ms: mobs,

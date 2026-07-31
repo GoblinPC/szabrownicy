@@ -140,11 +140,6 @@ export class ForgeScene extends Phaser.Scene {
   }
 
   spawnProps() {
-    // Licznik zasobów. Musi iść **dokładnie tak samo jak `buildNodes()`**: numer
-    // w tej kolejności jest identyfikatorem w sieci, więc pomyłka o jeden wpis
-    // oznacza, że gracz rąbie jedno drzewo, a pada inne.
-    let nodeId = 0;
-
     for (const prop of this.world.props) {
       const sprite = this.add.image(prop.x, prop.y, 'props', prop.key)
         .setOrigin(0.5, 1)
@@ -167,9 +162,9 @@ export class ForgeScene extends Phaser.Scene {
         });
       }
 
-      if (prop.key === 'tree' || prop.key === 'boulder') {
-        this.nodes.attach(nodeId++, sprite, shadow);
-      }
+      // Numer zasobu jest już ostemplowany na obiekcie przez `buildWorld()` —
+      // jedno źródło dla klienta, serwera i zapór kolizji.
+      if (prop.node !== undefined) this.nodes.attach(prop.node, sprite, shadow);
     }
   }
 
@@ -230,7 +225,19 @@ export class ForgeScene extends Phaser.Scene {
       onMove: (id, x, y, rot) => this.net.bagMove(id, x, y, rot),
       onDrop: (id) => this.net.bagDrop(id),
       onEat: (id) => this.net.bagEat(id),
+      onCraft: (index) => this.net.bagCraft(index),
     });
+
+    // Cios odbity od drzewa albo skały, do której brakuje narzędzia.
+    //
+    // **Musi mieć własną odpowiedź**, inaczej brak reakcji czyta się jako
+    // chybienie i gracz szuka lepszego kąta zamiast zrozumieć, że potrzebuje
+    // siekiery. Głuchy stuk i krótki wstrząs mówią „trafiłeś, ale nic z tego".
+    this.net.onBlocked = () => {
+      audio.step('stone');
+      this.kickX = (this.kickX ?? 0) + (Math.random() - 0.5) * 1.6;
+      this.kickY = (this.kickY ?? 0) - 1;
+    };
     // Ramki z menedżera tekstur, nie z cache'u JSON: `load.atlas()` oddaje metryki
     // Phaserowi, a nie do `cache.json`, więc czytanie ich stamtąd dawało pustkę
     // i wszystkie ikony były niewidoczne.
@@ -922,7 +929,7 @@ export class ForgeScene extends Phaser.Scene {
     this.nodes.update(Date.now());
     this.drops.apply(this.net.drops ?? []);
     this.drops.updateHint(dt, this.px, this.py, this.net.canPick);
-    this.backpack.apply(this.net.bag);
+    this.backpack.apply(this.net.bag, this.net.atAnvil);
     this.predictHits(time);
     this.updateDodge(time);
     this.updateGhosts(delta);

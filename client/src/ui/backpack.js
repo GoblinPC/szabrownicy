@@ -12,7 +12,7 @@
 // przedmiot przeskakuje na miejsce dopiero wtedy, gdy serwer się zgodzi.
 // Dzięki temu nie ma stanu, w którym gracz widzi u siebie coś, czego nie ma.
 
-import { ITEMS, sizeOf, fits } from '../world/items.js';
+import { ITEMS, sizeOf, fits, RECIPES, countOf, canCraft } from '../world/items.js';
 
 // Kratka na ekranie. Ikony są rysowane w 16 px, więc trójka daje 48 px i cały
 // obrazek zostaje ostry — dwójka była za mała, żeby rozpoznać kłodę od kamienia,
@@ -20,19 +20,29 @@ import { ITEMS, sizeOf, fits } from '../world/items.js';
 const CELL = 48;
 const ICON_PX = 16;
 
-export function createBackpack({ onMove, onDrop, onEat }) {
+export function createBackpack({ onMove, onDrop, onEat, onCraft }) {
   const box = document.createElement('div');
   box.id = 'backpack';
   box.innerHTML = `
-    <div id="bag-panel">
-      <div id="bag-title">plecak</div>
-      <div id="bag-grid"></div>
-      <div id="bag-hint">przeciągnij &nbsp;·&nbsp; <b>PPM</b> obróć &nbsp;·&nbsp; <b>2×LPM</b> zjedz &nbsp;·&nbsp; wyrzuć poza siatkę</div>
+    <div id="bag-wrap">
+      <div id="bag-panel">
+        <div id="bag-title">plecak</div>
+        <div id="bag-grid"></div>
+        <div id="bag-hint">przeciągnij &nbsp;·&nbsp; <b>PPM</b> obróć &nbsp;·&nbsp; <b>2×LPM</b> zjedz &nbsp;·&nbsp; wyrzuć poza siatkę</div>
+      </div>
+      <div id="bag-forge">
+        <div id="bag-title">kuźnia</div>
+        <div id="forge-list"></div>
+        <div id="bag-hint">kujesz tylko przy kowadle</div>
+      </div>
     </div>
   `;
 
   const grid = box.querySelector('#bag-grid');
   const panel = box.querySelector('#bag-panel');
+  const forge = box.querySelector('#bag-forge');
+  const forgeList = box.querySelector('#forge-list');
+  let atAnvil = false;
 
   let open = false;
   let bag = { w: 0, h: 0, items: [] };
@@ -117,17 +127,83 @@ export function createBackpack({ onMove, onDrop, onEat }) {
     }
   }
 
+  /**
+   * Lista wyrobów.
+   *
+   * Siedzi **obok otwartego plecaka**, a nie w osobnym oknie — bo składniki
+   * leżą w plecaku i to na nie się patrzy, decydując, czy stać cię na siekierę.
+   * Osobne okno kuźni kazałoby przełączać się tam i z powrotem, żeby policzyć
+   * kamienie.
+   *
+   * Kujesz **tylko przy kowadle** i widać to wprost: z dala od niego lista jest
+   * przygaszona. To nie jest utrudnienie, tylko powód, dla którego miasto jest
+   * miastem — droga do kuźni i z powrotem jest pętlą gry, a nie przerwą w niej.
+   */
+  function renderForge() {
+    forge.classList.toggle('bag-forge--far', !atAnvil);
+    forgeList.innerHTML = '';
+
+    RECIPES.forEach((recipe, index) => {
+      const spec = ITEMS[recipe.out];
+      const stac = canCraft(bag, recipe);
+
+      const row = document.createElement('div');
+      row.className = `forge-row${stac && atAnvil ? '' : ' forge-row--no'}`;
+      row.dataset.index = String(index);
+
+      const icon = document.createElement('div');
+      icon.className = 'forge-icon';
+      icon.style.width = `${CELL}px`;
+      icon.style.height = `${CELL}px`;
+      iconMini(icon, recipe.out);
+
+      const opis = document.createElement('div');
+      opis.className = 'forge-text';
+      // Koszt pokazujemy jako **posiadane z potrzebnych**, nie samą cenę:
+      // „drewno 1/2" mówi od razu, czego brakuje i ile.
+      const czesci = Object.entries(recipe.cost).map(([kind, n]) => {
+        const mam = countOf(bag, kind);
+        const brak = mam < n ? ' forge-lack' : '';
+        return `<span class="${brak.trim()}">${ITEMS[kind]?.name ?? kind} ${mam}/${n}</span>`;
+      });
+      opis.innerHTML = `<b>${spec?.name ?? recipe.out}</b><span class="forge-cost">${czesci.join(' &nbsp; ')}</span>`;
+
+      row.append(icon, opis);
+      forgeList.appendChild(row);
+    });
+  }
+
+  /** Ikona zmniejszona do jednej kratki — na liście liczy się rozpoznanie, nie rozmiar. */
+  function iconMini(el, kind) {
+    const spec = ITEMS[kind];
+    const frame = frames?.[spec?.icon]?.frame;
+    if (!frame || !sheet.w) return;
+    // Skala dobrana tak, żeby **dłuższy bok** ikony zmieścił się w kratce.
+    const scale = CELL / Math.max(frame.w, frame.h);
+    el.style.backgroundImage = 'url(assets/gen/props.png)';
+    el.style.backgroundRepeat = 'no-repeat';
+    el.style.backgroundSize = `${sheet.w * scale}px ${sheet.h * scale}px`;
+    el.style.backgroundPosition = `${-frame.x * scale}px ${-frame.y * scale}px`;
+  }
+
   /** Nowy stan z serwera. Odrysowujemy tylko przy zmianie znacznika. */
-  function apply(state) {
+  function apply(state, anvil = false) {
+    const anvilZmiana = anvil !== atAnvil;
+    atAnvil = anvil;
     if (!state) return;
-    if (state.s === seq) return;
-    seq = state.s;
-    bag = {
-      w: state.w,
-      h: state.h,
-      items: state.it.map((it) => ({ id: it.i, kind: it.k, x: it.x, y: it.y, rot: it.r })),
-    };
-    if (open) render();
+    if (state.s === seq && !anvilZmiana) return;
+    if (state.s !== seq) {
+      seq = state.s;
+      bag = {
+        w: state.w,
+        h: state.h,
+        items: state.it.map((it) => ({ id: it.i, kind: it.k, x: it.x, y: it.y, rot: it.r })),
+      };
+    }
+    if (open) {
+      render();
+      renderForge();
+    }
   }
 
   // --- Przeciąganie -----------------------------------------------------------
@@ -182,7 +258,10 @@ export function createBackpack({ onMove, onDrop, onEat }) {
 
   function endDrag(event) {
     if (!drag) return;
-    const rect = panel.getBoundingClientRect();
+    // „Poza panelem" liczymy od **całego okna**, razem z listą wyrobów obok.
+    // Gdyby liczyć od samej siatki, przeciągnięcie kłody nad kuźnię wyrzucałoby
+    // ją na ziemię — a to jest ostatnia rzecz, jakiej gracz się tam spodziewa.
+    const rect = panel.parentElement.getBoundingClientRect();
     const outside = event.clientX < rect.left || event.clientX > rect.right
       || event.clientY < rect.top || event.clientY > rect.bottom;
 
@@ -208,6 +287,15 @@ export function createBackpack({ onMove, onDrop, onEat }) {
   const DBL_MS = 400;
 
   box.addEventListener('pointerdown', (event) => {
+    const forgeRow = event.target.closest('.forge-row');
+    if (forgeRow) {
+      event.preventDefault();
+      // Prośba idzie zawsze — o tym, czy stoimy przy kowadle i czy starczy
+      // składników, rozstrzyga serwer. Klient tylko przygasza to, co nie wyjdzie.
+      onCraft?.(Number(forgeRow.dataset.index));
+      return;
+    }
+
     const itemEl = event.target.closest('.bag-item');
     if (!itemEl) return;
     event.preventDefault();
@@ -258,6 +346,7 @@ export function createBackpack({ onMove, onDrop, onEat }) {
     if (open) {
       document.body.appendChild(box);
       render();
+      renderForge();
     } else {
       drag = null;
       box.remove();

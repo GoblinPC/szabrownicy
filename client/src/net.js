@@ -141,6 +141,10 @@ export class Net {
     this.send({ t: 'bag', a: 'eat', i: id });
   }
 
+  bagCraft(index) {
+    this.send({ t: 'bag', a: 'craft', i: index });
+  }
+
   /**
    * Podniesienie z ziemi.
    *
@@ -402,6 +406,12 @@ export class Net {
     if (message.bg) this.bag = message.bg;
     this.weapon = message.you.w ?? '';
     this.canPick = Boolean(message.you.pk);
+    this.atAnvil = Boolean(message.you.an);
+    // Cios odbity od zasobu, do którego brakuje narzędzia. Znacznik, nie flaga,
+    // bo dwa odbicia mogą wypaść między migawkami.
+    const block = message.you.bs ?? 0;
+    if (this.blockSeq === undefined) this.blockSeq = block;
+    else if (block > this.blockSeq) { this.blockSeq = block; this.onBlocked?.(); }
     if (typeof message.you.fd === 'number') {
       this.food = message.you.fd;
       this.maxFood = message.you.mfd ?? 100;

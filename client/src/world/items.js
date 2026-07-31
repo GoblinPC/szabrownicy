@@ -28,7 +28,92 @@ export const ITEMS = {
   meat: { w: 1, h: 1, icon: 'icon_meat', name: 'mięso', food: 42 },
   // Dzida zajmuje pół plecaka i to jest jej koszt. Nosisz broń albo nosisz łup.
   spear: { w: 1, h: 4, icon: 'icon_spear', name: 'dzida' },
+
+  // Narzędzia. `tool` to nazwa, po której zasób sprawdza, czy wolno go ruszyć.
+  //
+  // Zajmują 1×3, czyli tyle co trzy kamienie — noszenie siekiery **i** kilofa to
+  // sześć kratek z czterdziestu. To ma być decyzja: idziesz po drewno czy po
+  // kamień, a nie „biorę wszystko na wszelki wypadek".
+  axe: { w: 1, h: 3, icon: 'icon_axe', name: 'siekiera', tool: 'axe' },
+  pick: { w: 1, h: 3, icon: 'icon_pick', name: 'kilof', tool: 'pick' },
 };
+
+/**
+ * Wyroby kuźni.
+ *
+ * Trzymane razem z przedmiotami, bo receptura jest **cechą przedmiotu**, a nie
+ * osobnym systemem: „z czego to jest" należy do rzeczy tak samo jak jej rozmiar.
+ *
+ * Koszt jest niski **celowo**. Pierwsze narzędzie ma być osiągalne po jednym
+ * wyjściu za bramę — to nie ono jest treścią, tylko to, co się nim otwiera.
+ * Drogie narzędzia startowe zamieniają początek gry w zbieranie po kilka sztuk,
+ * a to jest praca, nie gra.
+ */
+export const RECIPES = [
+  { out: 'axe', cost: { wood: 2, stone: 2 } },
+  { out: 'pick', cost: { wood: 2, stone: 3 } },
+  { out: 'spear', cost: { wood: 3, stone: 1 } },
+];
+
+/** Ile sztuk danego rodzaju leży w plecaku. */
+export function countOf(bag, kind) {
+  let n = 0;
+  for (const item of bag.items) if (item.kind === kind) n++;
+  return n;
+}
+
+/** Czy plecak zawiera narzędzie o danej nazwie. `null` znaczy „nie trzeba nic". */
+export function hasTool(bag, tool) {
+  if (!tool) return true;
+  return bag.items.some((it) => ITEMS[it.kind]?.tool === tool);
+}
+
+/**
+ * Czy stać nas na wyrób.
+ *
+ * Sprawdza **wyłącznie składniki**. Miejsca nie liczymy tutaj, bo w chwili
+ * zdejmowania składników robi się go więcej — trzy kamienie zwalniają trzy
+ * kratki, kilof zajmuje trzy. Za miejsce odpowiada `craft()`, który przy
+ * niepowodzeniu oddaje składniki.
+ */
+export function canCraft(bag, recipe) {
+  for (const [kind, n] of Object.entries(recipe.cost)) {
+    if (countOf(bag, kind) < n) return false;
+  }
+  return true;
+}
+
+/**
+ * Wykonuje wyrób: zabiera składniki, dokłada gotowy przedmiot.
+ *
+ * Składniki zabieramy **dopiero po sprawdzeniu, że wynik się zmieści** — inaczej
+ * przy pełnym plecaku gracz płaci i nie dostaje nic. Zmieści się prawie zawsze,
+ * bo trzy kamienie zwalniają więcej miejsca, niż zajmuje kilof; ale „prawie"
+ * to za mało, gdy chodzi o zabranie komuś surowców.
+ */
+export function craft(bag, recipe) {
+  for (const [kind, n] of Object.entries(recipe.cost)) {
+    if (countOf(bag, kind) < n) return null;
+  }
+
+  const zdjęte = [];
+  for (const [kind, n] of Object.entries(recipe.cost)) {
+    let left = n;
+    for (let i = bag.items.length - 1; i >= 0 && left > 0; i--) {
+      if (bag.items[i].kind !== kind) continue;
+      zdjęte.push(bag.items.splice(i, 1)[0]);
+      left--;
+    }
+  }
+
+  const zrobione = addItem(bag, recipe.out);
+  if (!zrobione) {
+    // Nie zmieściło się — oddajemy składniki dokładnie tam, gdzie leżały.
+    for (const item of zdjęte) bag.items.push(item);
+    return null;
+  }
+  return zrobione;
+}
 
 /** Rozmiar plecaka startowego. Rośnie później — pokój w karczmie ma go zwiększać. */
 export const BAG_W = 8;

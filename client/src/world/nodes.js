@@ -32,6 +32,24 @@ export const NODE_ARC = 150;
  */
 export const NODE_REACH_BONUS = 8;
 
+/**
+ * Który obiekt świata jest zasobem i jakiego rodzaju.
+ *
+ * **Jedyne miejsce, w którym to się rozstrzyga.** Wcześniej ta sama reguła
+ * (`key === 'tree' || key === 'boulder'`) była wypisana w trzech pętlach —
+ * w `buildNodes()`, w numerowaniu zapór w `forge.js` i w `spawnProps()` u klienta.
+ * Trzy kopie tej samej listy trzymały się razem tylko dlatego, że wszystkie
+ * zasoby miały zaporę; przy pierwszym zasobie bez kolizji numery rozjechałyby
+ * się bezszelestnie i gracz rąbałby jedno drzewo, a padałoby inne.
+ */
+export function nodeKindOf(key) {
+  if (key === 'tree') return 'tree';
+  if (key === 'boulder') return 'boulder';
+  if (key.startsWith('branch')) return 'branch';
+  if (key.startsWith('pebbles')) return 'pebbles';
+  return null;
+}
+
 export const NODE_KINDS = {
   tree: {
     hp: 3,             // trzy ciosy siekierą... na razie trzy ciosy czymkolwiek
@@ -45,6 +63,10 @@ export const NODE_KINDS = {
     respawn: 90_000,   // las odrasta, ale nie od razu
     drop: 'wood',
     dropCount: [2, 4],
+    // **Ręką nie rozwalę drzewa.** To jest ta jedna reguła, która robi z pierwszej
+    // siekiery wydarzenie: bez niej gracz od pierwszej minuty ma dostęp do
+    // wszystkiego i nie ma po co iść do kuźni.
+    tool: 'axe',
   },
   boulder: {
     hp: 4,
@@ -57,6 +79,34 @@ export const NODE_KINDS = {
     respawn: 120_000,
     drop: 'stone',
     dropCount: [1, 3],
+    tool: 'pick',
+  },
+
+  // --- Małe zasoby: idą gołą ręką ---------------------------------------------
+  //
+  // Jeden cios, jeden–dwa przedmioty, szybkie odrastanie. Nie mają być
+  // źródłem surowców na dłuższą metę — mają wystarczyć na **pierwsze
+  // narzędzie**, po którym otwiera się reszta.
+  //
+  // Bez zapory: przez leżącą gałąź się przechodzi. Numer zasobu bierze się
+  // teraz z `prop.node`, więc brak kolizji niczego nie psuje.
+  branch: {
+    hp: 1,
+    radius: 12,
+    torso: 5,
+    respawn: 45_000,
+    drop: 'wood',
+    dropCount: [1, 2],
+    tool: null,
+  },
+  pebbles: {
+    hp: 1,
+    radius: 12,
+    torso: 5,
+    respawn: 45_000,
+    drop: 'stone',
+    dropCount: [1, 2],
+    tool: null,
   },
 };
 
@@ -70,9 +120,7 @@ export const NODE_KINDS = {
 export function buildNodes(world) {
   const nodes = [];
   for (const prop of world.props) {
-    const kind = prop.key === 'tree' ? 'tree'
-      : prop.key === 'boulder' ? 'boulder'
-        : null;
+    const kind = nodeKindOf(prop.key);
     if (!kind) continue;
     const spec = NODE_KINDS[kind];
     nodes.push({

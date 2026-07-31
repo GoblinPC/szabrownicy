@@ -697,6 +697,112 @@ function iconStone() {
   return finish(t);
 }
 
+// --- Małe zasoby: to, co zbiera się gołą ręką --------------------------------
+//
+// **Ręką nie rozwalę skały i drzewa.** Duże zasoby wymagają narzędzia, małe idą
+// bez niego — i to one domykają pętlę startową: zbierasz gałęzie i luźne kamienie,
+// robisz z nich siekierę, dopiero teraz ścinasz drzewa.
+//
+// Muszą być **wyraźnie mniejsze i inne kształtem** od dużych. Mniejsze drzewo
+// wygląda jak dalekie drzewo, a nie jak coś innego; leżąca gałąź nie da się
+// pomylić ze stojącym pniem, bo leży.
+
+/** Gałąź leżąca na ziemi. Poziomo, bo to odróżnia ją od pnia. */
+function branch(name) {
+  const rng = rngFor(name);
+  const t = new Canvas(20, 10);
+  // Główny konar biegnie skosem — prosta kreska czyta się jak deska.
+  t.line(1, 7, 17, 4, c('wood', 2));
+  t.line(1, 8, 17, 5, c('wood', 1));
+  t.line(2, 6, 16, 3, c('wood', 3));
+  // Odnogi: to one mówią „gałąź", a nie „kij".
+  t.line(7, 6, 4, 2, c('wood', 2));
+  t.line(7, 6, 5, 3, c('wood', 1));
+  t.line(12, 5, 15, 1, c('wood', 2));
+  t.px(4, 2, c('wood', 3));
+  t.px(15, 1, c('wood', 3));
+  // Kilka liści, żeby nie była samym patykiem.
+  for (let i = 0; i < 4; i++) {
+    const x = 3 + rng.int(14);
+    const y = 1 + rng.int(5);
+    t.px(x, y, c('foliage', rng.chance(0.5) ? 2 : 3));
+  }
+  return finish(t);
+}
+
+/** Kupka luźnych kamieni — mała, płaska, wyraźnie inna niż głaz. */
+function pebbles(name) {
+  const rng = rngFor(name);
+  const t = new Canvas(14, 9);
+  // Trzy kamyki zamiast jednej bryły: liczba mnoga jest tu całą informacją,
+  // bo to ona odróżnia „zbierz" od „rozwal".
+  const kamyki = [[4, 6, 3, 2], [9, 5, 2, 2], [6, 3, 2, 1]];
+  for (const [cx, cy, rx, ry] of kamyki) {
+    t.ellipse(cx, cy, rx, ry, c('stone', 1));
+    t.ellipse(cx, cy - 1, Math.max(1, rx - 1), Math.max(1, ry - 1), c('stone', 2));
+    t.px(cx - 1, cy - 1, c('stone', 3));
+  }
+  t.speckle(rng, c('stone', 0), 0.1, { x: 1, y: 2, w: 12, h: 6 });
+  return finish(t);
+}
+
+// --- Narzędzia ---------------------------------------------------------------
+
+/** Siekiera do drzew. Klin ostrza szeroki, żeby nie myliła się z kilofem. */
+function axeIcon() {
+  const t = new Canvas(CELL, CELL * 3);
+  const cx = 8;
+  // Trzonek na całą wysokość, lekko zwężony u góry.
+  t.rect(cx - 1, 10, 3, 36, c('wood', 2));
+  t.vline(cx - 1, 10, 45, c('wood', 3));
+  t.vline(cx + 1, 10, 45, c('wood', 0));
+  t.rect(cx - 1, 43, 3, 3, c('wood', 0));      // owinięcie u dołu
+  // Głowica: obuch po jednej stronie, ostrze rozszerzające się po drugiej.
+  t.rect(cx - 1, 6, 4, 7, c('iron', 1));
+  for (let i = 0; i < 7; i++) {
+    const w = 2 + Math.round(i * 0.7);
+    t.rect(cx + 3, 3 + i, w, 1, c('iron', 2));
+  }
+  t.vline(cx + 8, 5, 10, c('iron', 4));        // błysk na krawędzi tnącej
+  t.rect(cx - 3, 5, 2, 5, c('iron', 0));       // obuch
+  t.px(cx, 7, c('iron', 3));
+  return finish(t);
+}
+
+/** Kilof do skały. Dwa wąskie ostrza na boki — sylwetka litery T. */
+function pickIcon() {
+  const t = new Canvas(CELL, CELL * 3);
+  const cx = 8;
+  t.rect(cx - 1, 10, 3, 36, c('wood', 2));
+  t.vline(cx - 1, 10, 45, c('wood', 3));
+  t.vline(cx + 1, 10, 45, c('wood', 0));
+  t.rect(cx - 1, 43, 3, 3, c('wood', 0));
+  // Poprzeczka zwężająca się ku obu końcom — kilof rozpoznaje się po szpicach.
+  for (let i = 0; i < 7; i++) {
+    const y = 5 + Math.round(i * 0.35);
+    t.px(cx - 1 - i, y, c('iron', 2));
+    t.px(cx - 1 - i, y + 1, c('iron', 1));
+    t.px(cx + 1 + i, y, c('iron', 2));
+    t.px(cx + 1 + i, y + 1, c('iron', 1));
+  }
+  t.px(cx - 7, 7, c('iron', 4));
+  t.px(cx + 7, 7, c('iron', 4));
+  t.rect(cx - 2, 4, 5, 6, c('iron', 1));       // osada na trzonku
+  t.px(cx, 5, c('iron', 3));
+  return finish(t);
+}
+
+/** Narzędzie leżące na ziemi — mały rzut z góry, wspólny dla obu. */
+function toolOnGround(name, ostrze) {
+  const t = new Canvas(14, 9);
+  t.line(2, 6, 11, 3, c('wood', 2));
+  t.line(2, 7, 11, 4, c('wood', 1));
+  t.rect(9, 1, 4, 4, ostrze);
+  t.px(12, 1, c('iron', 4));
+  void name;
+  return finish(t);
+}
+
 /**
  * Podpowiedź „E" — **klawisz**, nie napis.
  *
@@ -1178,6 +1284,16 @@ export function buildProps() {
   add('item_stone', itemStone());
   add('item_meat', itemMeat());
   add('key_e', keyCap());
+
+  // Małe zasoby: po dwa warianty, żeby las nie powtarzał jednego rysunku.
+  for (let i = 0; i < 2; i++) add(`branch${i}`, branch(`branch${i}`));
+  for (let i = 0; i < 2; i++) add(`pebbles${i}`, pebbles(`pebbles${i}`));
+
+  // Narzędzia.
+  add('item_axe', toolOnGround('item_axe', c('iron', 2)));
+  add('item_pick', toolOnGround('item_pick', c('iron', 3)));
+  add('icon_axe', axeIcon());
+  add('icon_pick', pickIcon());
   add('icon_wood', iconWood());
   add('icon_stone', iconStone());
   add('icon_spear', iconSpear());
