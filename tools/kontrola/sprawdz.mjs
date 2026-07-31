@@ -14,10 +14,13 @@
 // żeby dało się je poprawić bez przeliczania.
 
 import {
-  buildWorld, isWalkable, SPAWN, CITY_OX, CITY_OY, WINDOWS, TILE,
+  buildWorld, isWalkable, SPAWN, CITY_OX, CITY_OY, CITY_PX, WINDOWS, TILE,
+  craftStation, atCraftStation, CRAFT_RANGE,
 } from '../../client/src/world/forge.js';
 import { FOOT_HALF_W, FOOT_H } from '../../client/src/world/movement.js';
 import { buildNodes, nodeKindOf } from '../../client/src/world/nodes.js';
+import { ITEMS } from '../../client/src/world/items.js';
+import fs from 'node:fs';
 import { buildTiles } from '../art/tiles.js';
 
 const w = buildWorld();
@@ -193,6 +196,156 @@ test('okno wypada w kaflu ściany',
       : [`okno ${i} @${Math.round(mx - OX)},${Math.round(my - OY)} — kafle ${wokół.join(' ')}`];
   }),
   `${WINDOWS.length} okien`);
+
+// --- Czy przez dzicz da się przejść ------------------------------------------
+//
+// Zgłoszone z gry: *zagęszczenie jest takie, że ledwo da się przejść przez mapę*.
+// Tego nie widać na podglądzie — las na obrazku zawsze wygląda na las. Widać
+// dopiero wtedy, gdy się **przejdzie** po nim tak, jak chodzi gracz: zalewaniem
+// po polach przechodnich, z prawdziwą szerokością stóp.
+//
+// Miara jest jedna i mówi wszystko: ile procent pól otwartego terenu da się
+// osiągnąć od bramy. Las gęsty, ale przechodni, ma tę liczbę wysoką; las będący
+// ścianą z korytarzykami — niską, choćby wyglądał tak samo.
+
+{
+  const S = 4;
+  const kl = (x, y) => `${x},${y}`;
+  const mapaW = w.tiles[0].length * TILE;
+  const mapaH = w.tiles.length * TILE;
+  const wolnePole = (x, y) =>
+    isWalkable(w, x - FOOT_HALF_W, y - FOOT_H, x + FOOT_HALF_W, y);
+
+  // Start przed bramą południową, czyli tam, gdzie gracz naprawdę wychodzi.
+  const brama = { x: SPAWN.x, y: CITY_PX.y + CITY_PX.h + 2 * TILE };
+  const start = [Math.round(brama.x / S) * S, Math.round(brama.y / S) * S];
+
+  const widziane = new Set([kl(...start)]);
+  const kolejka = [start];
+  while (kolejka.length) {
+    const [x, y] = kolejka.pop();
+    for (const [dx, dy] of [[S, 0], [-S, 0], [0, S], [0, -S]]) {
+      const nx = x + dx; const ny = y + dy;
+      if (nx < S || ny < S || nx >= mapaW - S || ny >= mapaH - S) continue;
+      if (widziane.has(kl(nx, ny))) continue;
+      if (!wolnePole(nx, ny)) continue;
+      widziane.add(kl(nx, ny)); kolejka.push([nx, ny]);
+    }
+  }
+
+  // Ile pól w ogóle jest przechodnich — bez tego procent nie znaczy nic.
+  let wolnych = 0;
+  for (let y = S; y < mapaH - S; y += S) {
+    for (let x = S; x < mapaW - S; x += S) if (wolnePole(x, y)) wolnych++;
+  }
+  const udział = wolnych ? widziane.size / wolnych : 0;
+
+  test('dzicz jest przechodnia od bramy',
+    udział >= 0.97 ? []
+      : [`od bramy osiągalne ${(udział * 100).toFixed(1)}% otwartego terenu `
+        + `(${widziane.size} z ${wolnych} pól) — reszta zamknięta w kieszeniach`],
+    `${(udział * 100).toFixed(1)}% terenu osiągalne, ${wolnych} pól otwartych`);
+
+  // Drugi warunek, niezależny od pierwszego: żaden **narożny obszar** nie może
+  // być odcięty. Sam procent może być wysoki, a odcięta kieszeń to kawał mapy,
+  // do którego nie da się dojść — i właśnie tam mają kiedyś stać punkty
+  // orientacyjne.
+  //
+  // Róg z litej skały **nie jest błędem**: nie ma tam czego osiągać. Pierwsza
+  // wersja tego testu meldowała odcięty róg płn-zachodni, a pomiar pokazał zero
+  // pól przechodnich na obszarze 192×192 px. Dlatego liczymy oba: ile pól da się
+  // przejść i ile z nich osiągnięto. Błędem jest wyłącznie „są pola, żadnego
+  // nie osiągnięto".
+  const róg = (x0, y0) => {
+    let wolneTu = 0; let osiągnięte = 0;
+    for (let y = y0; y < y0 + 12 * TILE; y += S) {
+      for (let x = x0; x < x0 + 12 * TILE; x += S) {
+        if (!wolnePole(x, y)) continue;
+        wolneTu++;
+        if (widziane.has(kl(Math.round(x / S) * S, Math.round(y / S) * S))) osiągnięte++;
+      }
+    }
+    return { wolneTu, osiągnięte };
+  };
+  const kraniec = { x: (w.tiles[0].length - 16) * TILE, y: (w.tiles.length - 16) * TILE };
+  const ROGI = [
+    ['płn-zach', 4 * TILE, 4 * TILE],
+    ['płn-wsch', kraniec.x, 4 * TILE],
+    ['płd-zach', 4 * TILE, kraniec.y],
+    ['płd-wsch', kraniec.x, kraniec.y],
+  ];
+  test('żaden narożnik nie jest odcięty',
+    ROGI.flatMap(([n, x, y]) => {
+      const r = róg(x, y);
+      if (r.wolneTu === 0) return [];
+      return r.osiągnięte === 0 ? [`${n} — ${r.wolneTu} pól przechodnich, żadne nieosiągalne`] : [];
+    }),
+    ROGI.map(([n, x, y]) => {
+      const r = róg(x, y);
+      return `${n} ${r.wolneTu === 0 ? 'skała' : `${Math.round(100 * r.osiągnięte / r.wolneTu)}%`}`;
+    }).join(', '));
+}
+
+// --- Stanowisko rzemieślnicze -----------------------------------------------
+//
+// Ten test powstał po błędzie, którego nie widać było na żadnym podglądzie:
+// serwer trzymał pozycję kowadła **wpisaną liczbą**, wnętrze karczmy
+// przebudowano, kowadło pojechało w inne miejsce, a strefa pracy została na
+// środku sali wspólnej. Wyglądało to jak „crafting nie działa", bo przy
+// stanowisku nie działo się nic, a działało w pustym miejscu, do którego nikt
+// nie podchodzi.
+//
+// Sprawdzamy dwie rzeczy, i obie liczbowo:
+//   1. stanowisko w ogóle istnieje w liście obiektów,
+//   2. da się przy nim **stanąć** — jest pole przechodnie w zasięgu pracy.
+// Sam zasięg dookoła bryły nie wystarczy: strefa mogłaby wypaść w całości
+// wewnątrz blatu albo za ścianką i wtedy okno nie otworzyłoby się nigdy.
+
+const stół = craftStation(w);
+
+test('stanowisko rzemieślnicze istnieje',
+  stół ? [] : ['brak obiektu `workbench` w liście obiektów'],
+  stół ? `warsztat @${lok(stół)}` : '');
+
+if (stół) {
+  // Pola z zalewania wyżej: są w układzie miasta i wiadomo o nich, że gracz
+  // naprawdę na nie dojdzie od punktu odrodzenia.
+  let pól = 0;
+  for (const k of osiągalne) {
+    const [x, y] = k.split(',').map(Number);
+    if (atCraftStation(w, OX + x, OY + y)) pól++;
+  }
+  test('przy stanowisku da się stanąć',
+    pól > 0 ? [] : [`warsztat @${lok(stół)} — zero pól przechodnich w zasięgu ${CRAFT_RANGE} px`],
+    `${pól} pól w zasięgu pracy`);
+}
+
+// --- Każdy przedmiot ma czym leżeć na ziemi i czym świecić w kratce ----------
+//
+// Umowa: rzecz o rodzaju `x` ma w atlasie klatkę `item_x` (leżąca w świecie)
+// oraz klatkę wskazaną w `icon` (w plecaku, na pasku i w oknie warsztatu).
+//
+// Test powstał po tym, jak siekiera, kilof i dzida wyrzucone na ziemię **leżały
+// niewidzialne**: mapa nazw w kliencie wymieniała trzy rodzaje z sześciu, a brak
+// wpisu oznaczał pominięcie rysowania. Serwer o rzeczy wiedział, podpowiedź `E`
+// się zapalała, podnieść się dało — tylko nie było czego zobaczyć.
+
+{
+  const atlas = JSON.parse(
+    fs.readFileSync(new URL('../../client/assets/gen/props.json', import.meta.url), 'utf8')
+  );
+  const klatki = atlas.frames ?? atlas;
+
+  test('każdy przedmiot ma rysunek na ziemi',
+    Object.keys(ITEMS).flatMap((kind) => (klatki[`item_${kind}`] ? [] : [`brak klatki item_${kind}`])),
+    `${Object.keys(ITEMS).length} rodzajów`);
+
+  test('każdy przedmiot ma ikonę',
+    Object.entries(ITEMS).flatMap(([kind, spec]) => (
+      spec.icon && klatki[spec.icon] ? [] : [`${kind}: brak ikony ${spec.icon ?? '(nie podano)'}`]
+    )),
+    `${Object.keys(ITEMS).length} ikon`);
+}
 
 console.log(`\n${błędów === 0 ? 'Wszystko się zgadza.' : `ZNALEZIONO ${błędów} problemów.`}\n`);
 process.exit(błędów === 0 ? 0 : 1);

@@ -12,37 +12,51 @@
 // przedmiot przeskakuje na miejsce dopiero wtedy, gdy serwer się zgodzi.
 // Dzięki temu nie ma stanu, w którym gracz widzi u siebie coś, czego nie ma.
 
-import { ITEMS, sizeOf, fits, RECIPES, countOf, canCraft } from '../world/items.js';
+import { ITEMS, sizeOf, fits } from '../world/items.js';
 
+// Kratka na ekranie. Ikony są rysowane w 16 px, więc trójka daje 48 px i cały
+// obrazek zostaje ostry — dwójka była za mała, żeby rozpoznać kłodę od kamienia,
+// czwórka nie mieściła plecaka na niższych ekranach.
 // Kratka na ekranie. Ikony są rysowane w 16 px, więc trójka daje 48 px i cały
 // obrazek zostaje ostry — dwójka była za mała, żeby rozpoznać kłodę od kamienia,
 // czwórka nie mieściła plecaka na niższych ekranach.
 const CELL = 48;
 const ICON_PX = 16;
 
-export function createBackpack({ onMove, onDrop, onEat, onCraft }) {
+
+export function createBackpack({ onMove, onDrop, onEat, onTake, slotAt, onSlot, onGear, onUngear }) {
   const box = document.createElement('div');
   box.id = 'backpack';
   box.innerHTML = `
     <div id="bag-wrap">
       <div id="bag-panel">
         <div id="bag-title">plecak</div>
-        <div id="bag-grid"></div>
+        <div id="bag-body">
+          <div id="bag-gear">
+            <div class="gear-slot" data-slot="body"><span class="gear-label">zbroja</span><div class="gear-icon"></div></div>
+          </div>
+          <div id="bag-grid"></div>
+        </div>
         <div id="bag-hint">przeciągnij &nbsp;·&nbsp; <b>PPM</b> obróć &nbsp;·&nbsp; <b>2×LPM</b> zjedz &nbsp;·&nbsp; wyrzuć poza siatkę</div>
       </div>
-      <div id="bag-forge">
-        <div id="bag-title">kuźnia</div>
-        <div id="forge-list"></div>
-        <div id="bag-hint">kujesz tylko przy kowadle</div>
+      <div id="bag-sack" style="display:none">
+        <div id="bag-title">worek</div>
+        <div id="sack-grid"></div>
+        <div id="bag-hint"><b>LPM</b> przełóż do siebie</div>
       </div>
     </div>
   `;
 
   const grid = box.querySelector('#bag-grid');
   const panel = box.querySelector('#bag-panel');
-  const forge = box.querySelector('#bag-forge');
-  const forgeList = box.querySelector('#forge-list');
-  let atAnvil = false;
+  const gearBox = box.querySelector('#bag-gear');
+  const sackBox = box.querySelector('#bag-sack');
+  const sackGrid = box.querySelector('#sack-grid');
+
+  // Zawartość worka, przy którym stoi gracz. `null` znaczy „nie ma przy czym stać".
+  let sack = null;
+  // Noszony ekwipunek — co siedzi w gnieździe.
+  let gear = { s: -1, b: null };
 
   let open = false;
   let bag = { w: 0, h: 0, items: [] };
@@ -53,53 +67,49 @@ export function createBackpack({ onMove, onDrop, onEat, onCraft }) {
   /** Rozmiar całego arkusza — bez niego nie da się przeskalować tła. */
   let sheet = { w: 0, h: 0 };
 
-  /**
-   * Ikona jako wycinek z `props.png`.
-   *
-   * Powiększamy **cały arkusz** i przesuwamy go tak, żeby w kadrze została ta
-   * jedna ramka. Prostsze niż krojenie atlasu na osobne pliki i nie mnoży
-   * plików do wygenerowania.
-   */
-  function iconStyle(el, kind, rot) {
-    const spec = ITEMS[kind];
-    const frame = frames?.[spec?.icon]?.frame;
-    if (!frame || !sheet.w) return;
-    const scale = CELL / ICON_PX;
-    el.style.backgroundImage = 'url(assets/gen/props.png)';
-    el.style.backgroundRepeat = 'no-repeat';
-    el.style.backgroundSize = `${sheet.w * scale}px ${sheet.h * scale}px`;
-    el.style.backgroundPosition = `${-frame.x * scale}px ${-frame.y * scale}px`;
-    // Obrót rysunku, nie zamiana ikon: dzida obrócona to ta sama dzida położona
-    // na boku. Osobny rysunek na każdy obrót byłby dwa razy większym atlasem
-    // i dwa razy większą szansą, że któryś przestanie pasować.
-    el.style.transform = rot ? 'rotate(90deg)' : '';
-    el.style.transformOrigin = 'center';
-  }
-
   function cellsOf(kind, rot) {
     return sizeOf(kind, rot) ?? { w: 1, h: 1 };
   }
 
   /**
-   * Wstawia ikonę w pole przedmiotu.
+   * Wstawia ikonę w pole przedmiotu — **przyciętą do własnej ramki**.
    *
-   * Ikona ma **zawsze rozmiar przy obrocie zero**, a obraca ją `transform`.
-   * Obrót idzie wokół środka ikony, a ten po zamianie boków nie pokrywa się ze
-   * środkiem pola — dzida położona na boku uciekała o siedemdziesiąt pikseli
-   * w górę i w prawo. Stąd wyśrodkowanie liczone wprost: ikona jest pozycjonowana
-   * bezwzględnie tak, żeby jej środek trafił w środek pola.
+   * Tu siedział błąd zgłoszony z gry: *skóra zajmuje dwa sloty, ale jest w jednym,
+   * a w drugim pokazuje pół drewna*. Poprzednia wersja skalowała cały arkusz
+   * i nadawała elementowi rozmiar **pola przedmiotu**, zakładając po cichu, że
+   * rysunek ikony ma dokładnie te proporcje. Dla kłody się zgadzało (32×16 px
+   * przy polu 2×1), dla skóry już nie: ikona ma 16×14, a pole 96×48 — w pozostałej
+   * połowie pola widać było sąsiednią ramkę atlasu.
+   *
+   * Ikona dostaje więc rozmiar swojej ramki i jest **wyśrodkowana w polu**.
+   * Skala liczona z obu boków przy obrocie zero, żeby obrócona dzida nie urosła.
    */
   function placeIcon(el, icon, kind, rot) {
+    const frame = frames?.[ITEMS[kind]?.icon]?.frame;
+    if (!frame || !sheet.w) return;
+
     const base = cellsOf(kind, 0);
-    const size = cellsOf(kind, rot);
-    const bw = base.w * CELL;
-    const bh = base.h * CELL;
+    const pole = cellsOf(kind, rot);
+    const scale = Math.min((base.w * CELL) / frame.w, (base.h * CELL) / frame.h);
+    const w = Math.round(frame.w * scale);
+    const h = Math.round(frame.h * scale);
+
     icon.style.position = 'absolute';
-    icon.style.width = `${bw}px`;
-    icon.style.height = `${bh}px`;
-    icon.style.left = `${(size.w * CELL - bw) / 2}px`;
-    icon.style.top = `${(size.h * CELL - bh) / 2}px`;
-    iconStyle(icon, kind, rot);
+    icon.style.width = `${w}px`;
+    icon.style.height = `${h}px`;
+    // Wyśrodkowanie liczone w **polu po obrocie**: obrót idzie wokół środka
+    // ikony, więc tylko wtedy trafia w środek pola. Dzida położona na boku
+    // uciekała kiedyś o siedemdziesiąt pikseli właśnie z tego powodu.
+    icon.style.left = `${Math.round((pole.w * CELL - w) / 2)}px`;
+    icon.style.top = `${Math.round((pole.h * CELL - h) / 2)}px`;
+    icon.style.backgroundImage = 'url(assets/gen/props.png)';
+    icon.style.backgroundRepeat = 'no-repeat';
+    icon.style.backgroundSize = `${sheet.w * scale}px ${sheet.h * scale}px`;
+    icon.style.backgroundPosition = `${-frame.x * scale}px ${-frame.y * scale}px`;
+    // Obrót rysunku, nie zamiana ikon: dzida obrócona to ta sama dzida położona
+    // na boku. Osobny rysunek na każdy obrót byłby dwa razy większym atlasem.
+    icon.style.transform = rot ? 'rotate(90deg)' : '';
+    icon.style.transformOrigin = 'center';
     void el;
   }
 
@@ -128,82 +138,110 @@ export function createBackpack({ onMove, onDrop, onEat, onCraft }) {
   }
 
   /**
-   * Lista wyrobów.
+   * Nowy stan z serwera. Odrysowujemy tylko przy zmianie znacznika.
    *
-   * Siedzi **obok otwartego plecaka**, a nie w osobnym oknie — bo składniki
-   * leżą w plecaku i to na nie się patrzy, decydując, czy stać cię na siekierę.
-   * Osobne okno kuźni kazałoby przełączać się tam i z powrotem, żeby policzyć
-   * kamienie.
-   *
-   * Kujesz **tylko przy kowadle** i widać to wprost: z dala od niego lista jest
-   * przygaszona. To nie jest utrudnienie, tylko powód, dla którego miasto jest
-   * miastem — droga do kuźni i z powrotem jest pętlą gry, a nie przerwą w niej.
+   * Wyroby wyprowadziły się stąd do `ui/craft.js` — okno warsztatu jest osobne
+   * i otwiera je podejście do stołu, a nie otwarcie plecaka.
    */
-  function renderForge() {
-    forge.classList.toggle('bag-forge--far', !atAnvil);
-    forgeList.innerHTML = '';
-
-    RECIPES.forEach((recipe, index) => {
-      const spec = ITEMS[recipe.out];
-      const stac = canCraft(bag, recipe);
-
-      const row = document.createElement('div');
-      row.className = `forge-row${stac && atAnvil ? '' : ' forge-row--no'}`;
-      row.dataset.index = String(index);
-
-      const icon = document.createElement('div');
-      icon.className = 'forge-icon';
-      icon.style.width = `${CELL}px`;
-      icon.style.height = `${CELL}px`;
-      iconMini(icon, recipe.out);
-
-      const opis = document.createElement('div');
-      opis.className = 'forge-text';
-      // Koszt pokazujemy jako **posiadane z potrzebnych**, nie samą cenę:
-      // „drewno 1/2" mówi od razu, czego brakuje i ile.
-      const czesci = Object.entries(recipe.cost).map(([kind, n]) => {
-        const mam = countOf(bag, kind);
-        const brak = mam < n ? ' forge-lack' : '';
-        return `<span class="${brak.trim()}">${ITEMS[kind]?.name ?? kind} ${mam}/${n}</span>`;
-      });
-      opis.innerHTML = `<b>${spec?.name ?? recipe.out}</b><span class="forge-cost">${czesci.join(' &nbsp; ')}</span>`;
-
-      row.append(icon, opis);
-      forgeList.appendChild(row);
-    });
+  /**
+   * Zawartość worka leżącego obok.
+   *
+   * **Kupa rzeczy, nie druga siatka.** Worek nie ma kształtów ani obracania:
+   * kształty zaczynają się dopiero przy przekładaniu do siebie i wtedy liczy je
+   * serwer. Gdyby worek też był siatką, decyzja „co biorę" zamieniłaby się
+   * w układankę w cudzym plecaku — a chodzi o wybór, nie o Tetris nad trupem.
+   */
+  function applySack(state) {
+    const był = sack ? JSON.stringify(sack) : '';
+    sack = state ?? null;
+    if (!open) return;
+    if (JSON.stringify(sack ?? '') === był) return;
+    renderSack();
   }
 
-  /** Ikona zmniejszona do jednej kratki — na liście liczy się rozpoznanie, nie rozmiar. */
-  function iconMini(el, kind) {
-    const spec = ITEMS[kind];
-    const frame = frames?.[spec?.icon]?.frame;
+  /**
+   * Gniazdo noszonej rzeczy.
+   *
+   * Stoi **obok siatki, nie w niej**: rzecz założona wychodzi z plecaka, więc nie
+   * zajmuje kratek. Gdyby zbroja leżała w siatce i jednocześnie była na postaci,
+   * „ile mam miejsca" przestawałoby mieć jedną odpowiedź.
+   */
+  function renderGear() {
+    const cell = gearBox.querySelector('.gear-slot[data-slot="body"]');
+    const icon = cell.querySelector('.gear-icon');
+    const kind = gear.b ? gear.b[1] : null;
+    cell.classList.toggle('gear-slot--on', Boolean(kind));
+    cell.querySelector('.gear-label').style.display = kind ? 'none' : '';
+    ikonaWKratce(icon, kind, 64);
+  }
+
+  /** Ikona przycięta do własnej ramki, wpisana w kwadrat o boku `bok`. */
+  function ikonaWKratce(el, kind, bok) {
+    if (!kind) {
+      el.style.backgroundImage = '';
+      el.style.width = '0px';
+      el.style.height = '0px';
+      return;
+    }
+    const frame = frames?.[ITEMS[kind]?.icon]?.frame;
     if (!frame || !sheet.w) return;
-    // Skala dobrana tak, żeby **dłuższy bok** ikony zmieścił się w kratce.
-    const scale = CELL / Math.max(frame.w, frame.h);
+    const scale = Math.min(bok / frame.w, bok / frame.h);
+    el.style.width = `${Math.round(frame.w * scale)}px`;
+    el.style.height = `${Math.round(frame.h * scale)}px`;
     el.style.backgroundImage = 'url(assets/gen/props.png)';
     el.style.backgroundRepeat = 'no-repeat';
     el.style.backgroundSize = `${sheet.w * scale}px ${sheet.h * scale}px`;
     el.style.backgroundPosition = `${-frame.x * scale}px ${-frame.y * scale}px`;
   }
 
-  /** Nowy stan z serwera. Odrysowujemy tylko przy zmianie znacznika. */
-  function apply(state, anvil = false) {
-    const anvilZmiana = anvil !== atAnvil;
-    atAnvil = anvil;
+  function applyGear(state) {
     if (!state) return;
-    if (state.s === seq && !anvilZmiana) return;
-    if (state.s !== seq) {
-      seq = state.s;
-      bag = {
-        w: state.w,
-        h: state.h,
-        items: state.it.map((it) => ({ id: it.i, kind: it.k, x: it.x, y: it.y, rot: it.r })),
-      };
+    if (state.s === gear.s) return;
+    gear = state;
+    if (open) renderGear();
+  }
+
+  function renderSack() {
+    sackBox.style.display = sack ? 'block' : 'none';
+    sackGrid.innerHTML = '';
+    if (!sack) return;
+
+    for (const [id, kind] of sack.it) {
+      const cell = document.createElement('div');
+      cell.className = 'sack-cell';
+      cell.dataset.id = String(id);
+      cell.title = ITEMS[kind]?.name ?? kind;
+
+      const icon = document.createElement('div');
+      icon.className = 'sack-icon';
+      // Ikona przycięta do własnej ramki — ten sam błąd, co przy liście wyrobów,
+      // dałby tu kilka narzędzi wciśniętych w jedną kratkę.
+      const frame = frames?.[ITEMS[kind]?.icon]?.frame;
+      if (frame && sheet.w) {
+        const scale = Math.min(CELL / frame.w, CELL / frame.h);
+        icon.style.width = `${Math.round(frame.w * scale)}px`;
+        icon.style.height = `${Math.round(frame.h * scale)}px`;
+        icon.style.backgroundImage = 'url(assets/gen/props.png)';
+        icon.style.backgroundRepeat = 'no-repeat';
+        icon.style.backgroundSize = `${sheet.w * scale}px ${sheet.h * scale}px`;
+        icon.style.backgroundPosition = `${-frame.x * scale}px ${-frame.y * scale}px`;
+      }
+
+      cell.appendChild(icon);
+      sackGrid.appendChild(cell);
     }
-    if (open) {
-      render();
-      renderForge();
-    }
+  }
+
+  function apply(state) {
+    if (!state) return;
+    if (state.s === seq) return;
+    seq = state.s;
+    bag = {
+      w: state.w,
+      h: state.h,
+      items: state.it.map((it) => ({ id: it.i, kind: it.k, x: it.x, y: it.y, rot: it.r })),
+    };
+    if (open) render();
   }
 
   // --- Przeciąganie -----------------------------------------------------------
@@ -258,14 +296,25 @@ export function createBackpack({ onMove, onDrop, onEat, onCraft }) {
 
   function endDrag(event) {
     if (!drag) return;
-    // „Poza panelem" liczymy od **całego okna**, razem z listą wyrobów obok.
-    // Gdyby liczyć od samej siatki, przeciągnięcie kłody nad kuźnię wyrzucałoby
-    // ją na ziemię — a to jest ostatnia rzecz, jakiej gracz się tam spodziewa.
+    // „Poza panelem" liczymy od **całego okna**, a nie od samej siatki: między
+    // ostatnią kratką a krawędzią panelu jest ramka z napisami i puszczenie
+    // kłody na niej nie może znaczyć „wyrzuć na ziemię".
     const rect = panel.parentElement.getBoundingClientRect();
     const outside = event.clientX < rect.left || event.clientX > rect.right
       || event.clientY < rect.top || event.clientY > rect.bottom;
 
-    if (outside) onDrop?.(drag.id);
+    // Gniazdo paska sprawdzamy **przed** wyrzuceniem na ziemię. Pasek leży poza
+    // panelem plecaka, więc bez tego przeciągnięcie siekiery na gniazdo znaczyłoby
+    // „wyrzuć siekierę" — czyli dokładnie odwrotnie, niż wygląda.
+    // Kolejność sprawdzania celów jest **kolejnością od najbardziej szczegółowego**:
+    // gniazdo zbroi, potem gniazdo paska, potem ziemia. Każdy z nich leży poza
+    // siatką, więc bez tego wszystkie znaczyłyby „wyrzuć".
+    const nadGniazdem = document.elementFromPoint(event.clientX, event.clientY)
+      ?.closest?.('.gear-slot');
+    const slot = slotAt?.(event.clientX, event.clientY);
+    if (nadGniazdem) onGear?.(drag.id);
+    else if (slot !== null && slot !== undefined) onSlot?.(slot, drag.id);
+    else if (outside) onDrop?.(drag.id);
     else if (drag.target) onMove?.(drag.id, drag.target.x, drag.target.y, drag.rot);
 
     drag.el.classList.remove('bag-item--drag', 'bag-item--bad');
@@ -287,12 +336,20 @@ export function createBackpack({ onMove, onDrop, onEat, onCraft }) {
   const DBL_MS = 400;
 
   box.addEventListener('pointerdown', (event) => {
-    const forgeRow = event.target.closest('.forge-row');
-    if (forgeRow) {
+    // Przełożenie z worka. Prośba idzie zawsze — o tym, czy rzecz jeszcze tam
+    // leży i czy zmieści się w siatce, rozstrzyga serwer.
+    const sackCell = event.target.closest('.sack-cell');
+    if (sackCell && sack) {
       event.preventDefault();
-      // Prośba idzie zawsze — o tym, czy stoimy przy kowadle i czy starczy
-      // składników, rozstrzyga serwer. Klient tylko przygasza to, co nie wyjdzie.
-      onCraft?.(Number(forgeRow.dataset.index));
+      onTake?.(sack.i, Number(sackCell.dataset.id));
+      return;
+    }
+
+    // Kliknięcie w zajęte gniazdo zdejmuje rzecz z powrotem do plecaka.
+    const gearCell = event.target.closest('.gear-slot');
+    if (gearCell) {
+      event.preventDefault();
+      if (gear.b) onUngear?.(gearCell.dataset.slot);
       return;
     }
 
@@ -346,7 +403,8 @@ export function createBackpack({ onMove, onDrop, onEat, onCraft }) {
     if (open) {
       document.body.appendChild(box);
       render();
-      renderForge();
+      renderGear();
+      renderSack();
     } else {
       drag = null;
       box.remove();
@@ -356,6 +414,10 @@ export function createBackpack({ onMove, onDrop, onEat, onCraft }) {
   return {
     useAtlas: (atlasFrames, sheetSize) => { frames = atlasFrames; sheet = sheetSize; },
     apply,
+    applyGear,
+    applySack,
+    /** Otwarcie bez przełączania — przy worku `E` ma otwierać, a nie zamykać. */
+    openNow: () => setOpen(true),
     toggle: () => setOpen(!open),
     close: () => setOpen(false),
     get open() { return open; },

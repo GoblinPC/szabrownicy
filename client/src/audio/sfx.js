@@ -151,6 +151,19 @@ export class Sfx {
   }
 
   /** Cios, który poszedł w powietrze — sam świst, bez trafienia. */
+  /**
+   * Naładowany ładunek uniku — krótki, jasny dzwonek w górę.
+   *
+   * Musi być **wyraźnie inny od ciosu**: cios idzie w dół (od wysokiego do
+   * niskiego) i ma pod spodem łomot, więc ładunek idzie w górę i jest sam.
+   * Dzięki temu ucho rozpoznaje go bez patrzenia na pasek, a o to chodzi —
+   * unik odzyskuje się w trakcie walki, kiedy oczy są zajęte przeciwnikiem.
+   */
+  charge() {
+    this.thump({ from: 620, to: 1180, length: 0.08, gain: 0.10, type: 'sine' });
+    this.thump({ from: 930, to: 1560, length: 0.06, gain: 0.05, type: 'triangle', delay: 0.03 });
+  }
+
   miss() {
     this.swing(0.85);
   }

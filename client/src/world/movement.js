@@ -611,7 +611,7 @@ export function advance(world, body, keys, dt, aim = null) {
  * Kierunek i to, czy postać się rusza — liczone z prędkości, więc klient
  * i serwer dochodzą do tej samej animacji bez wysyłania jej po sieci.
  */
-export function poseOf(body, previousFacing = 'down') {
+export function poseOf(body, previousFacing = 'down', previousFlip = false) {
   const attacking = (body.atk ?? 0) > 0;
   const moving = Math.hypot(body.vx, body.vy) > 6;
 
@@ -626,15 +626,34 @@ export function poseOf(body, previousFacing = 'down') {
     };
   }
 
-  // Poza ciosem kierunek idzie z kursora. Prędkość nie ma tu już nic do rzeczy —
-  // wcześniej to ona decydowała i dlatego nie dało się biec w jedną stronę,
-  // a patrzeć w drugą.
+  // Poza ciosem sylwetka idzie za **ruchem**, nie za kursorem.
+  //
+  // Wcześniej kierunek brał się z kursora przez cały czas i wyglądało to źle:
+  // postać biegnąca w lewo sunęła bokiem albo tyłem, bo patrzyła tam, gdzie
+  // leżała mysz. Zgłoszone wprost: *niech postać podczas biegania patrzy się tam,
+  // gdzie idzie, a dopiero podczas uderzenia obraca się na chwilę w stronę
+  // uderzenia*. I tak jest teraz — obrót w stronę ciosu robi blok wyżej, ten
+  // z zamrożonym `atkFacing`, i trwa dokładnie tyle, co cios.
+  //
+  // **Celowanie zostaje przy kursorze.** Zmienia się sylwetka ciała, a nie to,
+  // gdzie poleci uderzenie: `aim` dalej liczy się z myszy, więc biegnąc w lewo
+  // wolno walnąć w prawo — tylko postać wykona przy tym obrót, zamiast biec przez
+  // całą drogę odwrócona.
   const look = aimOf(body);
+  if (moving) {
+    const bieg = aimPose(Math.atan2(body.vy, body.vx));
+    return { moving, attacking, facing: bieg.facing, flip: bieg.flip, aim: look.aim };
+  }
+
+  // W bezruchu **nic nie obraca postaci**. Trzymamy to, w co patrzyła ostatnio:
+  // po zatrzymaniu zostaje zwrócona tam, dokąd biegła, a po ciosie tam, gdzie
+  // uderzyła. Odsyłanie jej wtedy do kursora dawało obrót na każde drgnięcie
+  // myszy, przy postaci, która stoi w miejscu.
   return {
     moving,
     attacking,
-    facing: look.facing ?? previousFacing,
-    flip: look.flip,
+    facing: previousFacing ?? look.facing,
+    flip: previousFlip,
     aim: look.aim,
   };
 }

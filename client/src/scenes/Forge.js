@@ -1,6 +1,6 @@
 ﻿// Kuźnia — jedyna na razie strefa świata.
 
-import { buildWorld, surfaceAt, TILE, WORLD_W, WORLD_H, SPAWN, INTERIOR_PX, ROOF_PX, BUILDING_PX } from '../world/forge.js';
+import { buildWorld, surfaceAt, TILE, WORLD_W, WORLD_H, SPAWN, INTERIOR_PX, ROOF_PX, BUILDING_PX, craftStation, STATIONS } from '../world/forge.js';
 import {
   poseOf, inAttackArc, attackStep, strikeFrom, ATTACK_STEPS, dodgeFuel, weaponOf,
   KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_RUN, KEY_ATTACK, KEY_DODGE,
@@ -13,15 +13,42 @@ import { showLogin } from '../ui/login.js';
 import { createTestPanel } from '../ui/testpanel.js';
 import { Critters } from '../render/critters.js';
 import { Rain } from '../render/rain.js';
+import { Fog } from '../render/fog.js';
+import { Sacks } from '../render/sacks.js';
 import { Grass } from '../render/grass.js';
 import { darkness, sunShadow } from '../world/daylight.js';
 import { Wind } from '../render/wind.js';
 import { Nodes } from '../render/nodes.js';
 import { Drops } from '../render/drops.js';
 import { createBackpack } from '../ui/backpack.js';
+import { createCraftPanel } from '../ui/craft.js';
+import { createHotbar } from '../ui/hotbar.js';
+import { createMenu } from '../ui/menu.js';
 
 // Jak długo trzymamy wciśnięcie ciosu w buforze po puszczeniu klawisza.
 const ATTACK_BUFFER_MS = 140;
+
+/**
+ * Klatka zwierzęcia — **z gatunku, kierunku i kroku**.
+ *
+ * Wcześniej wybór był wpisany warunkiem „dzik albo kukła" w dwóch miejscach.
+ * Przy trzech zwierzętach to się nie skaluje, a co gorsza rozjeżdża: sprite
+ * tworzony był po jednym warunku, a podmieniany po drugim.
+ *
+ * Żmija ma **jeden rysunek na wszystkie kierunki**: wąż leżący w trawie jest
+ * płaski i widziany z góry wygląda tak samo z każdej strony. Jej dwie klatki to
+ * zwinięta i wyprostowana do uderzenia — czyli zapowiedź ciosu, a nie chód.
+ */
+function klatkaMoba(state, step) {
+  if (state.k === 'snake') {
+    const uderza = state.st === 'spot' || state.st === 'leap';
+    return `snake${uderza ? 1 : 0}`;
+  }
+  if (state.k === 'boar' || state.k === 'wolf') {
+    return `${state.k}_${state.f ?? 'down'}${step}`;
+  }
+  return 'dummy0';
+}
 
 export class ForgeScene extends Phaser.Scene {
   constructor() {
@@ -39,6 +66,8 @@ export class ForgeScene extends Phaser.Scene {
     // Przed `spawnProps()`, bo to ona podaje mu sprite'y drzew i głazów w tej
     // samej kolejności, w jakiej numeruje je serwer.
     this.nodes = new Nodes(this, this.world, this.shadows, this.wind);
+    // Worki po zabitych. Cień rzucają jak każdy obiekt stojący w świecie.
+    this.sacks = new Sacks(this, this.shadows);
     this.drops = new Drops(this, this.shadows);
     this.spawnProps();
     this.spawnFlames();
@@ -52,6 +81,7 @@ export class ForgeScene extends Phaser.Scene {
     this.lighting = new Lighting(this, this.world, INTERIOR_PX, BUILDING_PX);
     this.critters = new Critters(this, this.world, TILE, BUILDING_PX);
     this.rain = new Rain(this);
+    this.fog = new Fog(this);
     this.grass = new Grass(this, this.world.tufts, this.tileIndex);
 
     // Slonce ustawiamy raz na starcie, zeby cienie nie mrugnely w pierwszej klatce.
@@ -91,6 +121,26 @@ export class ForgeScene extends Phaser.Scene {
     }
     for (const cell of this.world.overlay) {
       ground.batchDrawFrame('tiles', this.tileIndex[cell.key], cell.x, cell.y);
+    }
+    // Mur ucina nakładkę, nie odwrotnie.
+    //
+    // Komórka nakładki jest przesunięta o pół kafla i ma **własny obły kształt**,
+    // który celowo wychodzi poza pole źródłowe — na styku dwóch rodzajów ziemi
+    // o to właśnie chodzi. Na styku ziemi ze ścianą to samo wygląda jak trawa
+    // wchodząca na mur: zgłoszone z gry jako *na ścianę po prawej wchodzi trawa*,
+    // i było tak dookoła całego budynku, tylko z prawej najlepiej widoczne.
+    //
+    // Dlatego po nakładkach wracamy kaflami, które **nie są podłożem** — murami,
+    // ściankami, oknami i deskami podłogi. Wycinanie kształtu nakładki przy murze
+    // dałoby to samo, ale kosztem osobnego wariantu na każdy układ sąsiedztwa;
+    // tu wystarczy kolejność rysowania. `base` trzyma podłoże jako `dirt_*`,
+    // więc rozpoznanie jest jednoznaczne i nie ma listy nazw do rozjechania.
+    for (let y = 0; y < this.world.base.length; y++) {
+      const row = this.world.base[y];
+      for (let x = 0; x < row.length; x++) {
+        if (row[x].startsWith('dirt_')) continue;
+        ground.batchDrawFrame('tiles', this.tileIndex[row[x]], x * TILE, y * TILE);
+      }
     }
     for (const decal of this.world.decals) {
       ground.batchDrawFrame('tiles', this.tileIndex[decal.key], decal.x, decal.y);
@@ -186,6 +236,7 @@ export class ForgeScene extends Phaser.Scene {
     this.playerShadow = this.shadows.add(this.px, this.py, 'goblins', `g${this.variant}_down_idle0`, {
       squash: 0.45,
       width: 18,
+      ruchomy: true,
     });
     this.player = this.add.sprite(this.px, this.py, 'goblins')
       .setOrigin(0.5, 1)
@@ -225,8 +276,47 @@ export class ForgeScene extends Phaser.Scene {
       onMove: (id, x, y, rot) => this.net.bagMove(id, x, y, rot),
       onDrop: (id) => this.net.bagDrop(id),
       onEat: (id) => this.net.bagEat(id),
+      onTake: (sackId, itemId) => this.net.sackTake(sackId, itemId),
+      // Przeciągnięcie rzeczy z siatki **na gniazdo paska** przypisuje ją tam.
+      // To jedyny naturalny sposób: gniazdo jest widoczne razem z plecakiem,
+      // więc ruch jest jeden, a nie „zaznacz, potem kliknij gdzie indziej".
+      slotAt: (x, y) => this.hotbar.slotAt(x, y),
+      onSlot: (slot, itemId) => this.net.hotSlot(slot, itemId),
+      onGear: (itemId) => this.net.gearOn(itemId),
+      onUngear: (slot) => this.net.gearOff(slot),
+    });
+
+    // Pasek narzędzi. Wisi na ekranie zawsze — odpowiada na pytanie „co mam
+    // w ręce", a to jest pytanie zadawane w biegu.
+    this.hotbar = createHotbar({ onPick: (slot) => this.net.hotPick(slot) });
+
+    // Menu pod `ESC`. Suwaki głośności mieszkają w nim, a nie w rogu ekranu.
+    this.menu = createMenu();
+
+    // Warsztat. Osobne okno, otwierane przy stole — lista wyrobów zeszła
+    // z boku plecaka, bo tam wisiała zawsze, a przydawała się w jednym miejscu
+    // na mapie.
+    this.craft = createCraftPanel({
       onCraft: (index) => this.net.bagCraft(index),
     });
+    // Gdzie ma świecić litera `E`. Pozycja z **listy obiektów**, nie wpisana
+    // liczbą: ten sam obiekt, z którego serwer liczy zasięg pracy.
+    //
+    // Litera wisi **nad stołem, ponad jego górną krawędzią**, a nie nad punktem
+    // zaczepienia. Rzeczy leżące na ziemi są małe, więc podpowiedź nad nimi
+    // zawsze wypada w powietrzu; stół ma 30×18 px i rysuje się w górę od stopy,
+    // więc ten sam odstęp co przy kłodzie lądował w połowie blatu.
+    //
+    // Odsunięcie musi przeskoczyć **całą wysokość rysunku**: podpowiedź dostaje
+    // `depth` liczony z własnej pozycji, czyli mniejszy niż stopa mebla, więc
+    // wszystko, co na nią zachodzi, zasłania ją. Rozdzielone w pionie nie mają
+    // się gdzie spotkać i sortowanie przestaje mieć znaczenie.
+    // Podpowiedź `E` nad każdym stanowiskiem z osobna.
+    this.stationHint = {};
+    for (const key of STATIONS) {
+      const st = craftStation(this.world, key);
+      if (st) this.stationHint[key] = { x: st.x, y: st.y - 12 };
+    }
 
     // Cios odbity od drzewa albo skały, do której brakuje narzędzia.
     //
@@ -247,10 +337,10 @@ export class ForgeScene extends Phaser.Scene {
       const f = tex.frames[name];
       ramki[name] = { frame: { x: f.cutX, y: f.cutY, w: f.cutWidth, h: f.cutHeight } };
     }
-    this.backpack.useAtlas(ramki, {
-      w: tex.source[0].width,
-      h: tex.source[0].height,
-    });
+    const arkusz = { w: tex.source[0].width, h: tex.source[0].height };
+    this.backpack.useAtlas(ramki, arkusz);
+    this.craft.useAtlas(ramki, arkusz);
+    this.hotbar.useAtlas(ramki, arkusz);
 
     // TAB otwiera i zamyka. Wolny, bo tabela graczy poszła pod `F1` razem
     // z panelem diagnostycznym — plecak sięga się sto razy częściej.
@@ -260,19 +350,71 @@ export class ForgeScene extends Phaser.Scene {
     this.input.keyboard.on('keydown-TAB', (event) => {
       event.preventDefault();
       if (document.activeElement?.tagName === 'INPUT') return;
+      // Jedno okno naraz. Oba są przyciemnioną planszą na całym ekranie, więc
+      // otwarte razem dałyby dwie warstwy mroku i wiersze warsztatu wystające
+      // spod plecaka.
+      this.craft.close();
       this.backpack.toggle();
       // Klawisz trzymany w chwili otwarcia nigdy nie dostanie `keyup`, bo panel
       // przechwytuje zdarzenia — bez tego postać sama ruszałaby w stronę,
       // w którą szła. Ten sam błąd co przy otwieraniu czatu.
       this.input.keyboard.resetKeys();
     });
-    this.input.keyboard.on('keydown-ESC', () => this.backpack.close());
+    // Klawisze 1–4 wybierają gniazdo paska. Pod lewą ręką, obok WASD.
+    for (let i = 0; i < 4; i++) {
+      this.input.keyboard.on(`keydown-${['ONE', 'TWO', 'THREE', 'FOUR'][i]}`, () => {
+        if (document.activeElement?.tagName === 'INPUT') return;
+        this.net.hotPick(i);
+      });
+    }
 
-    // Podnoszenie z ziemi. Osobny klawisz, a nie wejście na rzecz: przy plecaku,
+    // `ESC` zamyka **to, co otwarte**, a menu otwiera dopiero wtedy, gdy nie ma
+    // czego zamknąć. Odwrotna kolejność znaczyłaby, że wyjście z plecaka wymaga
+    // dwóch naciśnięć — a `ESC` naciska się odruchowo, żeby coś zamknąć.
+    this.input.keyboard.on('keydown-ESC', () => {
+      // W polu tekstowym `ESC` należy do czatu — zamyka pisanie. Bez tego
+      // wyjście z pisania otwierałoby przy okazji menu.
+      if (document.activeElement?.tagName === 'INPUT') return;
+      if (this.backpack.open || this.craft.isOpen) {
+        this.backpack.close();
+        this.craft.close();
+        return;
+      }
+      this.menu.toggle();
+    });
+
+    // `E` robi dwie rzeczy i **kolejność jest tu treścią**, nie szczegółem:
+    // najpierw podnoszenie, dopiero potem warsztat. Przy stole może leżeć
+    // wyrzucona kłoda, a gracz, który naciska `E` nad świecącą literą, chce
+    // podnieść tę kłodę — nie otworzyć okno. Warsztat wchodzi wtedy, gdy nie ma
+    // nic do wzięcia, więc te dwie czynności nigdy nie walczą o klawisz.
+    //
+    // Podnoszenie jest osobnym klawiszem, a nie wejściem na rzecz: przy plecaku,
     // w którym miejsce jest zasobem, wciąganie łupu bez pytania zabiera graczowi
     // dokładnie tę decyzję, dla której siatka powstała.
     this.input.keyboard.on('keydown-E', () => {
       if (document.activeElement?.tagName === 'INPUT') return;
+      if (this.craft.isOpen) { this.craft.close(); return; }
+      if (this.net.canPick) { this.net.pick(); return; }
+      // Worek otwiera się w tym samym oknie co plecak — bo przekładanie z worka
+      // do siebie jest jedną czynnością i trzeba przy niej widzieć obie strony.
+      if (this.net.sackNear) {
+        this.craft.close();
+        this.backpack.openNow();
+        this.input.keyboard.resetKeys();
+        return;
+      }
+      if (this.net.station) {
+        this.backpack.close();
+        this.craft.open();
+        // Ten sam powód co przy plecaku: klawisz trzymany w chwili otwarcia
+        // nie dostanie `keyup` i postać sama ruszyłaby w stronę, w którą szła.
+        this.input.keyboard.resetKeys();
+        return;
+      }
+      // Nic pod nogami i nie ma stołu — prośba i tak idzie do serwera, bo to on
+      // wie, co naprawdę leży. Znacznik `canPick` przychodzi z opóźnieniem jednej
+      // migawki i bez tego podniesienie potrafiłoby przepaść tuż po dojściu.
       this.net.pick();
     });
 
@@ -293,12 +435,24 @@ export class ForgeScene extends Phaser.Scene {
       });
     });
 
-    // Suwaki pory dnia i pogody. Chodzą razem z panelem diagnostycznym pod F1,
-    // bo to ten sam rodzaj rzeczy — przyrząd, nie interfejs gracza.
+    // Suwaki pory dnia, pogody i mgły. Chodzą razem z panelem diagnostycznym
+    // pod `K`, bo to ten sam rodzaj rzeczy — przyrząd, nie interfejs gracza.
     this.testPanel = createTestPanel(
       (phase) => this.net.setDayOverride(phase),
-      (rain) => this.net.setRainOverride(rain)
+      (rain) => this.net.setRainOverride(rain),
+      (fog) => this.fog.setOverride(fog)
     );
+
+    // Wymuszenie stanu świata **z adresu strony**: `?mgla=1&pora=0.24`.
+    //
+    // To samo, co suwaki w panelu, tylko bez klikania — a to jest różnica między
+    // „da się sprawdzić" a „da się sprawdzić zrzutem ekranu z przeglądarki
+    // uruchomionej z wiersza poleceń". Powstało, gdy mgły nie było widać przy
+    // żadnym ustawieniu i trzeba było wreszcie zobaczyć, co się rysuje, zamiast
+    // poprawiać liczby w ciemno.
+    const params = new URLSearchParams(location.search);
+    if (params.has('mgla')) this.fog.setOverride(Number(params.get('mgla')));
+    if (params.has('pora')) this.net.setDayOverride(Number(params.get('pora')));
 
     this.others = new Map();
   }
@@ -653,21 +807,56 @@ export class ForgeScene extends Phaser.Scene {
     const states = this.net.mobs ?? [];
     const seen = new Set();
 
-    for (const state of states) {
+    for (let state of states) {
       seen.add(state.id);
       let mob = this.mobs.get(state.id);
 
       if (!mob) {
         mob = {
-          sprite: this.add.sprite(state.x, state.y, 'props', state.k === 'boar' ? 'boar_down0' : 'dummy0').setOrigin(0.5, 1),
-          shadow: this.shadows.add(state.x, state.y, 'props', state.k === 'boar' ? 'boar_down0' : 'dummy0', {
+          sprite: this.add.sprite(state.x, state.y, 'props', klatkaMoba(state, 0)).setOrigin(0.5, 1),
+          shadow: this.shadows.add(state.x, state.y, 'props', klatkaMoba(state, 0), {
             squash: 0.4,
             width: 20,
+            ruchomy: true,
           }),
           hitSeq: state.s,
+          // Bufor pozycji do wygładzania — patrz niżej.
+          bufor: [{ t: time, x: state.x, y: state.y }],
         };
         this.mobs.set(state.id, mob);
       }
+
+      // **Wygładzanie pozycji mobów**, dokładnie tak jak u innych graczy.
+      //
+      // Migawki przychodzą dwadzieścia razy na sekundę, a rysujemy sześćdziesiąt.
+      // Moby były stawiane wprost na pozycji z migawki, więc szarżujący dzik
+      // przeskakiwał po dziesięć pikseli i stał między skokami — zgłoszone z gry
+      // jako *szarżuje i to lagując się*. Inni gracze nie mieli tego problemu, bo
+      // ich pokazujemy 100 ms w przeszłości i interpolujemy; moby po prostu
+      // wypadły z tej zasady.
+      const OPOZNIENIE = 100;
+      const ostatni = mob.bufor[mob.bufor.length - 1];
+      if (!ostatni || ostatni.x !== state.x || ostatni.y !== state.y) {
+        mob.bufor.push({ t: time, x: state.x, y: state.y });
+      }
+      // Bufor trzyma tylko to, co potrzebne do sięgnięcia wstecz.
+      while (mob.bufor.length > 2 && mob.bufor[1].t <= time - OPOZNIENIE) mob.bufor.shift();
+
+      const cel = time - OPOZNIENIE;
+      let px = state.x;
+      let py = state.y;
+      if (mob.bufor.length >= 2) {
+        const a0 = mob.bufor[0];
+        const b0 = mob.bufor[1];
+        const zakres = b0.t - a0.t;
+        const k = zakres > 0 ? Math.max(0, Math.min(1, (cel - a0.t) / zakres)) : 1;
+        px = a0.x + (b0.x - a0.x) * k;
+        py = a0.y + (b0.y - a0.y) * k;
+      } else if (mob.bufor.length === 1) {
+        px = mob.bufor[0].x;
+        py = mob.bufor[0].y;
+      }
+      state = { ...state, x: px, y: py };
 
       // Klatka zależy od tego, ile życia zostało: cała, obita, mocno obita,
       // zwalona. Ten sam podział obsłuży potem moby z kilkoma stanami rannymi.
@@ -679,7 +868,7 @@ export class ForgeScene extends Phaser.Scene {
       // i wyglądało, jakby nie dawało się zabić.
       //
       // Zwłoki wrócą razem z oprawianiem: wtedy będzie po co przy nich stać.
-      const dead = state.k === 'boar' && state.h <= 0;
+      const dead = state.k !== 'dummy' && state.h <= 0;
       mob.sprite.setVisible(!dead);
       mob.shadow.cast.setVisible(!dead);
       mob.shadow.contact.setVisible(!dead);
@@ -700,16 +889,12 @@ export class ForgeScene extends Phaser.Scene {
       }
 
       let frame;
-      if (state.k === 'boar') {
+      if (state.k !== 'dummy') {
         // Zwierzę: klatka z kierunku i z chodu. Krok liczymy z czasu, bo serwer
-        // przysyła tylko „idzie" albo „stoi" — animacja należy do rysowania.
+        // nie przysyła fazy nogi — a i tak nikt nie zauważy, że dwa dziki
+        // przebierają nogami zgodnie.
         const step = state.w ? Math.floor(time / 150) % 2 : 0;
-        frame = `boar_${state.f ?? 'down'}${step}`;
-        mob.sprite.setFlipX(state.f === 'side' && Boolean(state.l));
-        // Zapowiedź szarży: zwierzę staje i **czerwienieje**. To jedyny moment,
-        // w którym gracz może zdecydować, czy uskakuje — musi być widoczny bez
-        // patrzenia wprost.
-        mob.sprite.setTint(state.st === 'spot' ? 0xff9a6a : 0xffffff);
+        frame = klatkaMoba(state, step);
       } else {
         frame = state.h <= 0 ? 'dummy3'
           : ratio > 0.66 ? 'dummy0'
@@ -928,9 +1113,29 @@ export class ForgeScene extends Phaser.Scene {
     this.nodes.apply(this.net.nodes ?? [], Date.now());
     this.nodes.update(Date.now());
     this.drops.apply(this.net.drops ?? []);
-    this.drops.updateHint(dt, this.px, this.py, this.net.canPick,
-      this.nodes.nearestGather(this.px, this.py, 26));
-    this.backpack.apply(this.net.bag, this.net.atAnvil);
+    // Podpowiedź „E" obsługuje też warsztat, i to **tą samą literą nad celem**,
+    // a nie napisem w rogu ekranu. Stół jest ostatni w kolejności, tak samo jak
+    // przy naciśnięciu klawisza — inaczej litera świeciłaby nad blatem, a `E`
+    // podnosiłoby leżącą obok kłodę.
+    // Kolejność celów podpowiedzi jest **ta sama, co kolejność reakcji na `E`**:
+    // rzeczy na ziemi, potem zasoby do zebrania, potem worek, na końcu warsztat.
+    // Rozjazd znaczyłby, że litera świeci nad czymś innym, niż `E` zrobi.
+    this.drops.updateHint(dt, this.px, this.py,
+      this.net.canPick || Boolean(this.net.sackNear) || Boolean(this.net.station),
+      this.nodes.nearestGather(this.px, this.py, 26)
+        ?? this.sacks.nearest(this.px, this.py, 30)
+        ?? (this.net.station ? this.stationHint[this.net.station] : null));
+    this.sacks.apply(this.net.sacks ?? []);
+    this.backpack.apply(this.net.bag);
+    this.backpack.applyGear(this.net.gear);
+    this.backpack.applySack(this.net.sackNear);
+    this.hotbar.apply(this.net.hot, this.net.bag);
+    this.craft.setStation(this.net.station);
+    this.craft.apply(this.net.bag);
+    // Odejście od stołu zamyka okno samo. Bez tego dało się je otworzyć,
+    // odbiec przez pół mapy i dalej patrzeć na listę wyrobów, których serwer
+    // i tak by nie wykonał — okno kłamałoby o tym, gdzie jesteś.
+    if (this.craft.isOpen && !this.net.station) this.craft.close();
     this.predictHits(time);
     this.updateDodge(time);
     this.updateGhosts(delta);
@@ -946,6 +1151,9 @@ export class ForgeScene extends Phaser.Scene {
     // a rozjazd o jedną klatkę widać przy zapalaniu się świetlików o zmierzchu.
     this.critters.update(dt, time, darkness(phase), inside);
     this.rain.update(dt, rain, inside);
+    // Mgła po deszczu, nie przed: jej gęstość bierze się między innymi z tego,
+    // ile przed chwilą padało, a `Rain` dostaje tę liczbę pierwszy.
+    this.fog.update(dt, this.cameras.main.worldView, phase, rain, inside);
     // Trawa reaguje na wszystko, co chodzi po świecie, nie tylko na własną postać —
     // widok kępek prostujących się za obcym graczem jest połową tego efektu.
     this.grass.update(dt, time, this.walkers(), 1 + rain * 1.6);
@@ -964,7 +1172,7 @@ export class ForgeScene extends Phaser.Scene {
       this.lastShadowSweep = time;
       this.shadows.refreshStatics(this.cameras.main.worldView);
     }
-    this.testPanel.follow(this.net.serverPhase(), this.net.rain ?? 0);
+    this.testPanel.follow(this.net.serverPhase(), this.net.rain ?? 0, this.fog.gęstość);
     this.updateAmbience(dt);
     this.reportZone();
   }
@@ -1120,9 +1328,10 @@ export class ForgeScene extends Phaser.Scene {
     // Poza bierze się teraz z przewidywanego ciała, a nie z samej prędkości —
     // razem ze stanem ciosu, który jest częścią fizyki wspólnej z serwerem.
     const body = this.net.body ?? { vx: this.vx, vy: this.vy };
-    const pose = poseOf(body, this.facing);
+    const pose = poseOf(body, this.facing, this.facingFlip);
     const moving = pose.moving;
     this.facing = pose.facing;
+    this.facingFlip = pose.flip;
 
     // Cios sięga po **kierunek celowania** (pięć nazw, w tym dwa ukosy), a chód
     // i spoczynek po sylwetkę ciała (trzy). Ukos nie ma własnej postawy — i mieć
@@ -1220,6 +1429,7 @@ export class ForgeScene extends Phaser.Scene {
           shadow: this.shadows.add(sample.x, sample.y, 'goblins', `g${sample.variant}_down_idle0`, {
             squash: 0.45,
             width: 18,
+            ruchomy: true,
           }),
           variant: sample.variant,
         };

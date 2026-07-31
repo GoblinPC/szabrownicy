@@ -145,6 +145,31 @@ export class Net {
     this.send({ t: 'bag', a: 'craft', i: index });
   }
 
+  /** Wskazanie przedmiotu do gniazda paska. `null` opróżnia gniazdo. */
+  hotSlot(slot, itemId) {
+    this.send({ t: 'bag', a: 'slot', n: slot, i: itemId ?? null });
+  }
+
+  /** Założenie rzeczy z plecaka. O tym, czy wejdzie, rozstrzyga serwer. */
+  gearOn(itemId) {
+    this.send({ t: 'bag', a: 'gear', i: itemId });
+  }
+
+  /** Zdjęcie noszonego z powrotem do plecaka. */
+  gearOff(slot) {
+    this.send({ t: 'bag', a: 'ungear', s: slot });
+  }
+
+  /** Wybór gniazda paska — czym teraz pracuję. */
+  hotPick(slot) {
+    this.send({ t: 'hot', n: slot });
+  }
+
+  /** Prośba o przełożenie rzeczy z worka do siebie. Rozstrzyga serwer. */
+  sackTake(sackId, itemId) {
+    this.send({ t: 'bag', a: 'take', s: sackId, i: itemId });
+  }
+
   /**
    * Podniesienie z ziemi.
    *
@@ -406,7 +431,17 @@ export class Net {
     if (message.bg) this.bag = message.bg;
     this.weapon = message.you.w ?? '';
     this.canPick = Boolean(message.you.pk);
-    this.atAnvil = Boolean(message.you.an);
+    // Nazwa stanowiska albo pusty napis. Puste znaczy „nie stoisz przy niczym".
+    this.station = message.you.wb || null;
+    // Worki: pozycje wszystkich w zasięgu wzroku i zawartość **tego jednego**,
+    // przy którym gracz stoi. Zawartość liczy serwer i przysyła ją tylko wtedy,
+    // gdy naprawdę wolno do niej sięgnąć.
+    // Pasek narzędzi: numery przedmiotów w gniazdach i wybrane gniazdo.
+    this.hot = message.ht ?? this.hot ?? { h: [null, null, null, null], a: 0, s: 0 };
+    // Noszony ekwipunek: co siedzi w gnieździe. Leci tylko do właściciela.
+    this.gear = message.gr ?? this.gear ?? { s: 0, b: null };
+    this.sacks = message.sk ?? [];
+    this.sackNear = message.sc ?? null;
     // Cios odbity od zasobu, do którego brakuje narzędzia. Znacznik, nie flaga,
     // bo dwa odbicia mogą wypaść między migawkami.
     const block = message.you.bs ?? 0;

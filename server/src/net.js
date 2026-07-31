@@ -385,12 +385,46 @@ export function attachGame(sockets, dataDir, variantCount = 6, { guests = false 
           game.craftItem(session.player, message.i);
           return;
         }
+        // Przełożenie z worka do siebie. Numer worka **i** numer rzeczy, bo worek
+        // jest niczyj i w zasięgu może leżeć więcej niż jeden.
+        // Wskazanie przedmiotu do gniazda paska. `null` opróżnia gniazdo.
+        if (message.a === 'slot') {
+          if (!Number.isInteger(message.n)) return;
+          const id = message.i === null ? null : message.i;
+          if (id !== null && !Number.isInteger(id)) return;
+          game.setHotSlot(session.player, message.n, id);
+          return;
+        }
+        // Założenie i zdjęcie noszonego.
+        if (message.a === 'gear') {
+          if (!Number.isInteger(message.i)) return;
+          game.equip(session.player, message.i);
+          return;
+        }
+        if (message.a === 'ungear') {
+          if (typeof message.s !== 'string') return;
+          game.unequip(session.player, message.s);
+          return;
+        }
+        if (message.a === 'take') {
+          if (!Number.isInteger(message.s) || !Number.isInteger(message.i)) return;
+          game.takeFromSack(session.player, message.s, message.i);
+          return;
+        }
         return;
       }
 
       // Podniesienie z ziemi na żądanie. Bez parametrów: serwer sam wybiera
       // **najbliższą rzecz w zasięgu**, bo inaczej klient mógłby wskazać
       // dowolną i zbierać z drugiego końca mapy.
+      // Wybór gniazda paska. Osobna wiadomość, bo leci przy każdym naciśnięciu
+      // klawisza 1–4 i nie ma powodu mieszać jej z przekładaniem w plecaku.
+      if (message.t === 'hot') {
+        if (!Number.isInteger(message.n)) return;
+        game.pickHotSlot(session.player, message.n);
+        return;
+      }
+
       if (message.t === 'pick') {
         game.pickRequest(session.player, Date.now());
         return;
@@ -508,10 +542,12 @@ export function attachGame(sockets, dataDir, variantCount = 6, { guests = false 
           // Czy jest co podnieść pod nogami — po tym klient zapala podpowiedź.
           // Liczy serwer, bo to on wie, co naprawdę leży i czy już wolno to wziąć.
           pk: (game.reachableDrop(me, Date.now()) || game.reachableGather(me)) ? 1 : 0,
-          // Czy stoimy przy kowadle. Po tym klient pokazuje listę wyrobów —
-          // i po tym samym warunku serwer pozwala kuć, więc nie da się ich
-          // rozjechać.
-          an: game.atAnvil(me) ? 1 : 0,
+          // Czy stoimy przy warsztacie. Po tym klient zapala podpowiedź `E`
+          // i wpuszcza do okna wyrobów — i po tym samym warunku serwer pozwala
+          // wykonać wyrób, więc nie da się ich rozjechać.
+          // Przy którym stanowisku stoimy: `workbench`, `tanrack` albo pusto.
+          // Nazwa, a nie „tak/nie" — po niej klient wybiera listę wyrobów.
+          wb: game.stationOf(me) ?? '',
           // Znacznik ciosu odbitego od zasobu bez narzędzia.
           bs: me.blockSeq ?? 0,
         },
@@ -521,6 +557,15 @@ export function attachGame(sockets, dataDir, variantCount = 6, { guests = false 
         // listy są przycięte do tego, co ten gracz może zobaczyć.
         nd: game.nodeSnapshot(me),
         dr: game.dropSnapshot(me),
+        // Worki po zabitych: same pozycje. Zawartość leci osobno i **tylko temu,
+        // kto przy worku stoi** — cudzy łup nie ma prawa siedzieć u nikogo
+        // w pamięci, bo to jest gra, w której się łupi.
+        // Pasek narzędzi leci **tylko do właściciela**, jak plecak: to, czym ktoś
+        // pracuje, widać po animacji, a nie po podglądaniu jego gniazd.
+        ht: game.hotSnapshot(me),
+        gr: game.gearSnapshot(me),
+        sk: game.sackSnapshot(me),
+        sc: game.sackContents(me),
         // Plecak leci **tylko do właściciela**. Przy grze, w której łupi się
         // innych, cudza zawartość nie ma prawa być u nikogo w pamięci — inaczej
         // przerobiony klient pokazuje, kogo warto zabić.

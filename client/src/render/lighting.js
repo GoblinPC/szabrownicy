@@ -126,10 +126,23 @@ export class Lighting {
     // prostokąt odsłaniała kilka pikseli za ścianą i przez to zza karczmy
     // wystawał pas trawy. Najszerszy wycięty prostokąt kończy się dokładnie
     // na linii murów.
+    // Najszerszy wycięty prostokąt kończy się **piksel maski przed licem muru**,
+    // a nie na nim. Powód jest w wygładzaniu: maska jest rozciągana dwukrotnie
+    // przez filtr liniowy (miękkie plamy ognia są tego warte), więc na każdej
+    // granicy powstaje przejście szerokie na dwa piksele świata — po jednym na
+    // stronę. Przy cięciu dokładnie na licu ten jeden piksel wypadał **za murem**
+    // i dostawał domieszkę światła wnętrza: zgłoszone z gry jako *pasek na
+    // wielkość piksela na zewnątrz*, na dolnej ścianie widoczny na stałe, bo tam
+    // spód muru jest najciemniejszy i kontrast największy.
+    //
+    // Cofnięcie o jeden piksel maski przesuwa całe przejście na mur, gdzie i tak
+    // leży najciemniejszy rząd kafla. To ta sama zasada, co przy rozmyciu:
+    // **do wnętrza, nigdy na zewnątrz**.
+    const EDGE = 1;
     const steps = 3;
     const stepPx = 4 / RESOLUTION;
     for (let i = steps; i >= 0; i--) {
-      const inset = i * stepPx;
+      const inset = EDGE + i * stepPx;
       o.fillStyle = `rgba(0,0,0,${(0.4 + 0.6 * (1 - i / (steps + 1))).toFixed(3)})`;
       o.fillRect(
         box.x0 + inset, box.y0 + inset,
@@ -236,8 +249,27 @@ export class Lighting {
     this.ensureSize(w, h);
 
     const ctx = this.texture.getContext();
-    const toMaskX = (x) => (x - view.x) / RESOLUTION;
-    const toMaskY = (y) => (y - view.y) / RESOLUTION;
+
+    // Początek maski **przyciągnięty do siatki świata**, a nie postawiony tam,
+    // gdzie akurat stoi kamera.
+    //
+    // Tu siedział błąd zgłoszony z gry: *pasek wzdłuż zewnętrznej ściany, 1 piksel
+    // dookoła — na dolnej ścianie na stałe, po prawej mryga, po lewej i u góry
+    // mryga cień*. Jeden piksel maski to dwa piksele świata, więc granica maski
+    // może wypaść tylko na parzystym odstępie od kamery. Kamera stoi na ułamku,
+    // mur na 976 — i ta granica lądowała raz na 975, raz na 977. Raz piksel dworu
+    // dostawał światło wnętrza (jasna kreska), raz piksel muru dostawał mrok dworu
+    // (ciemna kreska), a przy ruchu kamery przeskakiwało to co klatkę. Każda ściana
+    // zaokrąglała się osobno, stąd „po lewej cień, po prawej światło".
+    //
+    // Po przyciągnięciu początku do wielokrotności `RESOLUTION` odwzorowanie świata
+    // na maskę przestaje zależeć od kamery. Wszystkie krawędzie budynku są
+    // wielokrotnościami kafla, czyli i tak parzyste, więc trafiają w piksel maski
+    // **co do jednego** i nie ma czego zaokrąglać.
+    const ox = Math.floor(view.x / RESOLUTION) * RESOLUTION;
+    const oy = Math.floor(view.y / RESOLUTION) * RESOLUTION;
+    const toMaskX = (x) => (x - ox) / RESOLUTION;
+    const toMaskY = (y) => (y - oy) / RESOLUTION;
 
     // 1. Światło otoczenia — plac na całości, wnętrze hali nadpisane cieplejszym.
     const night = darkness(phase);
@@ -255,11 +287,18 @@ export class Lighting {
     // ciemnej hali. Użytkownik nazwał to wprost: *ściany dookoła są rozświetlone
     // na maxa jakby były na słońcu*. Do testu „czy jestem w środku" dalej służy
     // `interior`, bo tam chodzi o podłogę, po której się chodzi.
+    //
+    // Krawędzie w całych pikselach maski. Po przyciągnięciu początku maski do
+    // siatki świata wychodzą one równo same z siebie — zaokrąglenie zostaje jako
+    // zabezpieczenie na wypadek prostokąta o nieparzystym boku, bo `fillRect()`
+    // na ułamku wygładza krawędź i skrajny piksel wyszedłby mieszanką wnętrza
+    // z dworem.
+    const bx0 = Math.round(toMaskX(this.building.x));
+    const by0 = Math.round(toMaskY(this.building.y));
+    const bx1 = Math.round(toMaskX(this.building.x + this.building.w));
+    const by1 = Math.round(toMaskY(this.building.y + this.building.h));
     ctx.fillStyle = `rgb(${forge.join(',')})`;
-    ctx.fillRect(
-      toMaskX(this.building.x), toMaskY(this.building.y),
-      this.building.w / RESOLUTION, this.building.h / RESOLUTION
-    );
+    ctx.fillRect(bx0, by0, bx1 - bx0, by1 - by0);
 
     // 2. Źródła światła, dodawane do maski.
     //
@@ -295,12 +334,10 @@ export class Lighting {
     // 3. Ograniczona widoczność. Wygaszamy stopniowo, żeby przejście przez bramę
     // nie było przeskokiem — mrok na placu narasta w trakcie wchodzenia.
     this.hidden = (this.hidden ?? 0) + ((inside ? 1 : 0) - (this.hidden ?? 0)) * 0.08;
-    this.occlude(ctx, w, h, {
-      x0: toMaskX(this.building.x),
-      y0: toMaskY(this.building.y),
-      x1: toMaskX(this.building.x + this.building.w),
-      y1: toMaskY(this.building.y + this.building.h),
-    }, this.hidden, player, toMaskX, toMaskY);
+    // Ten sam prostokąt w całych pikselach maski, i z tego samego powodu:
+    // wycięcie na ułamku zostawia wzdłuż muru pas wygaszony tylko częściowo.
+    this.occlude(ctx, w, h, { x0: bx0, y0: by0, x1: bx1, y1: by1 },
+      this.hidden, player, toMaskX, toMaskY);
 
     // 4. Winieta — przygasza rogi kadru i zbiera uwagę na środku.
     //
@@ -316,7 +353,9 @@ export class Lighting {
     ctx.fillRect(0, 0, w, h);
 
     this.texture.refresh();
-    this.image.setPosition(view.x, view.y).setDisplaySize(w * RESOLUTION, h * RESOLUTION);
+    // Maskę stawiamy w tym samym przyciągniętym punkcie, z którego była liczona —
+    // inaczej cała praca z siatką idzie na marne przy samym wyświetleniu.
+    this.image.setPosition(ox, oy).setDisplaySize(w * RESOLUTION, h * RESOLUTION);
   }
 
   /** Czy punkt leży na podłodze hali — po tym poznajemy ogień pod dachem. */

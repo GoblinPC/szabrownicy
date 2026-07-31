@@ -6,7 +6,18 @@
 // grze, w której łupi się innych graczy, o zawartości ziemi musi rozstrzygać
 // serwer, tak samo jak potem o zawartości plecaka.
 
-const KLATKI = { wood: 'item_wood', stone: 'item_stone', meat: 'item_meat' };
+// Nazwa klatki wynika **z rodzaju przedmiotu**, a nie z osobnej tabelki.
+//
+// Tabelka wymieniała trzy rodzaje: kłodę, kamień i mięso. Siekiera, kilof i dzida
+// miały w niej luki, a kod na brak wpisu robił `continue` — czyli narzędzie
+// wyrzucone na ziemię **leżało niewidzialne**: serwer o nim wiedział, podpowiedź
+// `E` się zapalała, podnieść się dało, tylko nie było czego zobaczyć. Klasyczny
+// przypadek jednego faktu zapisanego w dwóch miejscach, które się rozjechały.
+//
+// Umowa jest teraz jedna: rzecz o rodzaju `x` leży w świecie jako klatka `item_x`.
+// Pilnuje jej `npm run sprawdz`, więc nowy przedmiot bez rysunku nie przejdzie
+// cicho — a to była tu jedyna prawdziwa trudność.
+const klatkaDla = (kind) => `item_${kind}`;
 
 // Rzeczy na ziemi **leżą nieruchomo**.
 //
@@ -41,14 +52,20 @@ export class Drops {
       widziane.add(drop.i);
       let item = this.items.get(drop.i);
       if (!item) {
-        const key = KLATKI[drop.k];
-        if (!key) continue;
-        const sprite = this.scene.add.image(drop.x, drop.y, 'props', key)
+        const key = klatkaDla(drop.k);
+        // Brak rysunku nie może znaczyć „nie rysuj nic": rzecz **jest** w świecie,
+        // można ją podnieść i trzeba ją widzieć. Zamiast pomijać, mówimy o tym
+        // głośno i rysujemy kłodę — brzydko, ale widocznie.
+        if (!this.scene.textures.get('props').has(key)) {
+          console.warn(`brak rysunku rzeczy na ziemi: ${key}`);
+        }
+        const uzyta = this.scene.textures.get('props').has(key) ? key : 'item_wood';
+        const sprite = this.scene.add.image(drop.x, drop.y, 'props', uzyta)
           .setOrigin(0.5, 1)
           // Ta sama głębokość co reszta świata, więc sortowanie po Y działa samo:
           // idąc w dół gracz zasłania kłodę, idąc w górę chowa się za nią.
           .setDepth(drop.y);
-        const shadow = this.shadows?.add(drop.x, drop.y, 'props', key, {
+        const shadow = this.shadows?.add(drop.x, drop.y, 'props', uzyta, {
           squash: 0.5,
           width: sprite.width + 2,
         });

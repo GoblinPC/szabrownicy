@@ -34,6 +34,16 @@ i posłuży jako pierwsza minigierka za portalem.
   Sporo dotychczasowych błędów wzięło się dokładnie stąd.
 - Przy grafice: wygenerować podgląd do `docs/preview/` i **obejrzeć go
   narzędziem Read**, zanim się powie, że coś jest gotowe.
+- **Nie budować własnych sprawdzianów na zapas.** Ustalone 2026-07-31, uwaga
+  użytkownika wprost: *te twoje testy zabierają dużo tokenów*. Doraźny skrypt
+  i oglądanie obrazka kosztują realnie, więc mają być **wyjątkiem, nie odruchem**:
+  - jeśli sprawdzenie sprowadza się do „czy w grze to wygląda dobrze" —
+    **powiedzieć użytkownikowi, co ma kliknąć**, i czekać. On i tak siedzi
+    w przeglądarce, a jego ocena jest lepsza od podglądu;
+  - jeśli coś naprawdę wymaga policzenia, dopisać test do `npm run sprawdz`
+    (zostaje na zawsze, kosztuje raz) zamiast pisać skrypt jednorazowy;
+  - podgląd generować wtedy, gdy powstaje **nowy rysunek**, którego użytkownik
+    nie zobaczy inaczej niż wchodząc w konkretne miejsce mapy.
 - **Grafiki nie oszczędzać.** Generowanie jest tu tanie: dziesięć zwierząt
   z animacjami albo pakiet ozdób powstaje w kilka minut, więc gdy coś da się
   poprawić albo dołożyć hurtem — robić to, nie pytając. Szczegóły robią cały
@@ -199,6 +209,37 @@ Dwie reguły wyniesione z błędów:
   `noShadow: true` — inaczej rzucają pod siebie wielką czarną plamę;
 - `lightAt` pomija lampy bliższe niż 18 px, bo takie siedzą wewnątrz obiektu.
 
+**Zmiękczanie cieni (2026-07-31).** Krycie ustawiane **osobno w każdym rogu**
+sprite'a (`setAlpha(gl, gp, dl, dp)`, wyłącznie WebGL — dlatego przed nim idzie
+zwykłe `setAlpha`): ostry cień gaśnie ku końcowi, a warstwa miękka odwrotnie,
+przy stopach jej nie ma. Razem dają półcień bez ani jednego dodatkowego rysunku.
+Duże jednolite sylwetki dostają słabsze krycie. **Zmiękczenie dotyczy krawędzi,
+nie tego, czy cień widać** — pierwsza wersja ścinała je z trzech stron naraz
+i drzewo wychodziło z kryciem 0,2 rozmytym do zera.
+
+**Dwa błędy znalezione przy okazji, oba starsze:**
+
+- `add()` wrzucał na listę cieni **stojących** także gracza, potwory i innych
+  graczy, a `refresh()` nie zapisywał pozycji w cieniu — więc przelot po stojących
+  co 250 ms ustawiał je na jedną klatkę tam, gdzie powstały. Cztery mrugnięcia
+  na sekundę na każdej ruchomej postaci. Ruchome oznaczać `ruchomy: true`.
+- `remove()` był zdefiniowany **dwa razy** i wygrywała gorsza wersja: nie zdejmowała
+  wpisu z listy ani nie kasowała warstwy miękkiej. Ścięte drzewo zostawiało po
+  sobie bladą sylwetkę cienia.
+
+**Siatka maski musi być przyciągnięta do świata, nie do kamery.** Jeden piksel
+maski to dwa piksele świata, więc jej granica może wypaść tylko na parzystym
+odstępie od początku maski. Gdy początek stoi na ułamkowej pozycji kamery,
+krawędź muru ląduje raz przed licem, raz za nim — i wzdłuż ścian biegnie pasek
+grubości piksela, raz jasny, raz ciemny, przeskakujący przy każdym ruchu.
+Początek zaokrąglać do wielokrotności `RESOLUTION`.
+
+**Rozmycie granicy widoczności idzie do wnętrza — także o jeden piksel maski.**
+Maska jest rozciągana filtrem liniowym (miękkie plamy ognia są tego warte), więc
+na każdej granicy powstaje przejście szerokie na dwa piksele świata. Cięcie
+dokładnie po licu muru wypuszcza połowę tego przejścia **na zewnątrz** i za murem
+świeci pasek szerokości piksela.
+
 **Znana wada:** granica między ciepłym wnętrzem a chłodnym placem to na razie
 ostry prostokąt. Przy bramie widać szew — do rozmycia.
 
@@ -285,6 +326,28 @@ dzień trzyma pełne światło do ~17:45, złota godzina wypada koło 20:00, wł
 koło 21:00. Przy dobie 16-minutowej łatwo o taki błąd, bo różnica „18:00 czy 20:00" to
 w czasie rzeczywistym dwadzieścia sekund.
 
+## Mgła
+
+`client/src/render/fog.js` — warstwa nad podłożem, najgęstsza tuż przed wschodem
+i w trakcie (`fogByPhase`), rozchodząca się w ciągu poranka. Podnosi się **po
+deszczu**, nie w jego trakcie: ślad opadu rośnie od razu, opada wolno. Dochodzi
+wolna zmienność z zegara bezwzględnego (`fogMood`), żeby dwa świty z rzędu nie
+były identyczne — liczona jak pogoda, więc bez stanu i identyczna u wszystkich.
+
+Trzy pułapki, wszystkie zapłacone dzisiaj:
+
+- **Gradient na płótnie powstaje w bieżącym układzie współrzędnych.** Zbudowanie
+  go na `(cx, cy)` przed `translate(cx, cy)` kładzie go faktycznie na `(2cx, 2cy)`,
+  czyli poza rysowaną plamą — cały kłąb dostaje ostatni przystanek gradientu,
+  a ten ma krycie zero. **Tekstura wychodzi pusta**, a obiekty mają poprawne
+  pozycje i krycie, więc wygląda to jak awaria rysowania, nie jak błąd rysunku.
+  Trzy poprawki poszły w rzeczy, które nie były zepsute, zanim to wyszło.
+- **`tileSprite` z teksturą z `createCanvas` potrafi nie narysować nic.**
+  Powtarzane wypełnienie idzie w WebGL-u z tekstury zawijanej sprzętowo. Warstwy
+  powtarzalne robić **siatką zwykłych obrazków** — tak jak cienie.
+- Mgła idzie **pod maskę światła** (odwrotnie niż krople deszczu): ma ciemnieć
+  w nocy i łapać ciepły kant przy ogniu. Pod dachem jej nie ma.
+
 ## Dźwięk
 
 Wszystko syntezowane przez WebAudio, zero plików. Układ powstaje dopiero przy
@@ -319,6 +382,33 @@ wzmocnienia niż ton, bo jego energia rozkłada się na całe pasmo zamiast skup
 w jednej częstotliwości.
 
 Sterowanie: `M` cisza, `N` sama muzyka, suwaki w prawym górnym rogu.
+
+## Interfejs — rzeczy wyniesione z błędów
+
+- **Panel przyrządów jest pod `K`**, nie tylko pod `F1`. Na MacBooku rząd funkcyjny
+  należy do systemu i `F1` do gry nie dochodzi — panel z suwakami pory dnia,
+  pogody i mgły był przez to **nieosiągalny**, mimo że istniał. Backtick odpadł:
+  na Macu z polskim układem nie ma go pod ręką.
+- Panel przyjmuje też stan **z adresu strony**: `?mgla=1&pora=0.24`. To jedyny
+  sposób ustawienia świata bez klikania, czyli jedyny nadający się do zrzutu
+  ekranu z przeglądarki uruchomionej z wiersza poleceń.
+- **Paski HUD:** wypełnienie rysować dwa piksele **pod** brzeg ramki. Rysunek
+  ramki ma brzeg pięciopikselowy, a cięcie 9-slice stoi na 6 — wypełnienie
+  liczone od cięcia zostawiało dookoła przezroczysty pierścień, przez który
+  widać świat.
+- **Trzy paski mają jeden rozmiar i żadnych liczb.** Wcześniej życie było większe
+  od reszty, a w środku miało `74/100`. Decyzja użytkownika i dobra: trzy paski
+  tej samej wielkości czytają się jako jeden przyrząd, a liczba w jednym z nich
+  robi z niego wyjątek.
+
+## Ruch i patrzenie
+
+Sylwetka postaci idzie **za ruchem**, celowanie zostaje **przy myszy**. Biegnąc
+w lewo wolno walnąć w prawo — postać wykona przy tym obrót, zamiast biec całą
+drogę odwrócona. Obrót w stronę ciosu trwa dokładnie tyle, co cios (zamrożony
+`atkFacing`). W bezruchu **nic nie obraca postaci**: zostaje zwrócona tam, dokąd
+biegła albo gdzie uderzyła. Odsyłanie jej wtedy do kursora dawało obrót na każde
+drgnięcie myszy przy postaci stojącej w miejscu.
 
 ## Jaka to ma być gra
 
@@ -597,6 +687,67 @@ wszystkich przyszłych stworów**.
 z nich rzeczy, odrastają. **Klient jeszcze tego nie rysuje** — brakuje przewracania
 drzewa, etapów pękania skały i rzeczy leżących na ziemi.
 
+## Kolejka zgłoszona 2026-07-31 wieczorem
+
+Cztery rzeczy zgłoszone jedna po drugiej, wszystkie o tym samym: **ekwipunek jest
+listą rzeczy, a nie wyposażeniem postaci**.
+
+1. **Pasek narzędzi na dole HUD-u.** Zgłoszone wprost: *nie da się używać siekiery
+   jako siekiery, tylko włócznia zbiera drewno i kamienie*. Przyczyna jest
+   w `game.js`: `hasTool(player.bag, ...)` pyta, czy narzędzie **leży w plecaku**,
+   a nie czy gracz je trzyma. Kto ma siekierę w plecaku, ten ścina drzewo czymkolwiek
+   — a że w ręce widać broń, wygląda to jakby zbierała włócznia. Pasek narzędzi
+   rozwiązuje to u źródła: liczy się to, co w wybranym gnieździe.
+2. **Ekwipunek postaci** — gniazda na zbroję, hełm, broń. Dopiero wtedy skórzany
+   hełm jest czymś, co się **nosi**, a nie kolejnym prostokątem w siatce.
+3. **Ekran pomocy** — sterowanie i zasady w jednym miejscu.
+4. ~~**Plecak ma wyglądać jak worek.**~~ **Próbowane 2026-07-31 i ODRZUCONE.**
+   Panel został narysowany w `tools/art/ui.js` jako sakwa: kołnierz, klapa z łukiem
+   i szwem, dwa rzemienie z okuciami, brzuch rozszerzający się ku dołowi, kratki
+   we wnęce wyciętej w płótnie. Trzy podejścia, po każdym uwaga z gry — *prostokątny
+   ekran z obwódką*, potem *za duży, za kanciasty, za mało brązowy*, na koniec:
+   **wróć do zwykłego plecaka**. Cofnięte w całości, rysunek zszedł z atlasu.
+
+   Wnioski, żeby nie zaczynać tego od nowa bez powodu:
+
+   - **Siatka rządzi wielkością panelu.** Osiem kolumn po 48 px to 384 px samych
+     kratek; każdy zapas płótna dokłada się do tego, więc „worek widoczny dookoła"
+     i „panel nie zajmuje pół ekranu" wykluczają się przy tej siatce.
+   - Wypukły bok czyta się jako płótno, prosty jako skrzynia — ale przy wnęce
+     zajmującej większość powierzchni żadna krzywizna nie ma gdzie zaistnieć.
+   - Gdyby wracać do tematu: najpierw **mniejsza siatka albo mniejsza kratka**,
+     a kształt dopiero potem. Odwrotna kolejność została sprawdzona i nie działa.
+
+## Wrogowie — zgłoszone 2026-07-31 wieczorem
+
+*Wrzucić nowe zwierzaki i poprawić dzika, bo ma chujowe animacje. Tylko szarżuje
+i to lagując się. Zrób wrogów z inteligentną mechaniką, coś co zaskoczy graczy.*
+
+**Część „laguje" jest już naprawiona** i przyczyna warta zapamiętania: moby były
+stawiane **wprost na pozycji z migawki**, czyli dwadzieścia razy na sekundę, przy
+rysowaniu sześćdziesiąt. Szarżujący dzik przeskakiwał po dziesięć pikseli i stał
+między skokami. Inni gracze nie mieli tego problemu, bo ich pokazujemy 100 ms
+w przeszłości i interpolujemy — moby po prostu wypadły z tej zasady. Dziś mają
+ten sam bufor pozycji.
+
+Reszta do zrobienia:
+
+- **Dzik ma jedną sztuczkę.** Cztery stany (włóczy się, zapowiedź, szarża,
+  odpoczynek) były dobrym wzorcem na start, ale wzorzec przerobiony na jedynego
+  przeciwnika w grze znaczy, że po trzech spotkaniach nie ma już czego się uczyć.
+  Potrzebuje **drugiego zachowania**: zawracania w trakcie szarży przy chybieniu,
+  albo cofania się i ponawiania, albo wołania drugiego dzika.
+- **Animacje.** Dziś to sam bieg i zapowiedź na czerwono. Brakuje: potrząśnięcia
+  łbem przed szarżą, ryja przy ziemi w spoczynku, kulenia się po ogłuszeniu.
+- **Nowe zwierzęta — każde z inną zasadą**, nie z innymi liczbami. Wilk atakuje
+  w watasze i odcina odwrót, nietoperz lata i nie da się go trafić ciosem w dół,
+  niedźwiedź nie ucieka i karze pchanie się do przodu. Zasada nadrzędna gry mówi:
+  *jeśli mechanika nie zmienia decyzji gracza, to jej nie ma* — trzy zwierzęta
+  różniące się tylko punktami życia są jednym zwierzęciem.
+- **Zaskoczenie ma być uczciwe.** Wszystko, co zabija, musi być widoczne wcześniej:
+  zapowiedź ciosu, dźwięk, ruch. Przeciwnik zaskakuje **wzorcem**, nie brakiem
+  informacji — inaczej to nie jest trudność, tylko ruletka.
+
 ## Co dalej — kolejka na 2026-07-31
 
 1. **Dokończyć zbieranie**: drzewo przewraca się (obrót wokół podstawy) i zostawia
@@ -646,14 +797,17 @@ drzewa, etapów pękania skały i rzeczy leżących na ziemi.
     cięcia**, a pięść nie tnie. Powinien to być krótki błysk przy samej garści,
     a nie wycinek okręgu wokół tułowia. Do zrobienia razem z nowymi pozami ciosu.
 
-12. **Worek po trupie zamiast rozsypanych rzeczy.** Śmierć wysypuje dziś plecak
+12. ~~**Worek po trupie zamiast rozsypanych rzeczy.**~~ **Zrobione 2026-07-31.**
+    Serwer trzyma worki osobno od rzeczy na ziemi, zawartość leci **tylko temu,
+    kto przy worku stoi**, przekładanie rozstrzyga serwer (`takeFromSack`).
+    Worek jest niczyj — kto stoi obok, ten bierze. Leży pięć minut. Było: Śmierć wysypuje dziś plecak
     jako osobne przedmioty na ziemię — koszt śmierci jest, ale przy pełnym
     plecaku odbiór to dwadzieścia naciśnięć `E`. Docelowo ma zostać **jeden worek**,
     który się otwiera i z którego przekłada się tyle, ile się zmieści. Wymaga
     interfejsu cudzego pojemnika — tego samego, który potem obsłuży skrzynię
     w pokoju w karczmie.
 
-13. **Uniki jako pasek, nie kryształy.** Ustalone 2026-07-31 po obejrzeniu
+13. ~~**Uniki jako pasek, nie kryształy.**~~ **Zrobione 2026-07-31.** Ustalone 2026-07-31 po obejrzeniu
     zmniejszonych rombów: mają to być **trzy segmenty jednego zielonego paska**,
     w tej samej ramce i tej samej konwencji co życie i głód. Powód jest dobry
     i wart zapamiętania: HUD ma być **jednym przyrządem**, a nie zbiorem odznak.
@@ -662,7 +816,8 @@ drzewa, etapów pękania skały i rzeczy leżących na ziemi.
     tak jak dziś kryształ, tylko w kształcie paska. `dodgeFuel` to już ułamek 0–3,
     więc po stronie danych nie ma nic do zmiany.
 
-14. **Cienie do zmiękczenia — brama rzuca ostry prostokąt.** Zgłoszone
+14. ~~**Cienie do zmiękczenia.**~~ **Zrobione 2026-07-31** — opis w rozdziale
+    o oświetleniu i cieniach. Było: Zgłoszone
     2026-07-31: *ciemny prostokąt kanciasty jak Minecraft*. Cień rzucany to
     **sylwetka obiektu położona na ziemi**, więc obiekt, którego sylwetka jest
     prostokątem — brama, mur, słup — daje na placu prostokąt o ostrej krawędzi.
@@ -675,7 +830,8 @@ drzewa, etapów pękania skały i rzeczy leżących na ziemi.
     wnętrza i chłodnego placu też jest ostrym prostokątem**. To ta sama rodzina
     problemu i warto ją ruszyć jednym podejściem.
 
-15. **Klimat: mgła i „efekty jak w grach".** Zgłoszone 2026-07-31 —
+15. **Klimat: efekty głębi.** Mgła **zrobiona 2026-07-31**, patrz rozdział „Mgła".
+    Reszta czeka. Zgłoszenie brzmiało: Zgłoszone 2026-07-31 —
     *antyaliasing, ambient occlusion, lekka mgła i inne tego typu rzeczy*.
 
     Nazwy trzeba przetłumaczyć na to, co ma sens w pixel arcie, bo dosłownie
@@ -700,13 +856,25 @@ drzewa, etapów pękania skały i rzeczy leżących na ziemi.
     Kolejność ma znaczenie: **najpierw zmiękczenie cieni (punkt 14), potem mgła.**
     Mgła położona na ostre prostokątne cienie tylko je uwypukli.
 
-16. **Reguły rozstawiania skał i drzew.** Zgłoszone 2026-07-31 po obejrzeniu mapy
-   w grze: obiekty stoją zbyt losowo — głazy nachodzą na inne obiekty i na styki
-   kafli, a zagęszczenie jest takie, że **ledwo da się przejść przez mapę**.
-   `scatter()` pilnuje minimalnego odstępu **między obiektami tego samego wywołania**
-   i nic poza tym; nie wie o obiektach z innych warstw ani o tym, że przez las ma
-   dać się przejść. Do zrobienia: wspólna lista zajętości dla wszystkich warstw,
-   odsunięcie od dróg i krawędzi, i gęstość dobrana tak, żeby zostawały przejścia.
+16. **Reguły rozstawiania skał i drzew — zrobione 2026-07-31.** Było: głazy
+   nachodzą na inne obiekty, a zagęszczenie takie, że *ledwo da się przejść przez
+   mapę*. Przyczyna: `scatter()` pilnował odstępu **tylko w obrębie jednego
+   wywołania**, więc drzewa nie wiedziały o głazach.
+
+   - **Jedna lista zajętości na całą mapę** (`Zajętość` w `world/terrain.js`),
+     nie jedna na warstwę i nie jedna na obszar — na styku lasu ze skaliskiem
+     obiekty z dwóch obszarów też muszą się widzieć.
+   - Każdy obiekt wnosi **własny promień**, a sprawdzana jest suma dwóch. Jedna
+     reguła obsługuje wszystkie pary: dwa drzewa dzieli 52 px, ale gałąź wolno
+     położyć 36 px od pnia. Wspólny odstęp dałby albo zlane korony, albo
+     rozrzucone pojedynczo patyki.
+   - **Odsunięcie od dróg liczone w rogach**, nie w punkcie zaczepienia. Punktowy
+     test przepuszczał głaz stojący piksel od ścieżki — zaczepienie obok drogi,
+     rysunek już na niej.
+   - **Przechodniość się mierzy, nie ocenia okiem.** `npm run sprawdz` zalewa mapę
+     od bramy z prawdziwą szerokością stóp: dziś 99,9% otwartego terenu osiągalne.
+     Róg z litej skały nie jest błędem — test pyta o „są pola, żadnego nie
+     osiągnięto", a nie o sam fakt nieosiągalności.
 
 ### Zasoby w dwóch poziomach
 
@@ -715,11 +883,37 @@ Ustalone 2026-07-31, pomysł użytkownika: *ręką nie rozwalę skały i drzewa*
 - **Duże** — głaz i drzewo — wymagają narzędzia: kilofa i siekiery.
 - **Małe** — luźne kamienie i gałęzie rozrzucone po mapie — idą gołą ręką.
 
-To domyka pętlę startową: zbierasz ręką materiał → robisz siekierę w kuźni →
-dopiero teraz ścinasz drzewa. Pierwsza siekiera przestaje być przedmiotem
-i staje się **wydarzeniem**, czyli dokładnie tym, po co gracz wychodzi z miasta.
+To domyka pętlę startową: zbierasz ręką materiał → robisz siekierę przy
+warsztacie → dopiero teraz ścinasz drzewa. Pierwsza siekiera przestaje być
+przedmiotem i staje się **wydarzeniem**, czyli dokładnie tym, po co gracz
+wychodzi z miasta.
 
-Jeszcze nie zrobione. Dziś wszystko rąbie się wszystkim.
+Zrobione: `nodes.js` rozdziela zasoby ręczne od narzędziowych (`tool: 'axe'`,
+`tool: 'pick'`), a cios bez narzędzia odbija się z głuchym stukiem.
+
+### Warsztat: gdzie się rzemieślniczy
+
+Stanowiskiem jest **stół w skrzydle wschodnim** (`workbench`), nie kowadło.
+Podchodzisz, nad blatem zapala się `E`, wchodzisz i dopiero wtedy widzisz listę
+wyrobów. Odejście od stołu zamyka okno.
+
+- **Pozycja stanowiska pochodzi z listy obiektów** (`craftStation()` w
+  `world/forge.js`), nigdy z liczby wpisanej po stronie serwera. Poprzednia
+  wersja miała współrzędne kowadła wpisane w `game.js`; po przebudowie wnętrza
+  na cztery pomieszczenia kowadło pojechało pod palenisko, a strefa pracy
+  została na środku sali wspólnej — crafting „nie działał", bo działał w pustym
+  miejscu, do którego nikt nie podchodzi. `npm run sprawdz` pilnuje tego teraz
+  dwoma testami: czy stanowisko istnieje i czy jest przy nim gdzie stanąć.
+- **Okno warsztatu jest osobne** (`client/src/ui/craft.js`), a nie kolumną obok
+  plecaka. Doklejone do plecaka wisiało na ekranie zawsze — przygaszone przez
+  większość gry — choć przydaje się w jednym miejscu na mapie.
+- **Ikonę wyrobu przycinać do jej ramki w atlasie.** Ikony stoją w `props.png`
+  obok siebie (dzida x=0, siekiera x=17, kilof x=34) i mają po 16 px szerokości,
+  więc pole szerokie na 48 px pokazywało wszystkie trzy naraz plus kawałek
+  drzewa. Skalowanie samego tła nie wystarczy — rozmiar musi dostać **element**.
+- `E` robi dwie rzeczy i kolejność jest treścią: najpierw podnoszenie z ziemi,
+  warsztat dopiero gdy nie ma czego podnieść. Przy stole może leżeć wyrzucona
+  kłoda i to jej gracz chce sięgnąć.
 
 ### Broń startowa: pięści
 

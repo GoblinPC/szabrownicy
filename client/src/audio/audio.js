@@ -175,6 +175,11 @@ class GameAudio {
    * Trafienie. Świst, stuk i krew idą razem, bo ucho czyta uderzenie jako jedno
    * zdarzenie złożone z warstw, a nie jako trzy osobne dźwięki.
    */
+  /** Naładowany ładunek uniku. */
+  charge() {
+    this.sfx?.charge();
+  }
+
   hit(power = 1) {
     this.sfx?.hit(power);
     this.sfx?.blood(power);

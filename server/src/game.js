@@ -9,15 +9,15 @@
 // Świat i kolizje pochodzą z tego samego pliku co u klienta.
 
 import {
-  buildWorld, SPAWN, WORLD_W, WORLD_H, TRAINING_DUMMY, CITY_PX, CITY_OX, CITY_OY,
-  isWalkable,
+  buildWorld, SPAWN, WORLD_W, WORLD_H, TRAINING_DUMMY, CITY_PX,
+  isWalkable, stationAt,
 } from '../../client/src/world/forge.js';
 import {
   advance, poseOf, KEY_MASK, inAttackArc, ATTACK_STEPS, weaponOf,
 } from '../../client/src/world/movement.js';
 import { buildNodes, NODE_KINDS, NODE_ARC, NODE_REACH_BONUS, GATHER_RANGE } from '../../client/src/world/nodes.js';
 import {
-  makeBag, addItem, fits, ITEMS, RECIPES, hasTool, canCraft, craft,
+  makeBag, addItem, fits, ITEMS, RECIPES, canCraft, craft,
 } from '../../client/src/world/items.js';
 
 export const TICK_HZ = 20;
@@ -76,6 +76,21 @@ const VIEW_RANGE = 700;
 // osobną czynnością, nie skutkiem ubocznym machania.
 const PICK_RANGE = 22;
 
+// Worek po trupie: zasięg otwierania i czas leżenia.
+//
+// Zasięg większy od podnoszenia, bo do worka **podchodzi się celowo** — nie jest
+// rzeczą, na którą wpada się przypadkiem. Czas dłuższy niż u rozsypanych rzeczy
+// (dwie minuty), bo po śmierci trzeba zdążyć wrócić: pięć minut to mniej więcej
+// droga z lasu do miasta i z powrotem, czyli wyprawa po własny łup jest możliwa,
+// ale nie darmowa — ktoś inny może być tam pierwszy.
+// Gniazd na pasku narzędzi. Cztery, bo tyle mieści się pod palcami jednej ręki
+// (klawisze 1–4) i tyle jest naprawdę różnych czynności: broń, siekiera, kilof,
+// jedzenie. Dziesięć gniazd byłoby ściągnięte z innych gier, nie z tej.
+const HOT_SLOTS = 4;
+
+const SACK_RANGE = 26;
+const SACK_MS = 5 * 60_000;
+
 // Głód. Pełny pasek starczy na jakieś piętnaście minut gry — mniej więcej dobę
 // w świecie. Wyprawa po drewno mieści się spokojnie, dwie już nie.
 const FOOD_MAX = 100;
@@ -84,12 +99,9 @@ const FOOD_DRAIN = FOOD_MAX / (15 * 60);   // punktów na sekundę
 // zostawić czas na dobiegnięcie do czegoś jadalnego.
 const STARVE_DPS = 1.0;
 
-// Kowadło w kuźni — jedyne miejsce, w którym da się kuć. Współrzędne w układzie
-// miasta (`add('anvil', 384, 208)` w `world/forge.js`) przesunięte na wielką mapę;
-// gdyby kuźnia się przesunęła, ta liczba musi pójść razem z nią.
-const ANVIL = { x: 384 + CITY_OX * 16, y: 208 + CITY_OY * 16 };
-// Zasięg z zapasem: gracz ma stanąć przy kowadle, a nie trafić w piksel.
-const ANVIL_RANGE = 46;
+// Gdzie się rzemieślniczy, liczy `atCraftStation()` w `world/forge.js` — po
+// **pozycji warsztatu wyszukanej w liście obiektów**. Wpisana tu wcześniej
+// liczba została po przebudowie wnętrza w miejscu, w którym nic już nie stało.
 
 // --- Gracz: życie, śmierć, strefa bezpieczna ----------------------------------
 //
@@ -200,6 +212,63 @@ const BOAR = {
   respawnMs: 25_000,
 };
 
+/**
+ * Wilk — **przeciwieństwo dzika i o to chodzi**.
+ *
+ * Dzik jest prosty: staje, zapowiada, leci po linii. Cała nauka gracza sprowadza
+ * się do jednego uniku w bok. Drugi przeciwnik grający tak samo, tylko z innymi
+ * punktami życia, nie byłby drugim przeciwnikiem — zasada nadrzędna gry mówi,
+ * że mechanika, która nie zmienia decyzji, nie istnieje.
+ *
+ * Wilk **krąży**. Trzyma dystans, obchodzi z boku i skacze dopiero wtedy, gdy jest
+ * za plecami albo z flanki. Uskok w bok, który ratuje przed dzikiem, wilkowi nic
+ * nie robi — trzeba się do niego odwrócić i to jest cała różnica. Dwa wilki
+ * dzielą się stronami, więc odwrócenie się do jednego odsłania drugiego.
+ */
+const WOLF = {
+  hp: 26,
+  radius: 9,
+  torso: 11,
+  damage: 9,
+  walk: 34,
+  circle: 86,         // prędkość przy krążeniu
+  leap: 210,          // skok jest szybszy od szarży dzika, ale krótki
+  noticeRange: 190,
+  loseRange: 330,
+  ringRange: 66,      // na taki dystans krąży
+  windupMs: 300,      // krótka zapowiedź: wilk jest szybki, nie ciężki
+  leapMs: 320,
+  restMs: 700,
+  hitCooldownMs: 800,
+  respawnMs: 30_000,
+};
+
+/**
+ * Żmija — **kara za nieuwagę, nie przeciwnik do zabicia**.
+ *
+ * Nie goni. Leży zwinięta i uderza tylko wtedy, gdy ktoś wejdzie jej pod nos,
+ * a potem cofa się i znowu czeka. Ma mało życia i daje mało — całą jej rolą jest
+ * to, żeby bieganie na oślep przez zarośla kosztowało. Dzik uczy uników, wilk
+ * uczy patrzenia za siebie, żmija uczy patrzenia pod nogi.
+ */
+const SNAKE = {
+  hp: 12,
+  radius: 6,
+  torso: 5,
+  damage: 11,
+  walk: 14,
+  leap: 150,
+  noticeRange: 46,    // zasięg, na którym w ogóle reaguje — bardzo krótki
+  loseRange: 120,
+  windupMs: 190,      // ledwo widoczna zapowiedź; za to zasięg jest mały
+  leapMs: 180,
+  restMs: 900,
+  hitCooldownMs: 1200,
+  respawnMs: 40_000,
+};
+
+export const MOB_KINDS = { boar: BOAR, wolf: WOLF, snake: SNAKE };
+
 export class Game {
   constructor() {
     this.world = buildWorld();
@@ -220,6 +289,10 @@ export class Game {
     // identyfikatorze, a nie po pozycji.
     this.drops = new Map();
     this.nextDrop = 1;
+    // Worki po zabitych. Osobno od rzeczy leżących, bo to co innego: rzecz na
+    // ziemi podnosi się jednym klawiszem, worek się otwiera i przekłada.
+    this.sacks = new Map();
+    this.nextSack = 1;
   }
 
   /**
@@ -243,15 +316,22 @@ export class Game {
       if (!isWalkable(this.world, x - 8, y - 8, x + 8, y - 0.5)) continue;
 
       placed++;
+      // Skład: dziki, wilki i żmije. Wilków mniej niż dzików, bo są groźniejsze
+      // i **wychodzą po dwa** — trzy krążące naraz to nie trudność, tylko wyrok.
+      // Żmij najwięcej, bo każda z osobna jest prawie nieszkodliwa; groźne jest
+      // to, że leżą wszędzie.
+      const los = Math.random();
+      const kind = los < 0.4 ? 'boar' : (los < 0.7 ? 'wolf' : 'snake');
+      const S = MOB_KINDS[kind];
       const mob = {
         id: id++,
-        kind: 'boar',
-        radius: BOAR.radius,
-        torso: BOAR.torso,
+        kind,
+        radius: S.radius,
+        torso: S.torso,
         x, y, homeX: x, homeY: y,
         vx: 0, vy: 0,
-        hp: BOAR.hp,
-        maxHp: BOAR.hp,
+        hp: S.hp,
+        maxHp: S.hp,
         hitSeq: 0, hitDx: 0, hitDy: 0,
         deadUntil: 0,
         state: 'wander',
@@ -288,7 +368,7 @@ export class Game {
       // mówi klientowi, żeby pokazał odbicie zamiast wióra — bez tego brak
       // reakcji czyta się jako chybienie i gracz szuka lepszego kąta zamiast
       // zrozumieć, że brakuje mu narzędzia.
-      if (!hasTool(player.bag, NODE_KINDS[node.kind].tool)) {
+      if (!this.heldTool(player, NODE_KINDS[node.kind].tool)) {
         player.blockSeq = (player.blockSeq ?? 0) + 1;
         continue;
       }
@@ -570,17 +650,23 @@ export class Game {
   }
 
   /**
-   * Kucie przy kowadle.
+   * Wyrób przy warsztacie.
    *
-   * Kuć wolno **tylko w kuźni**, i to nie jest utrudnienie: to jest powód, dla
-   * którego miasto jest miastem. Zbierasz w lesie, wracasz do kuźni, wychodzisz
-   * z narzędziem — i ta droga tam i z powrotem jest pętlą gry, a nie przerwą
-   * w niej. Gdyby dało się kuć w krzakach, kuźnia byłaby dekoracją.
+   * Rzemieślniczyć wolno **tylko przy stanowisku**, i to nie jest utrudnienie:
+   * to jest powód, dla którego miasto jest miastem. Zbierasz w lesie, wracasz do
+   * warsztatu, wychodzisz z narzędziem — i ta droga tam i z powrotem jest pętlą
+   * gry, a nie przerwą w niej. Gdyby dało się strugać w krzakach, warsztat
+   * byłby dekoracją.
+   *
+   * **Warunek jest tu, a nie tylko w oknie.** Klient decyduje, czy pokazać okno;
+   * o tym, czy wyrób powstanie, rozstrzyga wyłącznie ta metoda.
    */
   craftItem(player, index) {
     const recipe = RECIPES[index];
     if (!recipe) return false;
-    if (!this.atAnvil(player)) return false;
+    // **Przy właściwym stanowisku**, nie przy jakimkolwiek: siekiery nie zrobisz
+    // na stojaku do skór, a skóry nie wyprawisz na stole stolarskim.
+    if (this.stationOf(player) !== recipe.station) return false;
     if (!canCraft(player.bag, recipe)) return false;
     if (!craft(player.bag, recipe)) return false;
     player.bagSeq++;
@@ -588,11 +674,9 @@ export class Game {
     return true;
   }
 
-  /** Czy gracz stoi na tyle blisko kowadła, żeby przy nim pracować. */
-  atAnvil(player) {
-    const dx = player.x - ANVIL.x;
-    const dy = (player.y - ANVIL.y) * 1.5;
-    return dx * dx + dy * dy <= ANVIL_RANGE * ANVIL_RANGE;
+  /** Przy którym stanowisku stoi gracz — albo `null`. */
+  stationOf(player) {
+    return stationAt(this.world, player.x, player.y);
   }
 
   /** Opis plecaka dla właściciela. Nikt inny go nie dostaje. */
@@ -615,8 +699,126 @@ export class Game {
    * dzidy przyspawanej do postaci.
    */
   refreshWeapon(player) {
-    const ma = player.bag.items.some((it) => it.kind === 'spear');
-    player.weapon = ma ? 'spear' : null;
+    // Liczy się **to, co w ręce**, a nie to, co w plecaku.
+    //
+    // Wcześniej broń brała się z samego posiadania dzidy, a narzędzie z samego
+    // posiadania siekiery — więc kto miał siekierę w plecaku, ten ścinał drzewo
+    // czymkolwiek. W ręce widać było broń, więc wyglądało to, jakby drewno
+    // zbierała włócznia. Zgłoszone z gry dokładnie tymi słowami.
+    const held = this.heldItem(player);
+    player.weapon = held && ITEMS[held.kind]?.weapon ? held.kind : null;
+  }
+
+  /**
+   * Przedmiot w wybranym gnieździe paska — albo `null`, czyli gołe ręce.
+   *
+   * Gniazda trzymają **numery przedmiotów**, nie kopie. Przedmiot wyrzucony,
+   * zjedzony albo stracony przy śmierci znika z plecaka i wtedy gniazdo samo
+   * robi się puste, bo nie ma czego znaleźć. Trzymanie kopii wymagałoby
+   * sprzątania w pięciu miejscach naraz i któreś by się kiedyś rozjechało.
+   */
+  heldItem(player) {
+    const id = player.hot?.[player.active ?? 0];
+    if (id === null || id === undefined) return null;
+    return player.bag.items.find((it) => it.id === id) ?? null;
+  }
+
+  /** Czy trzymane narzędzie nadaje się do danego zasobu. */
+  heldTool(player, tool) {
+    if (!tool) return true;
+    const held = this.heldItem(player);
+    return Boolean(held) && ITEMS[held.kind]?.tool === tool;
+  }
+
+  /** Wskazanie przedmiotu do gniazda paska. `null` opróżnia gniazdo. */
+  setHotSlot(player, slot, itemId) {
+    if (!Number.isInteger(slot) || slot < 0 || slot >= HOT_SLOTS) return false;
+    if (itemId === null) {
+      player.hot[slot] = null;
+      player.hotSeq++;
+      return true;
+    }
+    if (!player.bag.items.some((it) => it.id === itemId)) return false;
+    // Ten sam przedmiot nie może wisieć w dwóch gniazdach — inaczej „co trzymam"
+    // przestaje mieć jedną odpowiedź.
+    for (let i = 0; i < HOT_SLOTS; i++) if (player.hot[i] === itemId) player.hot[i] = null;
+    player.hot[slot] = itemId;
+    player.hotSeq++;
+    return true;
+  }
+
+  /** Wybór gniazda. To jest cała zmiana „czym teraz pracuję". */
+  pickHotSlot(player, slot) {
+    if (!Number.isInteger(slot) || slot < 0 || slot >= HOT_SLOTS) return false;
+    player.active = slot;
+    player.hotSeq++;
+    this.refreshWeapon(player);
+    return true;
+  }
+
+  /**
+   * Założenie rzeczy z plecaka.
+   *
+   * Przedmiot **znika z siatki** i pojawia się w gnieździe. Zamiana miejscami,
+   * gdy gniazdo jest zajęte: stara rzecz wraca do plecaka, a jeśli się nie mieści,
+   * całość jest odrzucana — lepiej nie założyć nic, niż zgubić zbroję przy
+   * pełnym plecaku.
+   */
+  equip(player, itemId) {
+    const i = player.bag.items.findIndex((it) => it.id === itemId);
+    if (i < 0) return false;
+    const item = player.bag.items[i];
+    const slot = ITEMS[item.kind]?.gear;
+    if (!slot || !(slot in player.gear)) return false;
+
+    const stary = player.gear[slot];
+    player.bag.items.splice(i, 1);
+    if (stary && !addItem(player.bag, stary.kind)) {
+      // Nie ma gdzie odłożyć starej — cofamy wszystko.
+      player.bag.items.splice(i, 0, item);
+      return false;
+    }
+    player.gear[slot] = { id: item.id, kind: item.kind };
+    // Rzecz założona nie może wisieć w gnieździe paska: pasek trzyma numery
+    // przedmiotów z plecaka, a tego już tam nie ma.
+    for (let n = 0; n < HOT_SLOTS; n++) if (player.hot[n] === item.id) player.hot[n] = null;
+    player.bagSeq++;
+    player.gearSeq++;
+    player.hotSeq++;
+    return true;
+  }
+
+  /** Zdjęcie rzeczy z powrotem do plecaka — tylko jeśli jest gdzie. */
+  unequip(player, slot) {
+    const worn = player.gear?.[slot];
+    if (!worn) return false;
+    if (!addItem(player.bag, worn.kind)) return false;
+    player.gear[slot] = null;
+    player.bagSeq++;
+    player.gearSeq++;
+    return true;
+  }
+
+  /** Ile obrażeń zdejmuje noszona zbroja. */
+  armorOf(player) {
+    let suma = 0;
+    for (const worn of Object.values(player.gear ?? {})) {
+      if (worn) suma += ITEMS[worn.kind]?.armor ?? 0;
+    }
+    return suma;
+  }
+
+  /** Opis ekwipunku dla właściciela. */
+  gearSnapshot(player) {
+    return {
+      s: player.gearSeq,
+      b: player.gear.body ? [player.gear.body.id, player.gear.body.kind] : null,
+    };
+  }
+
+  /** Opis paska dla właściciela — numery przedmiotów i wybrane gniazdo. */
+  hotSnapshot(player) {
+    return { h: player.hot.slice(), a: player.active, s: player.hotSeq };
   }
 
   /**
@@ -639,6 +841,9 @@ export class Game {
     }
     for (const [id, drop] of this.drops) {
       if (now >= drop.until) this.drops.delete(id);
+    }
+    for (const [id, sack] of this.sacks) {
+      if (now >= sack.until || !sack.items.length) this.sacks.delete(id);
     }
   }
 
@@ -704,11 +909,25 @@ export class Game {
         // Zwierzę leży dłużej niż kukła: kukła jest przyrządem i ma wstawać od
         // razu, zwierzę jest zdobyczą i las ma się z niego wyczerpywać.
         if (mob.hp === 0) {
-          mob.deadUntil = now + (mob.kind === 'boar' ? BOAR.respawnMs : RESPAWN_MS);
+          mob.deadUntil = now + (MOB_KINDS[mob.kind]?.respawnMs ?? RESPAWN_MS);
           // **Z dzika wypada mięso.** To jedyne źródło jedzenia w grze, więc to
           // ono zamyka głód w pętlę: żeby jeść, trzeba polować, a żeby polować,
           // trzeba wyjść ze strefy bezpiecznej.
-          if (mob.kind === 'boar') this.dropAt(mob.x, mob.y, 'meat', 2 + Math.floor(Math.random() * 2), now);
+          if (mob.kind === 'boar') {
+            this.dropAt(mob.x, mob.y, 'meat', 2 + Math.floor(Math.random() * 2), now);
+            // Skóra z każdego dzika, ale **po jednej**: zbroja kosztuje cztery
+            // sztuki (dwie skóry wyprawione), więc pierwsza jest wynikiem kilku
+            // polowań, a nie jednego szczęśliwego.
+            this.dropAt(mob.x, mob.y, 'hide', 1, now);
+          } else if (mob.kind === 'wolf') {
+            // Wilk daje **skórę i mało mięsa**: jest chudy, a jego wartość to
+            // futro. Dzięki temu polowanie na wilki opłaca się przy zbroi,
+            // a na dziki przy jedzeniu — dwa zwierzęta, dwa powody.
+            this.dropAt(mob.x, mob.y, 'hide', 2, now);
+            this.dropAt(mob.x, mob.y, 'meat', 1, now);
+          } else if (mob.kind === 'snake') {
+            this.dropAt(mob.x, mob.y, 'meat', 1, now);
+          }
         }
       }
 
@@ -742,6 +961,10 @@ export class Game {
    * Zwraca `true`, jeśli ten cios zabił.
    */
   hurt(target, damage, dx, dy, now) {
+    // Zbroja zdejmuje część ciosu, ale **nigdy całego**: przy pełnym pochłanianiu
+    // dobra zbroja znaczy nieśmiertelność wobec słabych przeciwników, a to psuje
+    // każdy system obrażeń. Minimum jeden punkt zawsze przechodzi.
+    if (target.gear) damage = Math.max(1, damage - this.armorOf(target));
     target.hp = Math.max(0, target.hp - damage);
     target.hurtDx = dx;
     target.hurtDy = dy;
@@ -757,26 +980,106 @@ export class Game {
   }
 
   /**
-   * Śmierć wyrzuca niesione rzeczy.
+   * Śmierć zostawia **worek**, nie rozsypane rzeczy.
    *
-   * Bez tego śmierć nic nie kosztuje, a plecak-siatka jest ozdobą: skoro nic nie
-   * tracisz, to nie ma znaczenia, ile niesiesz. To jest ta jedna rzecz, która
-   * zamienia wyjście za mury w decyzję — im dłużej zbierasz, tym więcej masz do
-   * stracenia w drodze powrotnej.
+   * Bez utraty rzeczy śmierć nic nie kosztuje, a plecak-siatka jest ozdobą: skoro
+   * nic nie tracisz, to nie ma znaczenia, ile niesiesz. To jest ta jedna rzecz,
+   * która zamienia wyjście za mury w decyzję — im dłużej zbierasz, tym więcej masz
+   * do stracenia w drodze powrotnej.
    *
-   * **Na razie rzeczy leżą osobno, nie w jednym worku.** Docelowo ma po trupie
-   * zostać worek, który się otwiera i z którego przekłada się tyle, ile się
-   * zmieści — czyli decyzja „co biorę", podejmowana stojąc nad ciałem w otwartym
-   * świecie. Wymaga to interfejsu cudzego pojemnika, którego jeszcze nie ma;
-   * rozsypane rzeczy dają dziś ten sam koszt śmierci, tylko brzydziej.
+   * Worek zamiast osobnych przedmiotów, bo **decyzja ma zapadać przy ciele**.
+   * Rozsypane rzeczy dawały ten sam koszt śmierci, ale odbiór był dwudziestoma
+   * naciśnięciami `E` i niczego nie kosztował poza cierpliwością. Z worka
+   * przekłada się tyle, ile się zmieści — przy pełnym plecaku trzeba wybierać,
+   * stojąc nad trupem w otwartym świecie, i to jest ta scena, dla której warto
+   * było to zrobić.
+   *
+   * Worek jest **niczyj**. Kto stoi obok, ten bierze — inaczej łupienie graczy
+   * nie istnieje, a po to jest cały ten system.
    */
   spillBag(player, now) {
-    if (!player.bag.items.length) return;
-    for (const item of player.bag.items) {
-      this.dropAt(player.x, player.y, item.kind, 1, now);
+    // Zbroja **spada razem z resztą**. Gdyby noszone zostawało przy graczu,
+    // śmierć przestawałaby kosztować dokładnie wtedy, gdy jest co stracić.
+    const noszone = [];
+    for (const slot of Object.keys(player.gear ?? {})) {
+      if (player.gear[slot]) { noszone.push(player.gear[slot]); player.gear[slot] = null; }
     }
+    if (noszone.length) player.gearSeq++;
+    if (!player.bag.items.length && !noszone.length) return;
+    const id = this.nextSack++;
+    this.sacks.set(id, {
+      id,
+      x: Math.round(player.x),
+      y: Math.round(player.y),
+      // Zawartość **bez układu siatki**: worek nie jest plecakiem, tylko kupą
+      // rzeczy. Kształty i obracanie zaczynają się dopiero przy przekładaniu
+      // do siebie i wtedy liczy je `addItem()`.
+      items: [...player.bag.items.map((it) => ({ id: it.id, kind: it.kind })), ...noszone],
+      until: now + SACK_MS,
+    });
     player.bag.items.length = 0;
     player.bagSeq++;
+    return id;
+  }
+
+  /** Worek w zasięgu ręki. Po nim klient zapala podpowiedź i po nim wolno brać. */
+  reachableSack(player) {
+    for (const sack of this.sacks.values()) {
+      const dx = sack.x - player.x;
+      const dy = (sack.y - player.y) * 1.4;
+      if (dx * dx + dy * dy <= SACK_RANGE * SACK_RANGE) return sack;
+    }
+    return null;
+  }
+
+  /**
+   * Przełożenie jednej rzeczy z worka do plecaka.
+   *
+   * Wszystko rozstrzyga serwer: czy worek istnieje, czy gracz przy nim stoi, czy
+   * rzecz w nim jest i czy zmieści się w siatce. Przy grze, w której łupi się
+   * innych graczy, nie ma innej możliwości — klient prosi, nie decyduje.
+   */
+  takeFromSack(player, sackId, itemId) {
+    const sack = this.sacks.get(sackId);
+    if (!sack) return false;
+    if (this.reachableSack(player)?.id !== sack.id) return false;
+
+    const i = sack.items.findIndex((it) => it.id === itemId);
+    if (i < 0) return false;
+
+    // Najpierw miejsce, potem zabranie z worka. Odwrotna kolejność gubiłaby rzecz
+    // przy pełnym plecaku — a to jest dokładnie ten moment, w którym plecak jest
+    // pełny najczęściej.
+    if (!addItem(player.bag, sack.items[i].kind)) return false;
+
+    sack.items.splice(i, 1);
+    player.bagSeq++;
+    // Pusty worek znika od razu. Leżący pusty jest obietnicą bez pokrycia.
+    if (!sack.items.length) this.sacks.delete(sack.id);
+    return true;
+  }
+
+  /** Worki w zasięgu wzroku gracza — same pozycje, bez zawartości. */
+  sackSnapshot(me) {
+    const out = [];
+    for (const sack of this.sacks.values()) {
+      if (Math.abs(sack.x - me.x) > VIEW_RANGE || Math.abs(sack.y - me.y) > VIEW_RANGE) continue;
+      out.push([sack.id, sack.x, sack.y]);
+    }
+    return out;
+  }
+
+  /**
+   * Zawartość worka, przy którym gracz stoi.
+   *
+   * Wysyłana **tylko temu, kto przy nim stoi**, i tylko wtedy, gdy stoi — tak samo
+   * jak plecak leci wyłącznie do właściciela. Cudza zawartość nie ma prawa siedzieć
+   * u nikogo w pamięci, bo to jest gra, w której się łupi.
+   */
+  sackContents(player) {
+    const sack = this.reachableSack(player);
+    if (!sack) return null;
+    return { i: sack.id, it: sack.items.map((it) => [it.id, it.kind]) };
   }
 
   /**
@@ -825,6 +1128,138 @@ export class Game {
    * zwierzę staje i patrzy, `charge` to prosta linia bez skrętu, `rest` to okno,
    * w którym można je bić bezkarnie.
    */
+  /**
+   * Zachowanie wilka i żmii — **jedna maszyna stanów, dwa różne zwierzęta**.
+   *
+   * Wspólne jest to, co i tak byłoby wspólne: szukanie celu, zapowiedź, skok,
+   * odpoczynek, kolizje, kierunek patrzenia. Różnica siedzi w liczbach i w jednym
+   * warunku: wilk **krąży, zanim skoczy**, żmija czeka w miejscu. Osobna kopia
+   * całej pętli na każde zwierzę rozjechałaby się przy pierwszej poprawce —
+   * a poprawek w zachowaniach będzie dużo.
+   */
+  stepHunter(mob, now, dt) {
+    const S = MOB_KINDS[mob.kind];
+
+    let target = null;
+    let best = Infinity;
+    for (const player of this.players.values()) {
+      if (player.hp <= 0 || inSafeZone(player.x, player.y)) continue;
+      const d = Math.hypot(player.x - mob.x, player.y - mob.y);
+      if (d < best) { best = d; target = player; }
+    }
+    const krąży = mob.kind === 'wolf';
+
+    // --- Przejścia stanów ------------------------------------------------------
+    if (mob.state === 'leap' && now >= mob.until) {
+      mob.state = 'rest';
+      mob.until = now + S.restMs;
+    } else if (mob.state === 'spot' && now >= mob.until) {
+      // Kierunek skoku zamrażany w chwili odbicia — skok skręcający za graczem
+      // jest nie do uniknięcia i przestaje być skokiem.
+      const dx = (target?.x ?? mob.x) - mob.x;
+      const dy = (target?.y ?? mob.y + 1) - mob.y;
+      const len = Math.hypot(dx, dy) || 1;
+      mob.runDx = dx / len;
+      mob.runDy = dy / len;
+      mob.state = 'leap';
+      mob.until = now + S.leapMs;
+    } else if (mob.state === 'rest' && now >= mob.until) {
+      mob.state = krąży && target && best < S.loseRange ? 'ring' : 'wander';
+    } else if (mob.state === 'ring') {
+      if (!target || best > S.loseRange) mob.state = 'wander';
+      // Skacze dopiero **z flanki albo zza pleców**. To jest cała różnica wobec
+      // dzika: uskok w bok, który ratuje przed szarżą, wilkowi nic nie robi,
+      // bo wilk i tak podchodzi z boku. Trzeba się do niego odwrócić.
+      else if (now >= (mob.readyAt ?? 0) && best < S.ringRange * 1.35) {
+        mob.state = 'spot';
+        mob.until = now + S.windupMs;
+        mob.seq = (mob.seq ?? 0) + 1;
+      }
+    } else if ((mob.state === 'wander' || !mob.state) && target && best < S.noticeRange) {
+      if (krąży) {
+        mob.state = 'ring';
+        // Strona obchodzenia losowana **raz na podejście**. Dwa wilki wychodzą
+        // wtedy z dwóch stron i odwrócenie się do jednego odsłania drugiego —
+        // to jest ta wataha, o którą chodzi, bez żadnego uzgadniania między nimi.
+        mob.spin = Math.random() < 0.5 ? -1 : 1;
+        mob.readyAt = now + 700 + Math.random() * 900;
+      } else {
+        mob.state = 'spot';
+        mob.until = now + S.windupMs;
+        mob.seq = (mob.seq ?? 0) + 1;
+      }
+    }
+
+    // --- Prędkość z aktualnego stanu ------------------------------------------
+    if (mob.state === 'leap') {
+      mob.vx = mob.runDx * S.leap;
+      mob.vy = mob.runDy * S.leap;
+    } else if (mob.state === 'spot' || mob.state === 'rest') {
+      mob.vx = 0;
+      mob.vy = 0;
+    } else if (mob.state === 'ring' && target) {
+      // Ruch po okręgu: składowa **do celu** trzyma promień, składowa **w bok**
+      // obchodzi. Samo podchodzenie dałoby zwykłą pogoń, samo obchodzenie —
+      // zwierzę kręcące się w nieskończoność za daleko, żeby cokolwiek zrobić.
+      const dx = target.x - mob.x;
+      const dy = target.y - mob.y;
+      const d = Math.hypot(dx, dy) || 1;
+      const doCelu = (d - S.ringRange) / S.ringRange;
+      const bx = -dy / d * mob.spin;
+      const by = dx / d * mob.spin;
+      mob.vx = (dx / d * doCelu * 1.6 + bx) * S.circle;
+      mob.vy = (dy / d * doCelu * 1.6 + by) * S.circle;
+    } else {
+      if (now >= (mob.turnAt ?? 0)) {
+        mob.turnAt = now + 1600 + Math.random() * 2600;
+        const a = Math.random() * Math.PI * 2;
+        mob.wanderDx = Math.cos(a);
+        mob.wanderDy = Math.sin(a);
+        if (Math.random() < 0.5) { mob.wanderDx = 0; mob.wanderDy = 0; }
+      }
+      mob.vx = (mob.wanderDx ?? 0) * S.walk;
+      mob.vy = (mob.wanderDy ?? 0) * S.walk;
+    }
+
+    // --- Ruch, kolizje, cios ---------------------------------------------------
+    const nx = mob.x + mob.vx * dt;
+    const ny = mob.y + mob.vy * dt;
+    if (isWalkable(this.world, nx - 6, ny - 6, nx + 6, ny - 0.5, true)) {
+      mob.x = nx;
+      mob.y = ny;
+    } else if (mob.state === 'leap') {
+      // Skok w drzewo kończy się ogłuszeniem, tak samo jak szarża dzika:
+      // przeszkoda ma być bronią gracza, a nie dekoracją.
+      mob.state = 'rest';
+      mob.until = now + S.restMs * 1.5;
+    } else {
+      mob.turnAt = 0;
+      if (mob.state === 'ring') mob.spin = -(mob.spin ?? 1);
+    }
+
+    if (mob.state === 'leap' && target && now - (mob.lastHit ?? 0) > S.hitCooldownMs) {
+      const d = Math.hypot(target.x - mob.x, target.y - mob.y);
+      if (d < S.radius + 8) {
+        mob.lastHit = now;
+        this.hurt(target, S.damage, mob.runDx, mob.runDy, now);
+        mob.state = 'rest';
+        mob.until = now + S.restMs;
+        // Po ugryzieniu wilk **odskakuje i krąży dalej**, zamiast stać przy
+        // graczu. Zwierzę, które po trafieniu zostaje w zwarciu, zamienia walkę
+        // w wymianę ciosów na stojąco — a to jest dokładnie to, czego unikamy.
+        if (krąży) mob.readyAt = now + S.restMs + 500 + Math.random() * 700;
+      }
+    }
+
+    if (Math.abs(mob.vx) > Math.abs(mob.vy)) {
+      mob.facing = 'side';
+      mob.flip = mob.vx > 0;
+    } else if (Math.abs(mob.vy) > 1) {
+      mob.facing = mob.vy < 0 ? 'up' : 'down';
+    }
+    mob.moving = Math.hypot(mob.vx, mob.vy) > 4;
+  }
+
   stepBoar(mob, now, dt) {
     // Cel: najbliższy żywy gracz poza strefą bezpieczną.
     let target = null;
@@ -945,6 +1380,10 @@ export class Game {
         this.stepBoar(mob, now, dt);
         continue;
       }
+      if (mob.kind === 'wolf' || mob.kind === 'snake') {
+        this.stepHunter(mob, now, dt);
+        continue;
+      }
 
       // Przywiązany cel nie rusza się w ogóle — jego reakcję rysuje klient.
       if (mob.anchored) continue;
@@ -1049,6 +1488,15 @@ export class Game {
       // Broń. `null` znaczy pięści — **stan startowy jest stanem najgorszym**,
       // więc brak informacji ma znaczyć „gołe ręce", nie „włócznia".
       weapon: null,
+      // Pasek narzędzi: numery przedmiotów w gniazdach i wybrane gniazdo.
+      hot: new Array(HOT_SLOTS).fill(null),
+      active: 0,
+      hotSeq: 0,
+      // Ekwipunek noszony. **Rzecz założona wychodzi z plecaka** i siedzi tutaj —
+      // inaczej zajmowałaby kratki, będąc jednocześnie na sobie, i „ile mam
+      // miejsca" przestawałoby mieć jedną odpowiedź.
+      gear: { body: null },
+      gearSeq: 0,
       // Znacznik zmiany zawartości: klient odświeża siatkę tylko wtedy, gdy coś
       // się naprawdę zmieniło, a nie dwadzieścia razy na sekundę.
       bagSeq: 0,
@@ -1135,7 +1583,7 @@ export class Game {
       // Ile komend czeka w kolejce — jeśli stale rośnie, serwer nie nadąża.
       player.backlog = player.queue.length;
 
-      const pose = poseOf(player, player.facing);
+      const pose = poseOf(player, player.facing, player.flip);
       player.facing = pose.facing;
       player.aimName = pose.aim;
       player.moving = pose.moving;

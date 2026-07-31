@@ -17,24 +17,35 @@ import { DODGE_CHARGES } from '../world/movement.js';
 const PANEL_X = 16;
 const PANEL_Y = 16;
 const UI_SCALE = 2;
-const BAR_W = 100;
-const BAR_H = 18;
-// Odstęp między znacznikami uniku. Zszedł razem z nimi: romb ma teraz 7 pikseli
-// boku zamiast 19, więc krok 21 zostawiał między nimi trzy puste kryształy.
-const PIP_STEP = 9;
+// Trzy paski panelu mają **jeden rozmiar**. Wcześniej życie było szersze
+// i wyższe od reszty, a wysokość układała hierarchię ważności; użytkownik
+// wybrał minimalizm i to jest lepszy wybór, niż się wydaje: trzy paski tej samej
+// wielkości czytają się jako jeden przyrząd o trzech wskazaniach, a różniące się
+// wymagają od oka porównywania, zanim cokolwiek powiedzą.
+const BAR_W = 62;
+const BAR_H = 16;
+// Pasek uniku: trzeci pasek panelu, najniższy z trzech.
+//
+// Wcześniej były to trzy romby-kryształy i **zostały odrzucone** — powód wart
+// zapamiętania: HUD ma być **jednym przyrządem**, a nie zbiorem odznak. Romb
+// obok dwóch pasków czyta się jako osobny system, choćby był mały i choćby leżał
+// równo pod nimi. Ładunki nie zniknęły, są tylko przegrodami w pasku.
+//
+// Rozmiar ten sam co pozostałe dwa — patrz `BAR_W`/`BAR_H`.
+const DODGE_W = BAR_W;
+const DODGE_H = BAR_H;
 
-// Pasek głodu: węższy i niższy od paska życia, bo głód jest wolniejszy i mniej
-// pilny — dwa równe paski obok siebie czytają się jako dwie równie ważne rzeczy.
+// Pasek głodu — ten sam rozmiar co życie i unik.
 //
 // **Wysokość musi przekraczać `SLICE * 2`.** Pierwsza wersja miała 9 przy `SLICE`
 // równym 6, więc wnętrze ramki wychodziło ujemne i pasek był po prostu pusty.
-const FOOD_W = 62;
-const FOOD_H = 16;
+const FOOD_W = BAR_W;
+const FOOD_H = BAR_H;
 // Odstępy pionowe, liczone od górnej krawędzi panelu. Trzymane w jednym miejscu,
 // bo znaczniki uniku nachodziły na pasek głodu dokładnie dlatego, że każdy
 // element liczył swoje przesunięcie osobno.
-const FOOD_Y = 18 + 3;          // pod paskiem życia (BAR_H = 18)
-const PIP_Y = FOOD_Y + FOOD_H + 4;
+const FOOD_Y = BAR_H + 3;       // pod paskiem życia
+const DODGE_Y = FOOD_Y + FOOD_H + 3;
 
 // Szerokość nierozciąganego brzegu ramki 9-slice.
 //
@@ -44,6 +55,20 @@ const PIP_Y = FOOD_Y + FOOD_H + 4;
 // Liczba jest wpisana w dwóch miejscach, bo klient nie importuje niczego
 // z narzędzi budowania — przy zmianie poprawić obie.
 const SLICE = 6;
+
+// Wypełnienie paska rysujemy **odrobinę szerzej niż otwór w ramce**.
+//
+// Zgłoszone z gry: *paski nie mają tła i prześwitują dziwnie*. Rysunek ramki ma
+// 18×18 px, a jej nieprzezroczysty brzeg **pięć** pikseli — otwór idzie od 5 do
+// 12. Cięcie 9-slice stoi na 6, więc wypełnienie liczone od `SLICE` zostawiało
+// dookoła pierścień grubości piksela, przez który widać świat. Liczby nie da się
+// po prostu zrównać: sześć jest potrzebne przy cięciu, żeby narożnik nie łapał
+// przezroczystego rzędu przy rozciąganiu.
+//
+// Dlatego wypełnienie zachodzi dwa piksele **pod** brzeg. Brzeg jest kryjący
+// i rysowany nad wypełnieniem, więc nadmiar znika pod nim, a szpary nie ma —
+// i nie wróci nawet wtedy, gdy grubość brzegu w generatorze drgnie o piksel.
+const FILL_PAD = SLICE - 2;
 
 const CHAT_LIMIT = 120;        // musi zgadzać się z limitem serwera
 const LOG_LINES = 6;
@@ -444,7 +469,17 @@ export class HudScene extends Phaser.Scene {
       .setTint(0x66913f)
       .setVisible(false);
 
-    this.input.keyboard.on('keydown-F1', (event) => {
+    // Dwa klawisze, i to nie z lenistwa.
+    //
+    // Na MacBooku rząd funkcyjny jest domyślnie zajęty przez system — `F1` ściemnia
+    // ekran, a do gry dochodzi dopiero z wciśniętym `Fn`. Zgłoszone z gry: *F1 na
+    // macbooku nie działa*, czyli panel z suwakami pory dnia i pogody był przez
+    // cały czas **nieosiągalny**, mimo że istniał.
+    //
+    // Zastępczy klawisz to `K`. Backtick odpadł po drodze — na Macu z polskim
+    // układem nie ma go pod ręką. `K` leży w zasięgu prawej dłoni i jest wolny:
+    // ruch siedzi na WASD, cios na myszy, a `E`, `M`, `N` i TAB są zajęte.
+    const przełącz = (event) => {
       if (typing()) return;
       event.preventDefault();
       const on = !this.diag.visible;
@@ -456,7 +491,10 @@ export class HudScene extends Phaser.Scene {
       // Suwak pory dnia to element HTML, więc mieszka w scenie świata — stąd
       // przełączanie przez scenę, a nie tutaj.
       this.scene.get('Forge')?.setDiagVisible(on);
-    });
+    };
+
+    this.input.keyboard.on('keydown-F1', przełącz);
+    this.input.keyboard.on('keydown-K', przełącz);
   }
 
   refreshAudioLabel() {
@@ -523,7 +561,7 @@ export class HudScene extends Phaser.Scene {
     // czyta się ją raz, a wisząca stale nad grą przeszkadzałaby zawsze.
     this.addMessage({
       system: true,
-      text: 'WASD ruch   MYSZ cios   SPACJA unik   Shift bieg   Enter czat   F1 panel',
+      text: 'WASD ruch   MYSZ cios   SPACJA unik   Shift bieg   Enter czat   K panel',
     });
   }
 
@@ -570,6 +608,10 @@ export class HudScene extends Phaser.Scene {
       `niepotwierdzone: ${stats.niepotwierdzone}`,
       `gracze obok: ${stats.obok}`,
       `pora dnia: ${stats.poraDnia}   ${stats.pogoda}`,
+      // Stan warstwy mgły, a nie samo „ile jej ma być". Liczba kafli i krycie
+      // rozstrzygają pytanie, którego same liczby wejściowe nie rozstrzygają:
+      // czy warstwa nie rysuje, czy rysuje coś niewidocznego.
+      `mgła: ${stats.mgła ?? '—'}`,
       `plakietki: ${this.plates.size}   dymki: ${this.bubbles.size}`,
       `ekran: ${Math.round(this.scale.width)}x${Math.round(this.scale.height)}`,
     ].join('\n'));
@@ -680,21 +722,17 @@ export class HudScene extends Phaser.Scene {
     this.healthGhost = 1;
     this.healthValue = 1;
 
-    this.healthLabel = this.add.bitmapText(0, 0, 'goblin', '', 11)
-      .setScale(UI_SCALE).setTint(TEXT).setDepth(DEPTH.plate + 1);
+    // Liczby w pasku **nie ma i to jest decyzja**, nie zaniedbanie. Wcześniej
+    // stało tam „74/100"; poszło razem z wyrównaniem pasków do jednego rozmiaru.
+    // Pasek mówi „mało" szybciej, niż oko przeczyta dwie liczby, a przy trzech
+    // paskach obok siebie liczba w jednym z nich robi z niego wyjątek.
 
-    // Znaczniki uniku pod paskiem.
-    this.pips = [];
-    for (let i = 0; i < DODGE_CHARGES; i++) {
-      const px = PANEL_X + i * PIP_STEP * UI_SCALE;
-      const py = PANEL_Y + PIP_Y * UI_SCALE;
-      this.pips.push({
-        empty: this.add.image(px, py, 'ui', 'pip_empty')
-          .setOrigin(0, 0).setScale(UI_SCALE).setDepth(DEPTH.plate),
-        full: this.add.image(px, py, 'ui', 'pip_full')
-          .setOrigin(0, 0).setScale(UI_SCALE).setDepth(DEPTH.plate + 1),
-      });
-    }
+    // Pasek uniku — ta sama ramka co życie i głód, tylko niższa.
+    this.dodgeFrame = this.add.nineslice(
+      PANEL_X, PANEL_Y + DODGE_Y * UI_SCALE, 'ui', 'frame_slot',
+      DODGE_W, DODGE_H, SLICE, SLICE, SLICE, SLICE
+    ).setOrigin(0, 0).setScale(UI_SCALE).setDepth(DEPTH.plate);
+    this.dodgeBar = this.add.graphics().setDepth(DEPTH.plate - 1);
     this.dodgeFuel = DODGE_CHARGES;
 
     // Pasek głodu pod paskiem życia, węższy i niższy.
@@ -724,12 +762,25 @@ export class HudScene extends Phaser.Scene {
 
   setHealth(hp, maxHp, safe) {
     this.healthValue = maxHp > 0 ? Math.max(0, Math.min(1, hp / maxHp)) : 0;
-    this.healthText = `${Math.max(0, Math.round(hp))}/${Math.round(maxHp)}`;
     this.healthSafe = Boolean(safe);
   }
 
   setDodge(fuel) {
-    this.dodgeFuel = Math.max(0, Math.min(DODGE_CHARGES, fuel));
+    const nowy = Math.max(0, Math.min(DODGE_CHARGES, fuel));
+    // Pełny ładunek **melduje się sam**: dzwonkiem i błyskiem segmentu.
+    //
+    // Bez tego jedynym sposobem sprawdzenia, czy da się już uskoczyć, jest
+    // spojrzenie na pasek — a unik odzyskuje się w środku walki, kiedy oczy są
+    // zajęte przeciwnikiem. Liczymy **przekroczenie liczby całkowitej w górę**,
+    // więc jeden ładunek daje jeden sygnał, choćby pasek drgał przy granicy.
+    const było = Math.floor(this.dodgeFuel ?? 0);
+    const jest = Math.floor(nowy);
+    if (jest > było) {
+      this.dodgeFlash = 1;
+      this.dodgeFlashSlot = jest - 1;
+      audio.charge();
+    }
+    this.dodgeFuel = nowy;
   }
 
   setFood(food, maxFood) {
@@ -741,10 +792,10 @@ export class HudScene extends Phaser.Scene {
     const dt = Math.min(delta, 60) / 1000;
     this.foodShown += (this.foodValue - this.foodShown) * Math.min(1, dt * 10);
 
-    const ix = PANEL_X + SLICE * UI_SCALE;
-    const iy = PANEL_Y + (FOOD_Y + SLICE) * UI_SCALE;
-    const iw = (FOOD_W - SLICE * 2) * UI_SCALE;
-    const ih = (FOOD_H - SLICE * 2) * UI_SCALE;
+    const ix = PANEL_X + FILL_PAD * UI_SCALE;
+    const iy = PANEL_Y + (FOOD_Y + FILL_PAD) * UI_SCALE;
+    const iw = (FOOD_W - FILL_PAD * 2) * UI_SCALE;
+    const ih = (FOOD_H - FILL_PAD * 2) * UI_SCALE;
 
     this.foodBar.clear();
     this.foodBar.fillStyle(0x2b2113, 1);
@@ -777,10 +828,10 @@ export class HudScene extends Phaser.Scene {
     if (this.healthGhost < this.healthShown) this.healthGhost = this.healthShown;
 
     // Wnetrze ramki, liczone w pikselach ekranu.
-    const ix = PANEL_X + SLICE * UI_SCALE;
-    const iy = PANEL_Y + SLICE * UI_SCALE;
-    const iw = (BAR_W - SLICE * 2) * UI_SCALE;
-    const ih = (BAR_H - SLICE * 2) * UI_SCALE;
+    const ix = PANEL_X + FILL_PAD * UI_SCALE;
+    const iy = PANEL_Y + FILL_PAD * UI_SCALE;
+    const iw = (BAR_W - FILL_PAD * 2) * UI_SCALE;
+    const ih = (BAR_H - FILL_PAD * 2) * UI_SCALE;
 
     this.health.clear();
     this.health.fillStyle(0x231c15, 1);
@@ -795,21 +846,56 @@ export class HudScene extends Phaser.Scene {
     this.health.fillStyle(low ? 0xa04a4a : 0xc47a74, 1);
     this.health.fillRect(ix, iy, filled, Math.round(ih * 0.32));
 
-    // Liczba W pasku, nie obok: obok robi sie z niej osobny element, ktorego oko
-    // musi szukac.
-    this.healthLabel.setPosition(ix + 6 * UI_SCALE, iy + Math.round((ih - 11 * UI_SCALE) / 2));
-    this.healthLabel.setText(this.healthText ?? '');
+    this.updateDodge(delta);
+  }
 
-    // Ladujacy sie znacznik wypelnia sie OD DOLU, wiec widac nie tylko ile masz,
-    // ale ile zaraz bedziesz mial.
-    this.pips.forEach((pip, i) => {
+  /**
+   * Pasek uniku: trzy segmenty jednego paska, nie trzy osobne odznaki.
+   *
+   * Ładowanie zostaje **płynne** — segment wypełnia się częściowo, dokładnie tak
+   * jak wcześniej kryształ. `dodgeFuel` to ułamek 0–3, więc po stronie danych nie
+   * było tu nic do zmiany: to jest zmiana skóry, nie zasad.
+   *
+   * Zieleń z rampy `foliage` (`#4f7a33`, `#6b9c45`). Rampy interfejsu są
+   * w palecie osobne od świata, ale zielonej wśród nich nie ma, a dorzucanie
+   * ramy, z której nic się nie generuje, byłoby martwym wpisem.
+   */
+  updateDodge(delta = 16) {
+    if (!this.dodgeBar) return;
+    // Błysk gaśnie w jakieś ćwierć sekundy — dłuższy zaczyna wyglądać jak stan,
+    // a to jest zdarzenie.
+    this.dodgeFlash = Math.max(0, (this.dodgeFlash ?? 0) - delta / 260);
+
+    const ix = PANEL_X + FILL_PAD * UI_SCALE;
+    const iy = PANEL_Y + (DODGE_Y + FILL_PAD) * UI_SCALE;
+    const iw = (DODGE_W - FILL_PAD * 2) * UI_SCALE;
+    const ih = (DODGE_H - FILL_PAD * 2) * UI_SCALE;
+
+    // Przegrody **zabierają szerokość segmentom**, a nie dokładają się do paska:
+    // inaczej trzy segmenty wystają poza ramkę o dwie przerwy.
+    const przerwa = UI_SCALE;
+    const segment = (iw - przerwa * (DODGE_CHARGES - 1)) / DODGE_CHARGES;
+
+    this.dodgeBar.clear();
+    for (let i = 0; i < DODGE_CHARGES; i++) {
+      const x = ix + Math.round(i * (segment + przerwa));
+      const szer = Math.round(segment);
+      this.dodgeBar.fillStyle(0x14260f, 1);
+      this.dodgeBar.fillRect(x, iy, szer, ih);
+
       const part = Math.max(0, Math.min(1, this.dodgeFuel - i));
-      pip.full.setVisible(part > 0);
-      if (part <= 0) return;
-      const h = pip.full.height;
-      const shown = Math.max(1, Math.round(h * part));
-      pip.full.setCrop(0, h - shown, pip.full.width, shown);
-    });
+      if (part <= 0) continue;
+      const pełne = Math.max(1, Math.round(szer * part));
+      // Świeżo naładowany segment błyska i gaśnie — jaśniejszy odcień tej samej
+      // zieleni, nie inny kolor: błysk ma być tym samym paskiem, nie alarmem.
+      const błysk = this.dodgeFlashSlot === i ? (this.dodgeFlash ?? 0) : 0;
+      this.dodgeBar.fillStyle(błysk > 0.02 ? 0x9ed46a : 0x4f7a33, 1);
+      this.dodgeBar.fillRect(x, iy, pełne, ih);
+      // Jasny grzbiet u góry, tak samo jak w życiu i głodzie — to on scala trzy
+      // paski w jeden przyrząd.
+      this.dodgeBar.fillStyle(0x6b9c45, 1);
+      this.dodgeBar.fillRect(x, iy, pełne, Math.max(1, Math.round(ih * 0.34)));
+    }
   }
   update(time, delta) {
     this.updateBubbles(time);

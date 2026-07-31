@@ -105,8 +105,9 @@ function buildRow(label, max, format, onChange) {
 /**
  * @param {(phase: number|null) => void} onDay
  * @param {(rain: number|null) => void} onRain
+ * @param {(fog: number|null) => void} onFog gęstość mgły wymuszona ręcznie
  */
-export function createTestPanel(onDay, onRain) {
+export function createTestPanel(onDay, onRain, onFog = () => {}) {
   const panel = document.createElement('div');
   panel.id = 'testpanel';
   panel.style.display = 'none';
@@ -129,15 +130,25 @@ export function createTestPanel(onDay, onRain) {
     (v) => [`${v}%`, weatherName(v / 100)],
     (v) => onRain(v / 100));
 
+  // Mgła. Suwak jest tu **z powodu diagnostycznego**, nie dla wygody: mgła bywa
+  // gęsta tylko o świcie, więc bez niego jedynym sposobem sprawdzenia, czy warstwa
+  // w ogóle rysuje, było ustawienie pory dnia na 0,24 i uwierzenie, że reszta
+  // działa. Podkręcenie na 100% odpowiada na to pytanie w sekundę.
+  const fog = buildRow('mgła', 100,
+    (v) => [`${v}%`, v === 0 ? 'czysto' : (v < 25 ? 'ledwie' : (v < 60 ? 'mgiełka' : 'gęsta'))],
+    (v) => onFog(v / 100));
+
   auto.addEventListener('click', () => {
     day.release();
     rain.release();
+    fog.release();
     onDay(null);
     onRain(null);
+    onFog(null);
     auto.blur();
   });
 
-  panel.append(header, day.el, rain.el);
+  panel.append(header, day.el, rain.el, fog.el);
   // Scena świata potrafi się przeładować (np. przy zerwanym połączeniu), a wtedy
   // panel doszedłby drugi raz.
   document.getElementById('testpanel')?.remove();
@@ -150,10 +161,11 @@ export function createTestPanel(onDay, onRain) {
       visible = on;
       panel.style.display = on ? 'block' : 'none';
     },
-    follow(phase, rainLevel) {
+    follow(phase, rainLevel, fogLevel = 0) {
       if (!visible) return;
       day.follow((phase * 1440) % 1440);
       rain.follow(rainLevel * 100);
+      fog.follow(fogLevel * 100);
     },
   };
 }

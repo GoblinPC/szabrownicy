@@ -12,7 +12,7 @@
 //   34-35  skalna granica
 
 import { makeRng, seedFrom } from '../util/rng.js';
-import { field, scatter, REGIONS, inClearing } from './terrain.js';
+import { field, scatter, REGIONS, inClearing, Zajętość } from './terrain.js';
 import { nodeKindOf } from './nodes.js';
 
 /**
@@ -26,6 +26,61 @@ import { nodeKindOf } from './nodes.js';
  * strony i pozycja celu musi być u nich identyczna.
  */
 export const TRAINING_DUMMY = { x: 520 + 56 * 16, y: 400 + 8 * 16 };
+
+/**
+ * Zasięg pracy przy stanowisku rzemieślniczym.
+ *
+ * Z zapasem: gracz ma **stanąć przy warsztacie**, a nie trafić w piksel. Wspólny
+ * dla obu stron, bo po tej samej liczbie klient zapala okno, a serwer pozwala
+ * wykonać wyrób — rozjechane dawałyby okno, w którym nic nie działa.
+ */
+export const CRAFT_RANGE = 46;
+
+/**
+ * Gdzie się rzemieślniczy — **wyszukane w liście obiektów, nie wpisane liczbą**.
+ *
+ * Poprzednia wersja trzymała współrzędne kowadła wpisane na sztywno po stronie
+ * serwera (`384, 208`). Kiedy wnętrze karczmy przebudowano na cztery
+ * pomieszczenia, kowadło pojechało pod palenisko na (168, 176), a liczba
+ * w serwerze została — i strefa kucia wisiała odtąd w powietrzu na środku sali
+ * wspólnej. Objawiało się to dokładnie tak, jak zgłosił użytkownik: *podchodzę
+ * do kowadła i nic*. To ten sam rodzaj błędu, przed którym ostrzega CLAUDE.md:
+ * jeden fakt zapisany w dwóch miejscach, które przestały się zgadzać.
+ *
+ * Odpytanie listy obiektów kosztuje jedno przejście po tablicy przy starcie
+ * i **nie da się go rozjechać** — jeśli warsztat się przesunie, strefa idzie
+ * razem z nim.
+ */
+export function craftStation(world, key = 'workbench') {
+  return world.props.find((p) => p.key === key) ?? null;
+}
+
+/**
+ * Przy którym stanowisku stoi gracz — albo `null`.
+ *
+ * Stanowisk jest więcej niż jedno i **każde robi co innego**: przy stole się
+ * struga i kuje, na stojaku wyprawia skóry. Zwracamy nazwę, a nie „tak/nie",
+ * bo po niej klient wybiera listę wyrobów, a serwer sprawdza, czy dany wyrób
+ * wolno wykonać tutaj.
+ */
+export const STATIONS = ['workbench', 'tanrack'];
+
+export function stationAt(world, x, y) {
+  for (const key of STATIONS) if (atCraftStation(world, x, y, key)) return key;
+  return null;
+}
+
+/** Czy punkt leży w zasięgu stanowiska. Oś Y ściśnięta jak wszędzie w rzucie 3/4. */
+export function atCraftStation(world, x, y, key = 'workbench') {
+  const bench = craftStation(world, key);
+  if (!bench) return false;
+  const dx = x - bench.x;
+  // Warsztat obsługuje się **od frontu**, więc punkt odniesienia leży pół kroku
+  // niżej niż zaczepienie rysunku — inaczej strefa kończyła się graczowi na
+  // wysokości pasa i trzeba było wchodzić w blat.
+  const dy = (y - (bench.y + 6)) * 1.5;
+  return dx * dx + dy * dy <= CRAFT_RANGE * CRAFT_RANGE;
+}
 
 export const TILE = 16;
 
@@ -1032,7 +1087,29 @@ function buildWildProps(tiles) {
   const rng = makeRng(seedFrom('dzicz'));
   const out = [];
 
-  const wolne = (x, y) => {
+  // Zajętość jest **jedna na całą mapę**, nie jedna na warstwę i nie jedna na
+  // obszar. Na styku lasu ze skaliskiem obiekty z dwóch obszarów stoją obok
+  // siebie i muszą się widzieć tak samo jak wewnątrz jednego.
+  const zajętość = new Zajętość();
+
+  /**
+   * Czy w tym miejscu wolno cokolwiek postawić.
+   *
+   * `margines` to odsunięcie od drogi, skały i muru — sprawdzane w czterech
+   * rogach kwadratu wokół punktu, nie w samym punkcie. Punktowy test przepuszczał
+   * głaz zaczepiony piksel od drogi: zaczepienie stało obok ścieżki, a rysunek
+   * szeroki na czternaście pikseli leżał już na niej. Droga ma zostać drogą,
+   * bo to po niej gracz wychodzi z miasta.
+   */
+  const wolne = (x, y, margines = 0) => {
+    for (const [dx, dy] of [[0, 0], [-margines, -margines], [margines, -margines],
+      [-margines, margines], [margines, margines]]) {
+      if (!wolnyKafel(x + dx, y + dy)) return false;
+    }
+    return true;
+  };
+
+  const wolnyKafel = (x, y) => {
     const tx = Math.floor(x / TILE);
     const ty = Math.floor(y / TILE);
     const tile = tiles[ty]?.[tx];
@@ -1045,6 +1122,10 @@ function buildWildProps(tiles) {
 
   // Słupy przy każdej bramie — po jednym z każdej strony przejścia. To one robią
   // z otworu w skale bramę: bez nich nie widać, gdzie kończy się miasto.
+  // Słupy trafiają do zajętości razem z resztą — stoją przy samym przejściu,
+  // więc bez tego drzewo mogło wyrosnąć w bramie.
+  const słup = (x, y) => { zajętość.dodaj(x, y, 22); };
+
   for (const gate of GATES) {
     const px = gate.x * TILE;
     const py = gate.y * TILE;
@@ -1056,6 +1137,7 @@ function buildWildProps(tiles) {
       out.push({ key: 'gatepost', x: px + gate.w * TILE / 2, y: py + gate.h * TILE + 16, body: { w: 12, h: 8 } });
     }
   }
+  for (const p of out) if (p.key === 'gatepost') słup(p.x, p.y);
 
   for (const region of REGIONS) {
     // Prostokąt obszaru: wszystko poza miastem po danej stronie.
@@ -1065,19 +1147,26 @@ function buildWildProps(tiles) {
         ? { x0: 3 * TILE, y0: 3 * TILE, x1: (CITY_OX - 1) * TILE, y1: (CITY_OY + CITY_H) * TILE }
         : { x0: (CITY_OX + CITY_W + 1) * TILE, y0: 3 * TILE, x1: (MAP_W - 3) * TILE, y1: (CITY_OY + CITY_H) * TILE };
 
-    // Drzewa: minimalny odstęp 40 px, więc korony się nie zlewają, a gęstość
-    // steruje szumem — stąd biorą się gęstwiny. **Na polanach nie rosną.**
-    const drzewa = scatter(rng, box, 40, 2400, (x, y) =>
-      wolne(x, y)
+    // Drzewa. Promień 26 px, czyli dwa drzewa dzieli 52 px, a drzewo od głazu 56.
+    //
+    // Poprzednie 40 px między drzewami wyglądało rozsądnie na papierze i dawało
+    // ścianę: przy pniu szerokim na 8 px zostawało 32 px przerwy, ale **głaz
+    // o tym nie wiedział** i wchodził w tę przerwę, bo miał własną listę.
+    // Korytarz robił się wtedy węższy od gracza. Dziś obie rzeczy siedzą w jednej
+    // liście zajętości, więc przerwa jest pewna, a nie taka na oko.
+    //
+    // **Na polanach nie rosną**, gęstość steruje szumem — stąd gęstwiny.
+    const drzewa = scatter(rng, box, 26, 2400, (x, y) =>
+      wolne(x, y, 12)
       && !inClearing(x / TILE, y / TILE)
-      && field(x / TILE, y / TILE, 1.3) < region.tree);
+      && field(x / TILE, y / TILE, 1.3) < region.tree, zajętość);
     for (const p of drzewa) {
       out.push({ key: 'tree', x: Math.round(p.x), y: Math.round(p.y), body: { w: 8, h: 8 } });
     }
 
-    // Głazy: rzadsze i większy odstęp, żeby nie robiły alei.
-    const glazy = scatter(rng, box, 52, 1400, (x, y) =>
-      wolne(x, y) && field(x / TILE, y / TILE, 4.1) < region.rock);
+    // Głazy: rzadsze i większy promień, żeby nie robiły alei.
+    const glazy = scatter(rng, box, 30, 1400, (x, y) =>
+      wolne(x, y, 14) && field(x / TILE, y / TILE, 4.1) < region.rock, zajętość);
     for (const p of glazy) {
       out.push({ key: 'boulder', x: Math.round(p.x), y: Math.round(p.y), body: { w: 14, h: 7 } });
     }
@@ -1090,14 +1179,18 @@ function buildWildProps(tiles) {
     //
     // Gałęzie leżą pod drzewami, kamienie przy skałach — jedno i drugie ma
     // wyglądać na **skutek czegoś**, a nie na posyp po mapie.
-    const gałęzie = scatter(rng, box, 26, 2200, (x, y) =>
-      wolne(x, y) && field(x / TILE, y / TILE, 1.3) < region.tree + 0.12);
+    //
+    // Promień mały (10 px), bo to rzeczy **leżące**: nie zastawiają przejścia
+    // i mają prawo leżeć tuż przy pniu. Wspólna lista i tak nie pozwoli im wejść
+    // w sam pień, bo drzewo wnosi swoje 26 px.
+    const gałęzie = scatter(rng, box, 10, 2200, (x, y) =>
+      wolne(x, y, 6) && field(x / TILE, y / TILE, 1.3) < region.tree + 0.12, zajętość);
     for (const p of gałęzie) {
       out.push({ key: `branch${rng.int(2)}`, x: Math.round(p.x), y: Math.round(p.y) });
     }
 
-    const kamyki = scatter(rng, box, 26, 2200, (x, y) =>
-      wolne(x, y) && field(x / TILE, y / TILE, 4.1) < region.rock + 0.18);
+    const kamyki = scatter(rng, box, 10, 2200, (x, y) =>
+      wolne(x, y, 6) && field(x / TILE, y / TILE, 4.1) < region.rock + 0.18, zajętość);
     for (const p of kamyki) {
       out.push({ key: `pebbles${rng.int(2)}`, x: Math.round(p.x), y: Math.round(p.y) });
     }
@@ -1105,8 +1198,8 @@ function buildWildProps(tiles) {
     // Krzaki: **wchodzą także na polany** i to jest ich zadanie. Polana bez
     // niczego jest łysiną; polana z krzakami i kwiatami jest miejscem.
     // Nie zastawiają drogi ciałem — przez krzak da się przejść.
-    const krzaki = scatter(rng, box, 22, 3000, (x, y) =>
-      wolne(x, y) && field(x / TILE, y / TILE, 6.2) < region.bush);
+    const krzaki = scatter(rng, box, 11, 3000, (x, y) =>
+      wolne(x, y, 6) && field(x / TILE, y / TILE, 6.2) < region.bush, zajętość);
     for (const p of krzaki) {
       const kind = rng.chance(0.75) ? `bush${rng.int(3)}` : `flowers${rng.int(2)}`;
       out.push({ key: kind, x: Math.round(p.x), y: Math.round(p.y) });

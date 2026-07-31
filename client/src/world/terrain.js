@@ -38,6 +38,68 @@ export function inClearing(x, y) {
 }
 
 /**
+ * Wspólna lista zajętości dla **wszystkich** warstw rozrzutu.
+ *
+ * Poprzednia wersja pilnowała odstępu osobno w każdym wywołaniu `scatter()`:
+ * drzewa nie wchodziły na drzewa, głazy na głazy — ale głaz o drzewie nie
+ * wiedział nic. Zgłoszone z gry: *głazy nachodzą na inne obiekty, a zagęszczenie
+ * jest takie, że ledwo da się przejść przez mapę*. Jedna wspólna lista usuwa
+ * przyczynę zamiast łatać skutki.
+ *
+ * Każdy obiekt wnosi **własny promień zajętości**, a odległość sprawdzamy jako
+ * sumę dwóch promieni. Dzięki temu jedna reguła obsługuje wszystkie pary: dwa
+ * drzewa muszą stać daleko od siebie, ale gałąź wolno położyć tuż przy pniu,
+ * bo jej promień jest prawie zerowy. Wspólne `spacing` dla całej mapy dałoby
+ * albo zlewające się korony, albo rozrzucone pojedynczo patyki.
+ *
+ * Szukanie po siatce, nie po całej liście: obiektów na mapie 160×120 kafli jest
+ * kilka tysięcy, a bez siatki każdy kandydat porównywałby się z każdym przyjętym.
+ */
+export class Zajętość {
+  constructor(cell = 64) {
+    this.cell = cell;
+    this.grid = new Map();
+  }
+
+  klucz(cx, cy) { return cy * 100000 + cx; }
+
+  /** Czy punkt o danym promieniu nie wchodzi na nic postawionego wcześniej. */
+  wolne(x, y, radius) {
+    // Zasięg przeszukania musi objąć **największy promień, jaki gdziekolwiek
+    // wystąpił**, a nie tylko własny: drzewo postawione wcześniej sięga dalej
+    // niż kamyk, który właśnie sprawdzamy.
+    const zasięg = radius + (this.maxR ?? 0);
+    const c0x = Math.floor((x - zasięg) / this.cell);
+    const c1x = Math.floor((x + zasięg) / this.cell);
+    const c0y = Math.floor((y - zasięg) / this.cell);
+    const c1y = Math.floor((y + zasięg) / this.cell);
+
+    for (let cy = c0y; cy <= c1y; cy++) {
+      for (let cx = c0x; cx <= c1x; cx++) {
+        const kubełek = this.grid.get(this.klucz(cx, cy));
+        if (!kubełek) continue;
+        for (const p of kubełek) {
+          const dx = p.x - x;
+          const dy = p.y - y;
+          const min = radius + p.r;
+          if (dx * dx + dy * dy < min * min) return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  dodaj(x, y, radius) {
+    const cx = Math.floor(x / this.cell);
+    const cy = Math.floor(y / this.cell);
+    const k = this.klucz(cx, cy);
+    if (!this.grid.has(k)) this.grid.set(k, []);
+    this.grid.get(k).push({ x, y, r: radius });
+    this.maxR = Math.max(this.maxR ?? 0, radius);
+  }
+}
+
+/**
  * Rozrzut z **wymuszonym minimalnym odstępem**.
  *
  * To jest ta jedna funkcja, która naprawia połowę problemu z wyglądem. Losowanie
@@ -45,25 +107,20 @@ export function inClearing(x, y) {
  * a nie jako naturę. Odrzucanie punktów, które wypadły za blisko już przyjętych,
  * daje rozkład, który wygląda na rozstawiony ręcznie.
  *
- * Prosta wersja Poissona: losujemy kandydatów i odrzucamy zbyt bliskich. Przy
- * kilkuset obiektach na obszar nie ma sensu nic mądrzejszego.
+ * Prosta wersja Poissona: losujemy kandydatów i odrzucamy zbyt bliskich. Odstęp
+ * jest teraz **promieniem obiektu** wnoszonym do wspólnej listy zajętości, więc
+ * dwa drzewa dzieli suma ich promieni, a drzewo od gałęzi — znacznie mniej.
  */
-export function scatter(rng, { x0, y0, x1, y1 }, spacing, tries, accept) {
+export function scatter(rng, { x0, y0, x1, y1 }, radius, tries, accept, zajętość) {
   const taken = [];
-  const min2 = spacing * spacing;
 
   for (let i = 0; i < tries; i++) {
     const x = rng.range(x0, x1);
     const y = rng.range(y0, y1);
     if (!accept(x, y)) continue;
-
-    let free = true;
-    for (const p of taken) {
-      const dx = p.x - x;
-      const dy = p.y - y;
-      if (dx * dx + dy * dy < min2) { free = false; break; }
-    }
-    if (free) taken.push({ x, y });
+    if (!zajętość.wolne(x, y, radius)) continue;
+    zajętość.dodaj(x, y, radius);
+    taken.push({ x, y });
   }
   return taken;
 }

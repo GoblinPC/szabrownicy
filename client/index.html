@@ -127,6 +127,44 @@
   }
   .chat-left { min-width: 18px; text-align: right; font-size: 10px; color: #6b5d54; }
 
+  /* Pasek narzędzi. Widoczny **zawsze**, także przy zamkniętym plecaku: to
+     jedyne miejsce, które odpowiada na pytanie „co mam w ręce", a odpowiadać
+     na nie trzeba w biegu. Nad plecakiem (z-index), żeby dało się przeciągnąć
+     na niego rzecz z otwartej siatki. */
+  #hotbar {
+    position: fixed;
+    left: 50%;
+    bottom: 14px;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 6px;
+    z-index: 12;
+  }
+  .hot-cell {
+    position: relative;
+    width: 44px;
+    height: 44px;
+    display: grid;
+    place-items: center;
+    background: rgba(20, 16, 15, .92);
+    border: 1px solid #453b37;
+    border-radius: 3px;
+    box-shadow: 0 0 0 1px #14100f;
+    cursor: pointer;
+  }
+  /* Wybrane gniazdo świeci **obwódką, nie tłem**: tło zmieniałoby czytelność
+     samej ikony, a chodzi o to, żeby od razu widzieć, które jest w ręce. */
+  .hot-cell--on { border-color: #f2700f; box-shadow: 0 0 0 1px #14100f, 0 0 0 2px rgba(242, 112, 15, .35); }
+  .hot-cell:hover { border-color: #7a5738; }
+  .hot-num {
+    position: absolute;
+    top: 1px;
+    left: 3px;
+    font-size: 9px;
+    color: #5c4f49;
+  }
+  .hot-icon { image-rendering: pixelated; }
+
   /* Plecak-siatka. Leży na grze, a nie zamiast niej — świat widać dalej przez
      przyciemnione tło, bo otwarcie plecaka nie zatrzymuje gry i nie zatrzyma:
      przekładanie łupu stojąc nad trupem w otwartym świecie ma być ryzykiem. */
@@ -139,36 +177,91 @@
     z-index: 11;
   }
   #bag-wrap { display: flex; gap: 12px; align-items: flex-start; }
-  #bag-panel, #bag-forge {
+  #bag-panel, #craft-panel, #bag-sack {
     padding: 14px 16px 10px;
     background: rgba(20, 16, 15, .96);
     border: 1px solid #453b37;
     border-radius: 5px;
     box-shadow: 0 0 0 1px #14100f, 0 14px 40px rgba(0, 0, 0, .6);
   }
-  #bag-forge { min-width: 210px; }
-  /* Z dala od kowadła lista jest przygaszona, a nie schowana: gracz ma wiedzieć,
-     że kuźnia istnieje i czego będzie potrzebował, zanim tam dojdzie. */
-  #bag-forge.bag-forge--far { opacity: .45; }
-  #forge-list { display: grid; gap: 4px; }
-  .forge-row {
+
+  /* Okno warsztatu. Osobne od plecaka i otwierane przy stole — lista wyrobów
+     wisiała wcześniej z boku plecaka i była tam zawsze, choć przydawała się
+     w jednym miejscu na mapie. */
+  #craft {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    place-content: center;
+    background: rgba(11, 9, 8, .55);
+    z-index: 11;
+  }
+  #craft-panel { min-width: 260px; }
+  #craft-list { display: grid; gap: 6px; }
+  .craft-row {
     display: flex;
     align-items: center;
-    gap: 9px;
-    padding: 5px 7px;
+    gap: 12px;
+    padding: 6px 9px;
     border: 1px solid #453b37;
     border-radius: 3px;
     background: rgba(69, 59, 55, .35);
     cursor: pointer;
   }
-  .forge-row:hover { border-color: #f2700f; }
-  .forge-row--no { opacity: .5; cursor: default; }
-  .forge-row--no:hover { border-color: #453b37; }
-  .forge-icon { image-rendering: pixelated; flex: none; }
-  .forge-text { display: grid; gap: 2px; font-size: 11px; }
-  .forge-text b { color: #e8dcc0; font-weight: normal; letter-spacing: 1px; }
-  .forge-cost { font-size: 10px; color: #a08d7e; }
-  .forge-lack { color: #a04a4a; }
+  .craft-row:hover { border-color: #f2700f; }
+  /* Brak składników przygasza wiersz, ale go nie chowa: gracz ma wiedzieć,
+     co się tu da zrobić i czego mu do tego brakuje. */
+  .craft-row--no { opacity: .5; cursor: default; }
+  .craft-row--no:hover { border-color: #453b37; }
+  /* Pole ikony ma **stały rozmiar**, więc kilof, siekiera i dzida stoją w jednej
+     kolumnie mimo różnych wysokości rysunków. */
+  .craft-slot {
+    flex: none;
+    width: 40px;
+    height: 56px;
+    display: grid;
+    place-items: center;
+  }
+  .craft-icon { image-rendering: pixelated; }
+  .craft-text { display: grid; gap: 3px; font-size: 12px; }
+  .craft-text b { color: #e8dcc0; font-weight: normal; letter-spacing: 1px; }
+  .craft-cost { font-size: 10px; color: #a08d7e; }
+  .craft-lack { color: #a04a4a; }
+  #craft-title {
+    font-size: 12px;
+    letter-spacing: 4px;
+    color: #f2700f;
+    margin-bottom: 10px;
+  }
+  #craft-hint {
+    margin-top: 9px;
+    font-size: 10px;
+    letter-spacing: 1px;
+    color: #6b5d54;
+  }
+  #craft-hint b { color: #a08d7e; font-weight: normal; }
+  /* Worek po zabitym. Kupa rzeczy, nie druga siatka — kratki układają się same,
+     bo w worku nie ma kształtów ani obracania. */
+  #bag-sack { min-width: 180px; max-width: 260px; }
+  #sack-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    align-content: flex-start;
+  }
+  .sack-cell {
+    width: 48px;
+    height: 48px;
+    display: grid;
+    place-items: center;
+    background-color: #14100f;
+    border: 1px solid #453b37;
+    border-radius: 3px;
+    cursor: pointer;
+  }
+  .sack-cell:hover { border-color: #f2700f; }
+  .sack-icon { image-rendering: pixelated; }
+
   #bag-title {
     font-size: 12px;
     letter-spacing: 4px;
@@ -182,6 +275,30 @@
     color: #6b5d54;
   }
   #bag-hint b { color: #a08d7e; font-weight: normal; }
+
+  /* Gniazdo noszonej rzeczy — obok siatki, nie w niej: założone wychodzi
+     z plecaka i nie zajmuje kratek. */
+  #bag-body { display: flex; gap: 10px; align-items: flex-start; }
+  #bag-gear { display: grid; gap: 6px; }
+  .gear-slot {
+    position: relative;
+    width: 96px;
+    height: 144px;
+    display: grid;
+    place-items: center;
+    background-color: #14100f;
+    border: 1px solid #453b37;
+    border-radius: 3px;
+    cursor: pointer;
+  }
+  .gear-slot:hover { border-color: #7a5738; }
+  .gear-slot--on { border-color: #5a3f2b; }
+  .gear-label {
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: #453b37;
+  }
+  .gear-icon { image-rendering: pixelated; }
 
   /* Kratki rysowane gradientem, nie osobnymi elementami: przy plecaku 8x5 to
      czterdzieści węzłów mniej w drzewie, a wygląda tak samo. */
@@ -205,6 +322,12 @@
     z-index: 2;
     opacity: .85;
     border-color: #f2700f;
+    /* **Przeciągany przedmiot jest przezroczysty dla trafień.**
+       Jedzie pod kursorem, więc bez tego pytanie „co leży pod kursorem"
+       odpowiadało zawsze „ten przedmiot" — i puszczenie go na gniazdo zbroi
+       albo na pasek narzędzi nie robiło nic. Zgłoszone jako „nie mogę założyć
+       zbroi". */
+    pointer-events: none;
   }
   /* Czerwona ramka zamiast blokady: gracz ma widzieć, że tu się nie zmieści,
      a nie odbijać się od niewidzialnej ściany. */
@@ -214,29 +337,62 @@
     image-rendering: pixelated;
   }
 
-  #mixer {
+  /* Menu pod ESC. Tu mieszkają suwaki głośności — z rogu ekranu zeszły, bo
+     ustawia się je raz na sesję, a zajmowały widok przez całą grę. */
+  #menu {
     position: fixed;
-    top: 10px;
-    right: 10px;
-    background: rgba(20, 16, 15, .82);
-    border: 1px solid #453b37;
-    border-radius: 4px;
+    inset: 0;
+    display: grid;
+    place-content: center;
+    background: rgba(11, 9, 8, .62);
+    z-index: 13;
     font-size: 11px;
-    user-select: none;
   }
-  .mixer-toggle {
+  #menu-panel {
+    min-width: 300px;
+    padding: 18px 20px 16px;
+    background: rgba(20, 16, 15, .96);
+    border: 1px solid #453b37;
+    border-radius: 5px;
+    box-shadow: 0 0 0 1px #14100f, 0 14px 40px rgba(0, 0, 0, .6);
+  }
+  #menu-title {
+    font-size: 13px;
+    letter-spacing: 5px;
+    color: #f2700f;
+    margin-bottom: 14px;
+    text-align: center;
+  }
+  .menu-section {
+    font-size: 10px;
+    letter-spacing: 3px;
+    color: #6b5d54;
+    margin: 4px 0 6px;
+  }
+  .menu-keys {
+    margin: 14px 0 12px;
+    font-size: 10px;
+    line-height: 1.7;
+    color: #6b5d54;
+  }
+  .menu-keys b { color: #a08d7e; font-weight: normal; }
+  .menu-button {
     display: block;
     width: 100%;
-    background: none;
-    border: 0;
-    border-bottom: 1px solid #2e2725;
-    color: #f2700f;
+    margin-top: 6px;
+    padding: 7px;
+    background: #5a3f2b;
+    border: 1px solid #7a5738;
+    border-radius: 3px;
+    color: #ffe08a;
     font: inherit;
-    text-align: left;
-    padding: 5px 8px;
+    font-size: 11px;
+    letter-spacing: 1px;
     cursor: pointer;
   }
-  .mixer-body { display: grid; gap: 5px; padding: 7px 8px 9px; }
+  .menu-button:hover { background: #7a5738; }
+
+  .mixer-body { display: grid; gap: 5px; }
   .mixer-row {
     display: grid;
     grid-template-columns: 74px 108px 34px;

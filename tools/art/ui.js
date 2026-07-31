@@ -192,6 +192,24 @@ export function barSlice(name, ramp) {
   return t;
 }
 
+/**
+ * Panel plecaka — **worek, nie okno**.
+ *
+ * Zgłoszone wprost: *nie może to być równy prostokątny ekran, tylko jak to worek,
+ * wyżej wąski, niżej szerszy*. I to jest właściwa uwaga: plecak jest jedyną
+ * rzeczą w interfejsie, na którą patrzy się dłużej niż na samą postać, a ramka
+ * `border: 1px solid` była jedynym miejscem w grze, w którym coś nie pochodziło
+ * z zamkniętej palety.
+ *
+ * **Rysowany w całości, nie rozciągany.** Ramka dziewięciodzielna wymusza idealną
+ * powtarzalność każdego boku, a worek ma być nierówny: szerszy u dołu, zmięty
+ * u góry, ze szwem biegnącym krzywo. Ten sam wniosek zapadł już przy panelu
+ * gracza i z tego samego powodu — rozmiar jest stały, więc nie ma czego rozciągać.
+ *
+ * Siatka kratek siedzi **w nim**: `BAG_PANEL` oddaje położenie wnętrza, a klient
+ * stawia tam swoją siatkę. Dzięki temu jedno miejsce decyduje o tym, gdzie jest
+ * wnętrze — rysunek i układ nie mogą się rozjechać.
+ */
 export function buildUi() {
   const entries = [];
   const add = (name, canvas) => entries.push({ name, canvas });

@@ -245,6 +245,59 @@ function crate() {
   return finish(t);
 }
 
+/**
+ * Worek po zabitym — to, co zostaje po graczu razem z jego łupem.
+ *
+ * Musi się czytać **z daleka i natychmiast**, bo to jest rzecz, po którą się
+ * wraca albo po którą się biegnie przed kimś innym. Stąd sylwetka gruszki:
+ * szeroka u dołu, ściągnięta u góry sznurkiem, z dwoma rogami płótna nad
+ * przewiązaniem. Skrzynia i beczka są prostokątne i pionowe, więc worek nie ma
+ * z czym się pomylić.
+ *
+ * Płótno idzie rampą `earth`, nie `wood`: drewno w tej palecie jest wyraźnie
+ * ciepłe i rude, a worek stojący obok skrzyni wyglądał wtedy jak druga skrzynia.
+ */
+function sack() {
+  const t = new Canvas(14, 15);
+  const rng = rngFor('worek');
+
+  // Brzuch: dwie elipsy jedna na drugiej dają kształt szerszy u dołu niż u góry.
+  t.ellipse(7, 11, 6, 4, c('earth', 3));
+  t.ellipse(7, 8, 5, 4, c('earth', 3));
+  // Szyjka pod przewiązaniem.
+  t.rect(5, 4, 4, 3, c('earth', 3));
+
+  // Światło z góry i cień od spodu — ta sama zasada co przy beczkach.
+  t.ellipse(6, 7, 3, 2, c('earth', 4));
+  t.hline(2, 11, 13, c('earth', 1));
+  t.hline(3, 10, 14, c('earth', 1));
+
+  // Sznurek. Dwa piksele ciemniejsze pod nim, żeby płótno wyglądało na ściągnięte,
+  // a nie na przewiązane naklejką.
+  t.hline(4, 9, 4, c('iron', 1));
+  t.hline(5, 8, 5, c('earth', 1));
+
+  // Rogi płótna nad sznurkiem — to one mówią „worek", a nie „dzban".
+  //
+  // **Grube i krótkie.** Pierwsza wersja miała pojedyncze kreski sięgające do
+  // samej góry kadru i czytały się jak czułki albo patyki wetknięte w worek.
+  // Zebrane płótno jest zmiętym kłębem, nie sznurkiem.
+  t.rect(4, 1, 3, 3, c('earth', 2));
+  t.rect(7, 1, 3, 3, c('earth', 3));
+  t.rect(6, 0, 2, 2, c('earth', 2));
+  t.set(4, 0, c('earth', 2));
+  t.set(9, 1, c('earth', 2));
+
+  // Fałdy: krótkie pionowe kreski, nierówne. Równomierne czytałyby się jak deski.
+  for (let i = 0; i < 5; i++) {
+    const x = 3 + rng.int(9);
+    const y = 8 + rng.int(3);
+    t.vline(x, y, y + 1 + rng.int(2), c('earth', 2));
+  }
+
+  return finish(t);
+}
+
 function bucket() {
   const t = new Canvas(10, 12);
   staves(t, 0, 3, 10, 8);
@@ -995,6 +1048,107 @@ function pickIcon() {
 }
 
 /** Narzędzie leżące na ziemi — mały rzut z góry, wspólny dla obu. */
+/**
+ * Dzida leżąca na ziemi.
+ *
+ * Osobno od siekiery i kilofa, bo to inna rzecz: tamte leżą **skosem, głownią
+ * w górę**, a dzida to samo drzewce z grotem — długie i płaskie. Przepuszczenie
+ * jej przez `toolOnGround()` dałoby siekierę z dziwnym ostrzem.
+ */
+/**
+ * Skóra — surowa i wyprawiona, jeden generator na oba stany.
+ *
+ * Różnią się **kształtem, nie tylko kolorem**: surowa jest nieregularna, z łapami
+ * i strzępami po brzegach; wyprawiona to równy, złożony płat. Sam odcień by nie
+ * wystarczył — dwie brązowe plamy obok siebie w plecaku są nie do odróżnienia,
+ * a to jest właśnie ta para, którą trzeba rozpoznać na pierwszy rzut oka.
+ */
+function hidePelt({ tanned = false, ground = false } = {}) {
+  const rng = rngFor(tanned ? 'skora-wyprawiona' : 'skora-surowa');
+  const ramp = tanned ? 'wood' : 'earth';
+  const t = new Canvas(ground ? 16 : 16, ground ? 9 : 14);
+
+  if (tanned) {
+    // Płat złożony: prostokąt z zagięciem i widocznym rulonem u góry.
+    const y0 = ground ? 2 : 3;
+    const h = ground ? 5 : 8;
+    t.rect(1, y0, 14, h, c(ramp, 2));
+    t.rect(1, y0, 14, 2, c(ramp, 3));
+    t.hline(1, 14, y0 + h - 1, c(ramp, 1));
+    // Zagięcie w poprzek — po nim widać, że to płat, a nie deska.
+    t.hline(1, 14, y0 + Math.floor(h / 2), c(ramp, 1));
+    t.hline(1, 14, y0 + Math.floor(h / 2) - 1, c(ramp, 3));
+  } else {
+    // Surowa: rozpięty kształt z czterema łapami. Rysowany wierszami o różnej
+    // szerokości, bo skóra zdjęta ze zwierzęcia nie jest prostokątem.
+    const y0 = ground ? 1 : 2;
+    const h = ground ? 7 : 11;
+    for (let i = 0; i < h; i++) {
+      const k = i / (h - 1);
+      const pół = 4 + Math.round(Math.sin(k * Math.PI) * 3) + rng.int(2);
+      t.hline(8 - pół, 7 + pół, y0 + i, c(ramp, 2));
+    }
+    // Łapy: cztery wypustki w rogach.
+    for (const [x, y] of [[2, y0 + 1], [13, y0 + 1], [2, y0 + h - 2], [13, y0 + h - 2]]) {
+      t.px(x, y, c(ramp, 2));
+      t.px(x, y + 1, c(ramp, 1));
+    }
+    // Mizdra: jaśniejsze plamy od spodu skóry.
+    t.speckle(rng, c(ramp, 3), 0.12, { x: 4, y: y0 + 2, w: 8, h: h - 4 });
+  }
+
+  return finish(t);
+}
+
+/**
+ * Zbroja skórzana — kamizelka z naramiennikami.
+ *
+ * Sylwetka musi mówić „to się nosi", a nie „to jest materiał": stąd wcięcie
+ * w pasie, dwa naramienniki i rząd nitów wzdłuż zapięcia. Płat skóry i zbroja
+ * z tego samego płata różnią się w plecaku wyłącznie kształtem, bo kolor mają
+ * ten sam — i to kształt musi zrobić całą robotę.
+ */
+function leatherArmor({ ground = false } = {}) {
+  const t = new Canvas(ground ? 16 : 16, ground ? 10 : 24);
+  const y0 = ground ? 2 : 2;
+  const h = ground ? 7 : 20;
+
+  // Tors: wcięty w pasie, szerszy w barkach i przy biodrach.
+  for (let i = 0; i < h; i++) {
+    const k = i / (h - 1);
+    const talia = Math.sin(k * Math.PI);              // 0 na końcach, 1 w środku
+    const pół = 6 - Math.round(talia * 1.6);
+    t.hline(8 - pół, 7 + pół, y0 + i, c('wood', 2));
+    t.px(8 - pół, y0 + i, c('wood', 3));
+    t.px(7 + pół, y0 + i, c('wood', 1));
+  }
+  // Naramienniki — dwa grubsze pasy u góry, wychodzące poza obrys torsu.
+  t.rect(1, y0, 4, ground ? 3 : 5, c('wood', 3));
+  t.rect(11, y0, 4, ground ? 3 : 5, c('wood', 1));
+  // Zapięcie: rząd nitów wzdłuż środka.
+  for (let i = 2; i < h - 2; i += ground ? 2 : 3) t.px(8, y0 + i, c('iron', 3));
+  // Pas u dołu.
+  t.hline(2, 13, y0 + h - 2, c('earth', 1));
+
+  return finish(t);
+}
+
+function spearOnGround() {
+  const t = new Canvas(16, 7);
+  // Drzewce przez całą długość, lekko skośne — leżąca prosto krecha czyta się
+  // jak deska, a nie jak broń rzucona na ziemię.
+  t.line(1, 5, 12, 2, c('wood', 2));
+  t.line(1, 6, 12, 3, c('wood', 1));
+  // Grot: trójkąt zwężający się ku końcowi, plus błysk na krawędzi.
+  t.line(12, 2, 15, 1, c('iron', 3));
+  t.line(12, 3, 15, 2, c('iron', 2));
+  t.px(13, 1, c('iron', 4));
+  // Rzemień przy nasadzie — ten jeden szczegół odróżnia dzidę od kija.
+  t.px(10, 3, c('earth', 2));
+  t.px(10, 4, c('earth', 2));
+  return finish(t);
+}
+
 function toolOnGround(name, ostrze) {
   const t = new Canvas(14, 9);
   t.line(2, 6, 11, 3, c('wood', 2));
@@ -1341,6 +1495,126 @@ const BOAR_TUSK = () => c('bone');
  * @param dir  `side`, `down` albo `up`
  * @param step 0 albo 1 — faza chodu
  */
+const WOLF_BODY = () => c('stone', 2);
+const WOLF_DARK = () => c('stone', 1);
+const WOLF_LIT = () => c('stone', 3);
+// Żmija jest **szarobrunatna z ciemnym zygzakiem**, nie zielona.
+//
+// Pierwsza wersja szła rampą `foliage` i zwinięty wąż czytał się jako kępka
+// trawy — a trawy w lesie jest pełno, więc zwierzę, którego trzeba zauważyć pod
+// nogami, było niewidzialne. Zygzak jest tu znakiem rozpoznawczym: to po nim
+// odróżnia się żmiję od patyka, i to on ma robić robotę na czternastu pikselach.
+const SNAKE_BODY = () => c('stone', 2);
+const SNAKE_DARK = () => c('soot', 1);
+const SNAKE_LIT = () => c('stone', 4);
+
+/**
+ * Wilk — **sylwetka przeciwna do dzika i to jest jej zadanie**.
+ *
+ * Dzik ma garb nad łopatkami, krótkie nogi i łeb przy ziemi. Wilk ma grzbiet
+ * prosty, nogi wysokie i łeb **nad linią grzbietu**, na wyciągniętej szyi.
+ * Gracz musi rozpoznać, co na niego idzie, zanim to podejdzie — a przy dwóch
+ * czworonogach w tej samej palecie rozpoznanie robi wyłącznie sylwetka.
+ */
+function wolf(name, dir, step) {
+  const t = new Canvas(dir === 'side' ? 24 : 16, 18);
+
+  if (dir === 'side') {
+    // Grzbiet prosty, lekko opadający ku zadowi.
+    for (let x = 4; x < 20; x++) {
+      const k = (x - 4) / 15;
+      const gora = Math.round(5 + k * 1.6);
+      for (let y = gora; y < 12; y++) t.px(x, y, y < gora + 2 ? WOLF_LIT() : WOLF_BODY());
+      t.px(x, gora - 1, WOLF_DARK());
+      t.px(x, 12, WOLF_DARK());
+    }
+    // Szyja i łeb: wyciągnięte do przodu, **wyżej niż grzbiet**.
+    for (let y = 3; y < 9; y++) t.hline(2, 6, y, WOLF_BODY());
+    t.hline(0, 3, 6, WOLF_BODY());        // pysk
+    t.px(0, 7, WOLF_DARK());
+    t.px(3, 5, c('soot', 0));             // oko
+    t.px(1, 7, c('soot', 0));             // nos
+    t.px(5, 1, WOLF_DARK());              // uszy — stojące, spiczaste
+    t.px(5, 2, WOLF_BODY());
+    t.px(7, 1, WOLF_DARK());
+    t.px(7, 2, WOLF_BODY());
+
+    // Nogi wysokie, w przeciwfazie.
+    const przod = step === 0 ? 0 : 3;
+    const tyl = step === 0 ? 3 : 0;
+    t.rect(6, 12, 2, 5 - przod, WOLF_DARK());
+    t.rect(9, 12, 2, 2 + przod, WOLF_DARK());
+    t.rect(15, 12, 2, 5 - tyl, WOLF_DARK());
+    t.rect(18, 12, 2, 2 + tyl, WOLF_DARK());
+    // Ogon — puszysty, opuszczony.
+    t.line(20, 7, 23, 10 - step, WOLF_DARK());
+    t.px(23, 11 - step, WOLF_BODY());
+  } else {
+    // Z przodu i z tyłu: wąska bryła — wilk jest smukły, nie krępy.
+    for (let y = 4; y < 13; y++) {
+      const half = Math.round(3 + Math.sin((y - 4) / 9 * Math.PI) * 1.6);
+      for (let x = 8 - half; x <= 7 + half; x++) t.px(x, y, y < 6 ? WOLF_LIT() : WOLF_BODY());
+      t.px(8 - half, y, WOLF_DARK());
+      t.px(7 + half, y, WOLF_DARK());
+    }
+    if (dir === 'down') {
+      t.px(6, 5, c('soot', 0));
+      t.px(9, 5, c('soot', 0));
+      t.px(5, 2, WOLF_DARK()); t.px(5, 3, WOLF_BODY());
+      t.px(10, 2, WOLF_DARK()); t.px(10, 3, WOLF_BODY());
+    }
+    const a = step === 0 ? 0 : 2;
+    t.rect(5, 13, 2, 4 - a, WOLF_DARK());
+    t.rect(9, 13, 2, 2 + a, WOLF_DARK());
+  }
+
+  void name;
+  return finish(t);
+}
+
+/**
+ * Żmija — widziana **z góry i tylko z góry**.
+ *
+ * Wąż leżący w trawie nie ma sylwetki „z boku": jest płaski. Jeden rysunek na
+ * wszystkie kierunki jest tu więc poprawny, a nie oszczędnościowy — i dobrze,
+ * bo żmij ma być na mapie dużo.
+ *
+ * Dwie klatki to **zwinięta i wyprostowana**: po tym widać, że zaraz uderzy.
+ * Zapowiedź trwa 190 ms, więc musi być czytelna z samego kształtu.
+ */
+function snake(name, step) {
+  const t = new Canvas(16, 12);
+  const zwinięta = step === 0;
+
+  if (zwinięta) {
+    // Zwój: dwie elipsy jedna w drugiej i łeb na wierzchu.
+    t.ellipse(8, 7, 6, 4, SNAKE_BODY());
+    t.ellipse(8, 7, 4, 2, c('earth', 2));
+    // Zygzak po zwoju — cztery ciemne plamki, nierówno.
+    for (const [zx, zy] of [[4, 6], [6, 9], [9, 5], [11, 8], [7, 4]]) t.px(zx, zy, SNAKE_DARK());
+    t.ellipse(8, 5, 2, 1, SNAKE_BODY());
+    t.px(7, 4, c('soot', 0));      // oczy na wierzchu zwoju
+    t.px(9, 4, c('soot', 0));
+    t.px(8, 3, SNAKE_LIT());
+  } else {
+    // Wyprostowana do uderzenia: esowaty tułów i łeb wysunięty w przód.
+    for (let x = 2; x < 14; x++) {
+      const y = 8 + Math.round(Math.sin((x - 2) / 3) * 2);
+      t.px(x, y, SNAKE_BODY());
+      t.px(x, y + 1, c('earth', 1));
+      // Zygzak wzdłuż grzbietu — co drugi piksel, żeby był widoczny w ruchu.
+      if (x % 2 === 0) t.px(x, y, SNAKE_DARK());
+    }
+    t.px(1, 6, SNAKE_BODY());
+    t.px(0, 5, SNAKE_BODY());
+    t.px(0, 4, c('soot', 0));
+    t.px(1, 4, SNAKE_LIT());
+  }
+
+  void name;
+  return finish(t);
+}
+
 function boar(name, dir, step) {
   const rng = rngFor(name);
   const t = new Canvas(dir === 'side' ? 24 : 18, 18);
@@ -1469,6 +1743,7 @@ export function buildProps() {
   add('torch', torch());
   add('barrel', barrel());
   add('crate', crate());
+  add('sack', sack());
   add('bucket', bucket());
   add('well', well());
   add('cart', cart());
@@ -1504,6 +1779,13 @@ export function buildProps() {
   // Narzędzia.
   add('item_axe', toolOnGround('item_axe', c('iron', 2)));
   add('item_pick', toolOnGround('item_pick', c('iron', 3)));
+  add('item_spear', spearOnGround());
+  add('item_hide', hidePelt({ ground: true }));
+  add('item_leather', hidePelt({ tanned: true, ground: true }));
+  add('icon_hide', hidePelt());
+  add('icon_leather', hidePelt({ tanned: true }));
+  add('item_armor', leatherArmor({ ground: true }));
+  add('icon_armor', leatherArmor());
   add('icon_axe', axeIcon());
   add('icon_pick', pickIcon());
   add('icon_wood', iconWood());
@@ -1516,6 +1798,10 @@ export function buildProps() {
   add('gatepost', gatePost('gatepost'));
   for (const dir of ['side', 'down', 'up']) {
     for (let step = 0; step < 2; step++) add(`boar_${dir}${step}`, boar(`boar_${dir}${step}`, dir, step));
+    for (let step = 0; step < 2; step++) add(`wolf_${dir}${step}`, wolf(`wolf_${dir}${step}`, dir, step));
+  }
+  for (let step = 0; step < 2; step++) add(`snake${step}`, snake(`snake${step}`, step));
+  {
   }
   for (let i = 0; i < 3; i++) add(`bush${i}`, bush(`bush${i}`));
   for (let i = 0; i < 2; i++) add(`flowers${i}`, flowers(`flowers${i}`));

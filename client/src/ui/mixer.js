@@ -5,6 +5,12 @@
 //
 // Jedna pułapka: suwak, który zostanie zaznaczony, przechwytuje strzałki i gracz
 // nie może się ruszyć. Dlatego po każdej zmianie odbieramy mu zaznaczenie.
+//
+// **To są same wiersze, bez własnego okna.** Wcześniej był to panel przyklejony
+// do prawego górnego rogu ekranu; zszedł stamtąd, bo głośność ustawia się raz
+// i nie ma powodu, żeby zajmowała róg widoku przez całą grę. Mieszkają teraz
+// w menu pod `ESC`, a ta funkcja oddaje gotowy kawałek drzewa do wstawienia
+// gdziekolwiek — dzięki temu nie ma dwóch kopii obsługi suwaka.
 
 import { audio } from '../audio/audio.js';
 
@@ -15,19 +21,9 @@ const CHANNELS = [
   { name: 'master', label: 'wszystko' },
 ];
 
-export function createMixer() {
-  const panel = document.createElement('div');
-  panel.id = 'mixer';
-
-  const header = document.createElement('button');
-  header.type = 'button';
-  header.className = 'mixer-toggle';
-  header.textContent = 'dźwięk ▾';
-  panel.appendChild(header);
-
+export function createMixerRows() {
   const body = document.createElement('div');
   body.className = 'mixer-body';
-  panel.appendChild(body);
 
   for (const channel of CHANNELS) {
     const row = document.createElement('label');
@@ -63,19 +59,5 @@ export function createMixer() {
     body.appendChild(row);
   }
 
-  let open = localStorage.getItem('szab_mixer_open') !== '0';
-  const refresh = () => {
-    body.style.display = open ? 'grid' : 'none';
-    header.textContent = open ? 'dźwięk ▾' : 'dźwięk ▸';
-  };
-  header.addEventListener('click', () => {
-    open = !open;
-    localStorage.setItem('szab_mixer_open', open ? '1' : '0');
-    refresh();
-    header.blur();
-  });
-  refresh();
-
-  document.body.appendChild(panel);
-  return panel;
+  return body;
 }

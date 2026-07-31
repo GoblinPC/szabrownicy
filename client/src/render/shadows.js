@@ -84,7 +84,7 @@ export class ShadowCaster {
    * Tworzy parę: plamę kontaktową i rzucony cień. Cień to ta sama klatka co
    * obiekt, zaczepiona u stóp, przyciemniona i obrócona przez `refresh`.
    */
-  add(x, y, textureKey, frameName, { squash = 0.5, width = 20 } = {}) {
+  add(x, y, textureKey, frameName, { squash = 0.5, width = 20, ruchomy = false } = {}) {
     const contact = this.scene.add.image(x, y, CONTACT_KEY)
       .setOrigin(0.5, 0.5)
       .setDepth(-60)
@@ -104,12 +104,22 @@ export class ShadowCaster {
       .setTint(0x000000)
       .setAlpha(0);
 
-    const shadow = { contact, cast, soft, squash, x, y };
+    // Szerokość zapamiętana, bo steruje nie tylko plamą kontaktową: **duże,
+    // jednolite sylwetki dostają słabsze krycie**. Brama i mur to prostokąty,
+    // więc ich cień jest prostokątem — im większa jednolita plama, tym bardziej
+    // czyta się jako wycięta z papieru. Przy koronie drzewa tego nie widać, bo
+    // sama jest nieregularna.
+    const shadow = { contact, cast, soft, squash, x, y, width };
     // Cienie obiektów **stojących** trzymamy na liście, bo słońce wędruje i trzeba
     // je odświeżać. Przy dwóch tysiącach roślin robimy to rzadko i tylko w kadrze —
     // co ćwierć sekundy nikt nie zauważy skoku, a co klatkę byłoby to najdroższą
     // rzeczą w grze.
-    this.statics.push(shadow);
+    //
+    // **Ruchome tu nie wchodzą.** Gracz, potwory i inni gracze dostają `refresh()`
+    // co klatkę z prawdziwą pozycją, więc na liście stojących byli tylko po to,
+    // żeby raz na ćwierć sekundy ktoś ustawił ich z powrotem tam, gdzie powstali.
+    // Zgłoszone z gry: *czemu te cienie tak mrygają dziwnie*. Właśnie dlatego.
+    if (!ruchomy) this.statics.push(shadow);
     this.refresh(shadow, x, y);
     return shadow;
   }
@@ -117,10 +127,16 @@ export class ShadowCaster {
   /**
    * Usuwa cień razem z obiektem, który go rzucał.
    *
-   * Cień nie jest sprite'em, tylko **parą** obrazków (plama kontaktowa i rzucona
-   * sylwetka) plus wpisem na liście odświeżanej przy wędrówce słońca. `destroy()`
-   * wołane wprost na tym obiekcie nic by nie zrobiło, a wpis zostałby na liście
-   * i `refreshStatics()` sięgałby po zniszczone obrazki.
+   * Cień nie jest sprite'em, tylko **trójką** obrazków (plama kontaktowa, ostra
+   * sylwetka i warstwa miękka) plus wpisem na liście odświeżanej przy wędrówce
+   * słońca. `destroy()` wołane wprost na tym obiekcie nic by nie zrobiło, a wpis
+   * zostałby na liście i `refreshStatics()` sięgałby po zniszczone obrazki.
+   *
+   * **Ta metoda była w pliku dwa razy.** Druga, uboższa wersja stała niżej
+   * i w JavaScripcie to ona wygrywała: kasowała plamę i ostry cień, ale zostawiała
+   * warstwę miękką i wpis na liście. Ścięte drzewo zostawiało więc po sobie bladą
+   * sylwetkę na ziemi, a `refreshStatics()` co ćwierć sekundy sięgał po zniszczone
+   * obrazki. Znalezione przy zmiękczaniu cieni, nie zgłoszone z gry.
    */
   remove(shadow) {
     if (!shadow) return;
@@ -169,11 +185,20 @@ export class ShadowCaster {
 
   refresh(shadow, x, y) {
     const { cast, contact } = shadow;
+    // Pozycja zapisywana **w cieniu**, nie tylko w obrazkach. Bez tego `shadow.x`
+    // zostawało tym z chwili utworzenia, a to po nim `refreshStatics()` poznaje,
+    // czy cień jest w kadrze — i to nim ustawiało go z powrotem.
+    shadow.x = x;
+    shadow.y = y;
     contact.setPosition(x, y);
     // Plama kontaktowa jest **zawsze**: to ona przykleja obiekt do ziemi i to
     // ona jest tym „ambient occlusion", którego brakowało. Rzucony cień może
     // zniknąć w nocy, plama nie.
-    contact.setAlpha(0.5 + 0.2 * (this.sunPower ?? 0));
+    //
+    // To ona odpowiada za „widzę, że coś tu stoi" pod drzewem i pod skrzynią,
+    // więc mocniejsza niż rzucony cień. Wcześniejsze 0,5 gubiło się na ciemnej
+    // ziemi, na której leży większość obiektów w lesie.
+    contact.setAlpha(0.66 + 0.18 * (this.sunPower ?? 0));
 
     // Pod dachem ogień świeci pełną mocą niezależnie od pory — tak samo jak
     // w masce światła.
@@ -203,20 +228,50 @@ export class ShadowCaster {
     // ucieczki od światła, a skala Y spłaszcza go do płaszczyzny ziemi.
     cast.rotation = Math.atan2(dx / length, -(dy / length));
     cast.scaleY = shadow.squash;
-    // Krycie niższe niż wcześniej (0,45 → 0,3) i **druga, większa kopia** o niskim
-    // kryciu: razem dają miękką krawędź zamiast ostrej sylwetki. Prawdziwy półcień
-    // rozmywa się z odległością od podstawy, a tego bez shaderów nie zrobimy —
-    // ale dwie warstwy o różnej wielkości czytają się już jako miękki cień,
-    // a nie jako czarny prostokąt wycięty nożyczkami.
-    const krycie = Math.min(0.3, 0.07 + weight * 0.26);
+    // Krycie zależne od tego, jak duża jest sylwetka.
+    //
+    // Zgłoszone z gry: *ciemny prostokąt kanciasty jak Minecraft* przy bramie.
+    // Cień rzucany to sylwetka obiektu położona na ziemi, więc obiekt o sylwetce
+    // prostokątnej daje prostokąt — i nic tego nie zmieni poza samą sylwetką.
+    // Da się natomiast zmienić to, **jak bardzo się on narzuca**: duża jednolita
+    // plama przy tym samym kryciu co mała czyta się dwa razy mocniej.
+    //
+    // Liczby po zgłoszeniu z gry: *cienie są trochę za słabe, nie widzę ich pod
+    // drzewami i skrzyniami*. Pierwsza wersja zmiękczania ścinała je z trzech
+    // stron naraz — sufit krycia 0,3, kara za dużą sylwetkę aż o trzecią i do
+    // tego wygaszanie ku końcowi. Drzewo, czyli największa sylwetka w grze,
+    // wychodziło z tego z kryciem 0,2 rozmytym do zera. **Zmiękczenie ma dotyczyć
+    // krawędzi, nie tego, czy cień w ogóle widać**: przy podstawie ma być mocny.
+    const duże = Math.max(0, Math.min(1, ((shadow.width ?? 20) - 14) / 20));
+    const krycie = Math.min(0.46, 0.1 + weight * 0.4) * (1 - 0.16 * duże);
+
+    // Półcień rosnący z odległością od podstawy — **bez dokładania warstw**.
+    //
+    // Prawdziwy cień jest ostry przy stopach i rozmywa się im dalej od nich.
+    // Bez shaderów nie da się rozmyć obrazka, ale da się nim sterować krycie
+    // w każdym rogu osobno (`setAlpha(gl, gp, dl, dp)`). Sprite jest zaczepiony
+    // u stóp i obrócony tak, że jego **góra to koniec cienia**, więc wystarczy
+    // przygasić dwa górne rogi: przy podstawie zostaje pełne krycie, na końcu
+    // prawie nic. Kosztuje to zero dodatkowych rysunków.
+    // Najpierw krycie jednolite, potem rogi. Krycie w rogach liczy **wyłącznie
+    // WebGL**; awaryjny renderer Canvas bierze wartość jednolitą, a ta bez tego
+    // wywołania zostałaby na jedynce z chwili utworzenia obrazka — czyli cienie
+    // wyszłyby czarne na płasko.
     cast.setAlpha(krycie);
+    cast.setAlpha(krycie * 0.28, krycie * 0.28, krycie, krycie);
+
     if (shadow.soft) {
+      // Warstwa miękka idzie **odwrotnie**: przy stopach jej nie ma, a rozlewa się
+      // dopiero na końcu. Razem z gasnącym ostrym cieniem daje to przejście od
+      // twardej sylwetki pod obiektem do szerokiej, bladej plamy w oddali — czyli
+      // dokładnie to, co robi półcień. Jedna warstwa o stałym kryciu (tak było
+      // wcześniej) tylko pogrubiała prostokąt.
       shadow.soft.setVisible(true);
       shadow.soft.setPosition(x, y);
       shadow.soft.rotation = cast.rotation;
-      shadow.soft.scaleX = 1.35;
-      shadow.soft.scaleY = shadow.squash * 1.3;
-      shadow.soft.setAlpha(krycie * 0.42);
+      shadow.soft.scaleX = 1.5;
+      shadow.soft.scaleY = shadow.squash * 1.45;
+      shadow.soft.setAlpha(krycie * 0.5, krycie * 0.5, krycie * 0.1, krycie * 0.1);
     }
   }
 
@@ -227,9 +282,4 @@ export class ShadowCaster {
     shadow.soft?.setFlipX(flipX);
   }
 
-  /** Potrzebne przy graczach — kiedy ktoś wyjdzie, jego cień ma zniknąć razem z nim. */
-  remove(shadow) {
-    shadow.contact.destroy();
-    shadow.cast.destroy();
-  }
 }

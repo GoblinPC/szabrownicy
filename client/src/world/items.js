@@ -27,7 +27,31 @@ export const ITEMS = {
   // ale **musisz je najpierw upolować**. Trudność siedzi w zdobyciu, nie w noszeniu.
   meat: { w: 1, h: 1, icon: 'icon_meat', name: 'mięso', food: 42 },
   // Dzida zajmuje pół plecaka i to jest jej koszt. Nosisz broń albo nosisz łup.
-  spear: { w: 1, h: 4, icon: 'icon_spear', name: 'dzida' },
+  // `weapon` znaczy „tym się bije", `tool` — „tym się pracuje". Rozdzielone,
+  // bo pasek narzędzi pyta o jedno i drugie osobno: dzidą nie zetniesz drzewa,
+  // a siekierą owszem — tylko gorzej niż dzidą uderzysz.
+  spear: { w: 1, h: 4, icon: 'icon_spear', name: 'dzida', weapon: true },
+  // Łańcuch skóry: **surowa jest bezużyteczna**, dopiero wyprawiona do czegoś
+  // służy. To jest ta sama zasada, co przy narzędziach — pierwsza zbroja ma być
+  // wydarzeniem, a nie znaleziskiem. Zwierzę daje surowiec, warsztat robi z niego
+  // materiał, dopiero z materiału powstaje rzecz.
+  // **Wyprawianie zmniejsza objętość** i to jest jego druga rola obok tego, że
+  // zamienia surowiec w materiał. Surowa skóra jest zwinięta i nieforemna (dwie
+  // kratki), wyprawiona to równy płat złożony na pół (jedna).
+  //
+  // Pierwsza wersja dawała surowej 2×2. Zbroja kosztuje cztery surowe, więc na
+  // samym półprodukcie schodziło szesnaście kratek z czterdziestu — zgłoszone
+  // z gry od razu. Skóra ma zajmować miejsce, ale nie ma być karą za polowanie.
+  hide: { w: 2, h: 1, icon: 'icon_hide', name: 'skóra surowa' },
+  leather: { w: 1, h: 1, icon: 'icon_leather', name: 'skóra wyprawiona' },
+  // `gear` mówi, **na które gniazdo** rzecz wchodzi; `armor` — ile obrażeń
+  // zdejmuje z każdego ciosu. Liczba jest odejmowana, nie mnożona: przy mnożniku
+  // zbroja chroni tym lepiej, im mocniej się obrywa, a to jest odwrotnie niż
+  // działa skóra. Sześć punktów przy ciosie dzika za czternaście znaczy, że
+  // zbroja **zmienia liczbę ciosów do śmierci** — i to jest cała jej rola.
+  armor: {
+    w: 2, h: 3, icon: 'icon_armor', name: 'zbroja skórzana', gear: 'body', armor: 6,
+  },
 
   // Narzędzia. `tool` to nazwa, po której zasób sprawdza, czy wolno go ruszyć.
   //
@@ -49,10 +73,24 @@ export const ITEMS = {
  * Drogie narzędzia startowe zamieniają początek gry w zbieranie po kilka sztuk,
  * a to jest praca, nie gra.
  */
+/**
+ * Wyroby. `station` mówi, **przy czym** wolno je wykonać.
+ *
+ * Dwa stanowiska, bo to dwie różne czynności i dwa różne miejsca w karczmie:
+ * przy stole się struga i kuje, na stojaku wyprawia skóry. Gdyby wszystko szło
+ * przy jednym stole, drugie stanowisko byłoby dekoracją — a stoi tam i widać je.
+ */
 export const RECIPES = [
-  { out: 'axe', cost: { wood: 2, stone: 2 } },
-  { out: 'pick', cost: { wood: 2, stone: 3 } },
-  { out: 'spear', cost: { wood: 3, stone: 1 } },
+  { out: 'axe', cost: { wood: 2, stone: 2 }, station: 'workbench' },
+  { out: 'pick', cost: { wood: 2, stone: 3 }, station: 'workbench' },
+  { out: 'spear', cost: { wood: 3, stone: 1 }, station: 'workbench' },
+  // Wyprawianie: dwie surowe skóry na jedną wyprawioną. Stratne celowo — skóra
+  // schnie i się kraje, a zbroja ma kosztować kilka polowań, nie jedno.
+  { out: 'leather', cost: { hide: 2 }, station: 'tanrack' },
+  // Zbroja też na stojaku: to dalej robota rymarska, nie stolarska. Dwie skóry
+  // wyprawione, czyli cztery surowe, czyli cztery dziki — pierwsza zbroja ma być
+  // **wydarzeniem**, a nie przedmiotem znalezionym po drodze.
+  { out: 'armor', cost: { leather: 2 }, station: 'tanrack' },
 ];
 
 /** Ile sztuk danego rodzaju leży w plecaku. */
