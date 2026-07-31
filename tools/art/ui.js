@@ -130,46 +130,39 @@ export function barCap(name, { tone = 'goblin' } = {}) {
 }
 
 /**
- * Znacznik uniku — romb.
+ * Znacznik ładunku uniku — mały romb.
  *
  * Trzy stany w jednym sprite'cie byłyby wygodne, ale ładowanie musi być **płynne**,
  * więc gra rysuje wypełnienie sama, przycinając ten kształt. Tutaj powstaje sama
  * skorupa: obrys i wnętrze do wypełnienia.
- */
-/**
- * Znacznik uniku — romb 19×19.
  *
- * Poprzednia wersja miała jedenaście pikseli i użytkownik **w ogóle jej nie
- * zauważył**. To jest właściwa lekcja o HUD-zie: element czytany kątem oka musi
- * być wyraźnie większy, niż wydaje się potrzebne, gdy patrzy się na niego wprost.
+ * **Promień 3, nie 9.** Poprzednia wersja miała 19 pikseli boku, czyli po
+ * przeskalowaniu interfejsu 38 px na ekranie — kryształ wielkości głowy postaci,
+ * stojący pod paskiem życia i przyciągający uwagę mocniej niż samo życie.
+ * Użytkownik poprosił o trzy razy mniejsze i miał rację: to jest licznik, a nie
+ * odznaka.
+ *
+ * Przy tym rozmiarze nie ma miejsca na obwódkę, poświatę i przejście tonalne
+ * naraz — zostaje **obrys i rdzeń**. Cieniowanie w rombie o boku siedmiu pikseli
+ * i tak zlewa się w jedną plamę, a zjada czytelność kształtu.
  */
 export function dodgePip(name, { filled = false } = {}) {
-  const R = 9;
+  const R = 3;
   const size = R * 2 + 1;
   const t = new Canvas(size, size);
   const outline = c('soot', 0);
-  const rim = c('wood', 1);
   const shell = c('stone', 0);
   const hot = c('ember', 2);
   const bright = c('ember', 3);
-  const glow = c('ember', 4);
 
   for (let y = 0; y < size; y++) {
-    const span = R - Math.abs(y - R);
-    if (span < 0) continue;
-    for (let x = R - span; x <= R + span; x++) {
+    for (let x = 0; x < size; x++) {
       const d = Math.abs(x - R) + Math.abs(y - R);
-      if (d >= R) t.px(x, y, outline);
-      else if (d >= R - 1) t.px(x, y, rim);
+      if (d > R) continue;
+      if (d === R) t.px(x, y, outline);
       else if (!filled) t.px(x, y, shell);
-      // Gorący rdzeń jaśnieje ku górze — płaski romb wygląda jak naklejka.
-      else t.px(x, y, y < R - 1 ? bright : hot);
+      else t.px(x, y, y < R ? bright : hot);
     }
-  }
-  if (filled) {
-    t.px(R - 2, R - 3, glow);
-    t.px(R - 1, R - 4, glow);
-    t.px(R - 3, R - 2, glow);
   }
   return t;
 }

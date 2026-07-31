@@ -640,7 +640,20 @@ drzewa, etapów pękania skały i rzeczy leżących na ziemi.
     jeden komplet z poprawką — i wtedy siekiera dostanie zamach z góry, a nie
     kolejne przebranie pchnięcia.
 
-11. **Reguły rozstawiania skał i drzew.** Zgłoszone 2026-07-31 po obejrzeniu mapy
+11. **Ślad ciosu pięścią ma własny rysunek, nie przeskalowany łuk włóczni.**
+    Dziś smuga jest jedna dla wszystkich broni i tylko ściskana mnożnikiem
+    zasięgu. Działa — przestała mylić co do zasięgu — ale dalej jest **łukiem
+    cięcia**, a pięść nie tnie. Powinien to być krótki błysk przy samej garści,
+    a nie wycinek okręgu wokół tułowia. Do zrobienia razem z nowymi pozami ciosu.
+
+12. **Worek po trupie zamiast rozsypanych rzeczy.** Śmierć wysypuje dziś plecak
+    jako osobne przedmioty na ziemię — koszt śmierci jest, ale przy pełnym
+    plecaku odbiór to dwadzieścia naciśnięć `E`. Docelowo ma zostać **jeden worek**,
+    który się otwiera i z którego przekłada się tyle, ile się zmieści. Wymaga
+    interfejsu cudzego pojemnika — tego samego, który potem obsłuży skrzynię
+    w pokoju w karczmie.
+
+13. **Reguły rozstawiania skał i drzew.** Zgłoszone 2026-07-31 po obejrzeniu mapy
    w grze: obiekty stoją zbyt losowo — głazy nachodzą na inne obiekty i na styki
    kafli, a zagęszczenie jest takie, że **ledwo da się przejść przez mapę**.
    `scatter()` pilnuje minimalnego odstępu **między obiektami tego samego wywołania**

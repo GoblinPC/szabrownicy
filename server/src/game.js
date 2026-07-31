@@ -651,8 +651,34 @@ export class Game {
     target.lastHurtAt = now;
 
     if (target.hp > 0) return false;
+    // **Wysypanie plecaka przed odrodzeniem**, bo `respawn()` przenosi gracza do
+    // hali — po nim nie wiadomo już, gdzie zginął.
+    this.spillBag(target, now);
     this.respawn(target);
     return true;
+  }
+
+  /**
+   * Śmierć wyrzuca niesione rzeczy.
+   *
+   * Bez tego śmierć nic nie kosztuje, a plecak-siatka jest ozdobą: skoro nic nie
+   * tracisz, to nie ma znaczenia, ile niesiesz. To jest ta jedna rzecz, która
+   * zamienia wyjście za mury w decyzję — im dłużej zbierasz, tym więcej masz do
+   * stracenia w drodze powrotnej.
+   *
+   * **Na razie rzeczy leżą osobno, nie w jednym worku.** Docelowo ma po trupie
+   * zostać worek, który się otwiera i z którego przekłada się tyle, ile się
+   * zmieści — czyli decyzja „co biorę", podejmowana stojąc nad ciałem w otwartym
+   * świecie. Wymaga to interfejsu cudzego pojemnika, którego jeszcze nie ma;
+   * rozsypane rzeczy dają dziś ten sam koszt śmierci, tylko brzydziej.
+   */
+  spillBag(player, now) {
+    if (!player.bag.items.length) return;
+    for (const item of player.bag.items) {
+      this.dropAt(player.x, player.y, item.kind, 1, now);
+    }
+    player.bag.items.length = 0;
+    player.bagSeq++;
   }
 
   /**

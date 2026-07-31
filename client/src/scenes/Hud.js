@@ -19,7 +19,9 @@ const PANEL_Y = 16;
 const UI_SCALE = 2;
 const BAR_W = 100;
 const BAR_H = 18;
-const PIP_STEP = 21;
+// Odstęp między znacznikami uniku. Zszedł razem z nimi: romb ma teraz 7 pikseli
+// boku zamiast 19, więc krok 21 zostawiał między nimi trzy puste kryształy.
+const PIP_STEP = 9;
 
 // Pasek głodu: węższy i niższy od paska życia, bo głód jest wolniejszy i mniej
 // pilny — dwa równe paski obok siebie czytają się jako dwie równie ważne rzeczy.

@@ -2,7 +2,7 @@
 
 import { buildWorld, surfaceAt, TILE, WORLD_W, WORLD_H, SPAWN, INTERIOR_PX, ROOF_PX, BUILDING_PX } from '../world/forge.js';
 import {
-  poseOf, inAttackArc, attackStep, strikeFrom, ATTACK_STEPS, dodgeFuel,
+  poseOf, inAttackArc, attackStep, strikeFrom, ATTACK_STEPS, dodgeFuel, weaponOf,
   KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_RUN, KEY_ATTACK, KEY_DODGE,
 } from '../world/movement.js';
 import { Lighting } from '../render/lighting.js';
@@ -1056,7 +1056,7 @@ export class ForgeScene extends Phaser.Scene {
    * Przy ciosie do góry ląduje pod postacią — z tyłu ostrze jest po drugiej
    * stronie ciała niż kamera, więc i ono, i jego ślad mają być zasłonięte.
    */
-  spawnSlash(owner, facing, flip, step = 0) {
+  spawnSlash(owner, facing, flip, step = 0, weapon = 'fists') {
     if (!owner.slash) {
       // Zaczepienie w środku, nie u stóp: smuga jest łukiem **wokół tułowia**
       // i to jego środek jest punktem, od którego liczy się zasięg ciosu.
@@ -1073,8 +1073,15 @@ export class ForgeScene extends Phaser.Scene {
     // Ślad rozciągamy dokładnie tak, jak sięga dany cios. Rysunek ma 46 px
     // zasięgu, więc mocne pchnięcie (56 px) trzeba wydłużyć — inaczej gracz
     // widziałby krótszy ślad, niż faktycznie trafia.
-    const reach = ATTACK_STEPS[step].range ?? 40;
-    owner.slash.setScale(reach / 46, 1);
+    // Ślad musi się skalować **także bronią**, nie tylko ogniwem łańcucha.
+    // Pięść dostawała łuk narysowany pod włócznię i myliło to najbardziej ze
+    // wszystkiego: gracz widzi zamach sięgający pół kafla dalej, niż faktycznie
+    // trafia, więc bije z odległości, z której nie ma prawa dosięgnąć.
+    const mnoznik = weaponOf(weapon).range;
+    const reach = (ATTACK_STEPS[step].range ?? 40) * mnoznik;
+    // Wysokość też schodzi, choć wolniej: przy samym skróceniu w poziomie
+    // z łuku robi się gruby placek, a ma z niego zostać mały błysk przy pięści.
+    owner.slash.setScale(reach / 46, 0.45 + 0.55 * mnoznik);
 
     owner.slashFacing = facing;
     this.time.delayedCall(strikeFrom(step), () => {
@@ -1126,7 +1133,7 @@ export class ForgeScene extends Phaser.Scene {
       this.shownAtkSeq = seq;
       const step = attackStep(body);
       this.player.play(`${key}${step}_${bron}`);
-      this.spawnSlash(this, pose.aim, pose.flip, step);
+      this.spawnSlash(this, pose.aim, pose.flip, step, bron);
     } else if (!pose.attacking && this.player.anims.currentAnim?.key !== key) {
       this.player.play(key);
     }
@@ -1237,7 +1244,7 @@ export class ForgeScene extends Phaser.Scene {
 
       if (struck) {
         other.sprite.play(`${key}${attackStep(sample) ?? 0}_${bronOb}`);
-        this.spawnSlash(other, aim, Boolean(sample.l));
+        this.spawnSlash(other, aim, Boolean(sample.l), 0, bronOb);
       } else if (!other.sprite.anims.isPlaying
         // `includes`, nie `endsWith`: klucz ciosu kończy się teraz nazwą broni
         // (`..._atk0_fists`), więc dopasowanie do końca przestało go łapać
