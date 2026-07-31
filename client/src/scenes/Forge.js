@@ -71,11 +71,18 @@ export class ForgeScene extends Phaser.Scene {
       .setDepth(-100);
 
     ground.beginDraw();
-    for (let y = 0; y < this.world.tiles.length; y++) {
-      const row = this.world.tiles[y];
+    // Trzy warstwy, w tej kolejności: ziemia pod wszystkim, na niej trawa i droga
+    // jako nakładki o własnym kształcie, na końcu ślady. Kolejność jest cała
+    // różnica między terenem a szachownicą — nakładka rysowana pod podłożem albo
+    // rysowana zamiast niego wraca do kwadratów.
+    for (let y = 0; y < this.world.base.length; y++) {
+      const row = this.world.base[y];
       for (let x = 0; x < row.length; x++) {
         ground.batchDrawFrame('tiles', this.tileIndex[row[x]], x * TILE, y * TILE);
       }
+    }
+    for (const cell of this.world.overlay) {
+      ground.batchDrawFrame('tiles', this.tileIndex[cell.key], cell.x, cell.y);
     }
     for (const decal of this.world.decals) {
       ground.batchDrawFrame('tiles', this.tileIndex[decal.key], decal.x, decal.y);

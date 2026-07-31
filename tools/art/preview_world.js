@@ -17,7 +17,7 @@ import { buildFont, drawText } from './font.js';
 import { buildTiles, TILE } from './tiles.js';
 import { buildProps } from './props.js';
 import { buildGoblins } from './goblins.js';
-import { buildWorld, BUILDING_PX, ROOF_PX } from '../../client/src/world/forge.js';
+import { buildWorld, BUILDING_PX, ROOF_PX, CITY_OX, CITY_OY } from '../../client/src/world/forge.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -31,7 +31,10 @@ const noRoof = process.argv.includes('--bez-dachu');
 const [ax, ay, bx, by] = process.argv.filter((a) => !a.startsWith('--')).slice(2).map(Number);
 const crop = Number.isFinite(ax)
   ? { x0: ax, y0: ay, x1: bx, y1: by }
-  : { x0: 14, y0: 12, x1: 34, y1: 26 };   // domyślnie okolice bramy
+  // Domyślnie okolice bramy kuźni — w układzie **wielkiej mapy**, bo od czasu
+  // przesunięcia miasta o `CITY_OX`/`CITY_OY` te same liczby wskazywały skałę
+  // w rogu skaliska zamiast placu.
+  : { x0: CITY_OX + 14, y0: CITY_OY + 12, x1: CITY_OX + 34, y1: CITY_OY + 26 };
 
 const W = (crop.x1 - crop.x0 + 1) * TILE;
 const H = (crop.y1 - crop.y0 + 1) * TILE;
@@ -41,12 +44,18 @@ const oy = crop.y0 * TILE;
 const canvas = new Canvas(W, H + 14);
 canvas.fill(c('soot', 0));
 
-// 1. Podłoże i dekale.
+// 1. Podłoże, nakładki i dekale. Ta sama kolejność co w `Forge.drawGround()` —
+// podgląd nie może pokazać czegoś innego, niż widzi gracz.
 for (let y = crop.y0; y <= crop.y1; y++) {
   for (let x = crop.x0; x <= crop.x1; x++) {
-    const tile = tiles.get(world.tiles[y][x]);
+    const tile = tiles.get(world.base[y][x]);
     if (tile) canvas.blit(tile, x * TILE - ox, y * TILE - oy + 14);
   }
+}
+for (const cell of world.overlay) {
+  if (cell.x < ox - TILE || cell.y < oy - TILE || cell.x >= ox + W || cell.y >= oy + H) continue;
+  const tile = tiles.get(cell.key);
+  if (tile) canvas.blit(tile, cell.x - ox, cell.y - oy + 14);
 }
 // Kępki trawy są osobną listą, bo w grze gną się pod postacią i muszą być
 // osobnymi obiektami. Na podglądzie stoją prosto — rysujemy je razem z resztą.

@@ -4,9 +4,16 @@
 // i `wall_face_*` (front muru pod nią). Dzięki temu mur ma grubość i widać,
 // że gracz chodzi przed nim, a nie po nim.
 //
-// Teren placu nie używa autokafli — zamiast przejść między trawą a ziemią
-// kładziemy jednolitą ziemię i sypiemy na wierzch dekale (kępki trawy, kałuże).
-// Wygląda organiczniej i oszczędza kilkudziesięciu kafli narożnikowych.
+// **Podłoże jest warstwowe, nie „albo/albo".** Pod spodem leży ziemia — wszędzie,
+// także tam, gdzie rośnie trawa. Trawa i droga to `surfaceOverlay()`: osobna
+// warstwa położona na wierzchu, o własnym, obłym kształcie, która **nachodzi**
+// na ziemię zamiast do niej przylegać.
+//
+// Poprzednia wersja wybierała jeden kafel na pole (`n > 0.68 ? ziemia : trawa`)
+// i dokładała pasek zębów na styku. Twardy próg na ciągłym szumie może dać tylko
+// binarną granicę, a siatka tnie ją na schodki co szesnaście pikseli — dlatego
+// świat czytał się jako kwadraty poukładane obok siebie. Żadna obwódka rysowana
+// PO tej decyzji tego nie odwraca, bo podłoże już się zadeklarowało jako kwadrat.
 
 import { Canvas } from './canvas.js';
 import { c } from './palette.js';
@@ -14,7 +21,62 @@ import { makeRng, seedFrom } from './rng.js';
 
 export const TILE = 16;
 
+/** Ile wariantów kafla ziemi. Musi się zgadzać z `dirtFor()` w `world/forge.js`. */
+export const DIRT_VARIANTS = 12;
+
 const rngFor = (name) => makeRng(seedFrom(name));
+
+/**
+ * Nieregularne plamy materiału, zawijane na krawędziach kafla.
+ *
+ * To jest odpowiedź na „wszystko kanciaste" po stronie samej tekstury. Kafle
+ * robione przez `fill()` + `speckle()` to jednorodny szum: dwa takie pola o różnej
+ * średniej barwie stykają się **idealnie prostą linią**, którą oko czyta
+ * natychmiast. Szum pojedynczymi pikselami jest fakturą, nie kształtem — przy
+ * zoomie 2-4x uśrednia się w płaską plamę koloru.
+ *
+ * Plamy o promieniu kilku pikseli dają kaflowi własną formę, więc granica między
+ * dwoma kaflami nie ma się gdzie pokazać. Zawijanie (`% TILE`) sprawia, że kafel
+ * przylega bez szwu sam do siebie — a to on powtarza się najczęściej.
+ */
+function blotches(t, rng, shades, { count, rmin, rmax, alpha = 255 }) {
+  for (let i = 0; i < count; i++) {
+    const cx = rng.range(0, TILE);
+    const cy = rng.range(0, TILE);
+    const rx = rng.range(rmin, rmax);
+    const ry = rx * rng.range(0.55, 1.0);
+    const col = shades[rng.int(shades.length)];
+    // Trzy fale doklejone do promienia — czysta elipsa czyta się jako narysowany
+    // owal, a nie jako nierówność gruntu. Ta sama sztuczka co przy kałuży.
+    const amp = [rng.range(0.1, 0.3), rng.range(0.06, 0.2), rng.range(0.03, 0.12)];
+    const ph = [rng.range(0, 6.28), rng.range(0, 6.28), rng.range(0, 6.28)];
+
+    const r0 = Math.ceil(Math.max(rx, ry)) + 1;
+    for (let dy = -r0; dy <= r0; dy++) {
+      for (let dx = -r0; dx <= r0; dx++) {
+        const nx = dx / rx;
+        const ny = dy / ry;
+        const d = Math.hypot(nx, ny);
+        if (d > 1.4) continue;
+        const a = Math.atan2(ny, nx);
+        const edge = 1 + amp[0] * Math.sin(2 * a + ph[0])
+          + amp[1] * Math.sin(3 * a + ph[1]) + amp[2] * Math.sin(5 * a + ph[2]);
+        if (d > edge) continue;
+        // Brzeg plamy rozsypany, nie obrysowany — plama ma się rozmywać w tło.
+        if (d > edge - 0.22 && rng.chance(0.5)) continue;
+        const x = ((Math.round(cx + dx) % TILE) + TILE) % TILE;
+        const y = ((Math.round(cy + dy) % TILE) + TILE) % TILE;
+        t.px(x, y, alpha === 255 ? col : [...hexToRgb(col), alpha]);
+      }
+    }
+  }
+  return t;
+}
+
+function hexToRgb(hex) {
+  const h = hex.replace('#', '');
+  return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+}
 
 // --- Wnętrze kuźni ------------------------------------------------------------
 
@@ -252,14 +314,23 @@ function roofRidge(name) {
 
 // --- Plac na zewnątrz ---------------------------------------------------------
 
-/** Ubita ziemia — baza całego placu. */
+/**
+ * Ubita ziemia — **baza całego świata**, także pod trawą i pod drogą.
+ *
+ * Najpierw plamy, potem szum. Kolejność jest istotna: plamy robią formę, którą
+ * widać z zoomu, szum dokłada fakturę, której z zoomu nie widać, ale bez której
+ * plamy wyglądają jak wycięte z papieru.
+ */
 function dirt(name) {
   const rng = rngFor(name);
   const t = new Canvas(TILE, TILE);
   t.fill(c('earth', 2));
-  t.speckle(rng, c('earth', 1), 0.18);
-  t.speckle(rng, c('earth', 3), 0.12);
-  t.speckle(rng, c('earth', 0), 0.05);
+  blotches(t, rng, [c('earth', 1), c('earth', 3)], { count: 5, rmin: 2.5, rmax: 5.0 });
+  blotches(t, rng, [c('earth', 0)], { count: 2, rmin: 1.5, rmax: 3.0 });
+  // Najjaśniejszy odcień ziemi zostaje drodze — ubita ziemia go nie dostaje.
+  // Inaczej droga ginie w placu, bo obie mają te same plamy.
+  t.speckle(rng, c('earth', 1), 0.1);
+  t.speckle(rng, c('earth', 3), 0.08);
   // Kilka kamyków z podkreśleniem od spodu — drobny relief.
   for (let i = 0; i < 3; i++) {
     const x = rng.int(TILE - 1);
@@ -270,24 +341,37 @@ function dirt(name) {
   return t;
 }
 
-/** Wydeptana ścieżka — jaśniejsza i gładsza od reszty placu. */
+/** Wydeptana ścieżka — jaśniejsza i gładsza od reszty. Kładziona jako nakładka. */
 function path(name) {
   const rng = rngFor(name);
   const t = new Canvas(TILE, TILE);
-  t.fill(c('earth', 3));
-  t.speckle(rng, c('earth', 2), 0.2);
-  t.speckle(rng, c('earth', 4), 0.1);
-  t.speckle(rng, c('stone', 1), 0.04);
+  // Droga siedzi o cały stopień rampy wyżej od ubitej ziemi i dokłada kamień.
+  // Sam odcień jaśniejszej ziemi nie wystarczał: przy zoomie 2x różnica jednego
+  // stopnia znikała i wydeptany trakt czytał się jak przypadkowa jasna plama.
+  t.fill(c('earth', 4));
+  blotches(t, rng, [c('earth', 3)], { count: 4, rmin: 2.5, rmax: 5.5 });
+  blotches(t, rng, [c('stone', 2)], { count: 3, rmin: 1.5, rmax: 3.2 });
+  t.speckle(rng, c('earth', 3), 0.12);
+  t.speckle(rng, c('stone', 3), 0.06);
+  t.speckle(rng, c('stone', 1), 0.05);
   return t;
 }
 
-/** Trawa poza obrębem placu. */
+/** Trawa — powierzchnia nakładki, nigdy nie kładziona jako samodzielne podłoże. */
 function grass(name) {
   const rng = rngFor(name);
   const t = new Canvas(TILE, TILE);
   t.fill(c('foliage', 2));
-  t.speckle(rng, c('foliage', 1), 0.2);
-  t.speckle(rng, c('foliage', 3), 0.15);
+  // Trawa dostaje **węższy zakres** niż ziemia: tylko sąsiednie stopnie rampy
+  // w dużych plamach, a skrajne odcienie pojedynczymi pikselami. Pierwsza wersja
+  // brała pełną rampę na plamy i darń czytała się jak brokuł — kontrast wewnątrz
+  // materiału zjadał kontrast na jego granicy, czyli to jedyne, co ma tu grać.
+  blotches(t, rng, [c('foliage', 1)], { count: 3, rmin: 2.5, rmax: 5.0 });
+  blotches(t, rng, [c('foliage', 3)], { count: 3, rmin: 2.5, rmax: 5.0 });
+  t.speckle(rng, c('foliage', 1), 0.1);
+  t.speckle(rng, c('foliage', 3), 0.09);
+  t.speckle(rng, c('foliage', 4), 0.03);
+  t.speckle(rng, c('foliage', 0), 0.02);
   // Źdźbła: krótkie pionowe kreski z ciemniejszą podstawą.
   for (let i = 0; i < 6; i++) {
     const x = rng.int(TILE);
@@ -298,19 +382,205 @@ function grass(name) {
   return t;
 }
 
-/** Lita skała — nieprzekraczalna granica mapy. */
+// --- Warstwa nakładkowa (trawa i droga na ziemi) ------------------------------
+//
+// Siatka nakładek jest **przesunięta o pół kafla** względem siatki świata, więc
+// jedna komórka nakładki dotyka czterech pól świata — po jednym na róg. Kształt
+// bierze się z tego, ile z tych czterech rogów jest trawą: szesnaście układów
+// zamiast czterdziestu siedmiu autokafli, a obłe narożniki wychodzą z samej
+// konstrukcji, nie z rysowania ich po jednym.
+//
+// Dwie rzeczy, których nie da się tu zrobić inaczej:
+//
+// **Próg liczony dwuliniowo.** Wartość w punkcie to interpolacja czterech rogów.
+// Dwie sąsiednie komórki dzielą dwa rogi, więc wzdłuż wspólnej krawędzi liczą
+// dokładnie tę samą wartość — kształty schodzą się bez szwu, choć każdy powstał
+// osobno. To jest cały powód, dla którego siatka jest przesunięta.
+//
+// **Szum ma okres równy dwóm kaflom.** Nierówność krawędzi musi się zgadzać po
+// obu stronach styku komórek, więc nie może być losowa — jest sumą sinusów o
+// okresie 32 px, próbkowaną w czterech fazach zależnych od pozycji komórki.
+// Losowy szum dałby ząbek urwany dokładnie na granicy komórki, czyli ten sam
+// prosty szew, którego się tu pozbywamy.
+
+/** Ile rogów komórki jest wypełnionych: NW=1, NE=2, SW=4, SE=8. */
+const CORNERS = [[1, 0, 0], [2, 1, 0], [4, 0, 1], [8, 1, 1]];
+
+export const PHASES = 16;
+
+function coverage(mask, phase) {
+  const ox = (phase & 3) * TILE;
+  const oy = ((phase >> 2) & 3) * TILE;
+  const P = TILE * 4;
+
+  // Nierówność krawędzi. Amplituda ~0,12 przekłada się na jakieś półtora piksela
+  // wychylenia — więcej i obłe narożniki gubią się w postrzępieniu.
+  //
+  // Okres to **cztery kafle**, nie dwa. Przy dwóch długa prosta granica — a taka
+  // jest skalna ściana miasta — dostawała falę powtarzaną co 32 px i czytało się
+  // to jako rząd jednakowych garbów, czyli ten sam rytm siatki, którego się tu
+  // pozbywamy, tylko dwa razy rzadszy. Kosztem jest szesnaście faz zamiast
+  // czterech, czyli kilkaset kafli więcej w atlasie — a te są darmowe.
+  const wob = (x, y) => {
+    const X = ((x + ox) / P) * Math.PI * 2;
+    const Y = ((y + oy) / P) * Math.PI * 2;
+    return 0.10 * Math.sin(X + 0.9) * Math.cos(Y - 0.3)
+      + 0.07 * Math.sin(2 * X + 1.1) * Math.cos(2 * Y + 0.4)
+      + 0.05 * Math.sin(3 * X - 0.7) * Math.cos(Y + 1.7)
+      + 0.04 * Math.cos(3 * Y + 2.2)
+      + 0.03 * Math.sin(5 * X + 0.2) * Math.sin(5 * Y - 1.1);
+  };
+
+  // Próg poniżej połowy: nakładka **rozlewa się** na ziemię zamiast kończyć
+  // dokładnie w połowie pola. O to właśnie chodzi w „narasta od boku".
+  const THRESHOLD = 0.43;
+
+  return (x, y) => {
+    const u = (x + 0.5) / TILE;
+    const w = (y + 0.5) / TILE;
+    let v = 0;
+    for (const [bit, cu, cw] of CORNERS) {
+      if (!(mask & bit)) continue;
+      v += (cu ? u : 1 - u) * (cw ? w : 1 - w);
+    }
+    return v + wob(x, y) - THRESHOLD;
+  };
+}
+
+/**
+ * Kafel nakładki: powierzchnia przycięta kształtem z `coverage()` plus obróbka
+ * krawędzi, która sprzedaje, że warstwa **leży na** ziemi, a nie obok niej.
+ *
+ * Trzy sygnały, każdy w innym miejscu:
+ * - u góry rozjaśniona grzywka i pojedyncze źdźbła wychodzące poza kształt,
+ * - po bokach źdźbła wygięte na zewnątrz,
+ * - u dołu **cień kontaktowy położony poza kształtem**, na ziemi.
+ *
+ * Cień jest z tych trzech najważniejszy. Bez niego warstwa czyta się jak łata
+ * wklejona w podłoże; z nim od razu widać, że coś tu rośnie i ma grubość.
+ */
+const BODY = { grass, path, rock: rockWall };
+
+function surfaceOverlay(name, kind, mask, phase) {
+  const rng = rngFor(name);
+  const body = BODY[kind](`${name}-body`);
+  const t = new Canvas(TILE, TILE);
+  const inside = coverage(mask, phase);
+  const isIn = (x, y) => inside(x, y) > 0;
+
+  for (let y = 0; y < TILE; y++) {
+    for (let x = 0; x < TILE; x++) {
+      if (!isIn(x, y)) continue;
+      const [r, g, b] = body.get(x, y);
+      t.px(x, y, [r, g, b, 255]);
+    }
+  }
+
+  if (kind === 'rock') {
+    // Skała jest **bryłą, nie łatą**: ma oświetloną górną krawędź, ciemny spód
+    // i rzuca cień na ziemię pod sobą. Bez tych trzech rzeczy obły obrys tylko
+    // zaokrągla płaską plamę i granica świata dalej czyta się jak wycinanka.
+    for (let y = 0; y < TILE; y++) {
+      for (let x = 0; x < TILE; x++) {
+        if (!isIn(x, y)) continue;
+        if (!isIn(x, y - 1)) {
+          t.px(x, y, c('stone', rng.chance(0.6) ? 2 : 3));
+          if (isIn(x, y + 1)) t.px(x, y + 1, c('stone', 1));
+        }
+        if (!isIn(x - 1, y) || !isIn(x + 1, y)) t.px(x, y, c('stone', 0));
+        if (!isIn(x, y + 1)) {
+          // Podstawa i cień. Cień skały jest dłuższy niż trawy, bo skała jest
+          // wyższa — dwa piksele kryjące i trzeci zanikający.
+          t.px(x, y, c('soot', 0));
+          t.px(x, y + 1, [...hexToRgb(c('soot', 0)), 165]);
+          t.px(x, y + 2, [...hexToRgb(c('soot', 0)), 95]);
+          if (rng.chance(0.6)) t.px(x, y + 3, [...hexToRgb(c('soot', 0)), 40]);
+        }
+      }
+    }
+    return t;
+  }
+
+  if (kind === 'path') {
+    // Droga jest wydeptana, czyli **wgnieciona** — jaśniejsza w środku, z ciemnym
+    // rantem po wewnętrznej stronie krawędzi. Cienia na zewnątrz nie ma, bo nic
+    // tu nie wystaje ponad grunt; nakładanie go robiło z drogi wypukłą kładkę.
+    for (let y = 0; y < TILE; y++) {
+      for (let x = 0; x < TILE; x++) {
+        if (!isIn(x, y)) continue;
+        const brzeg = !isIn(x - 1, y) || !isIn(x + 1, y) || !isIn(x, y - 1) || !isIn(x, y + 1);
+        if (brzeg) t.px(x, y, [...hexToRgb(c('earth', 2)), 150]);
+      }
+    }
+    return t;
+  }
+
+  for (let y = 0; y < TILE; y++) {
+    for (let x = 0; x < TILE; x++) {
+      if (!isIn(x, y)) continue;
+
+      // Grzywka na górnej krawędzi — źdźbła stoją, więc od tej strony łapią światło.
+      //
+      // Wystających źdźbeł jest **mało i są krótkie**. Pierwsza wersja kłuła co
+      // trzeci piksel na trzy w górę i cała łata trawy dostawała szczecinę, przez
+      // którą nie było widać obłego kształtu — czyli tego jednego, po co ta warstwa
+      // w ogóle powstała.
+      if (!isIn(x, y - 1)) {
+        t.px(x, y, c('foliage', rng.chance(0.55) ? 3 : 4));
+        if (rng.chance(0.16)) t.px(x, y - 1, c('foliage', 3));
+      }
+
+      // Boki: pojedyncze źdźbła wychylone na ziemię.
+      for (const dx of [-1, 1]) {
+        if (isIn(x + dx, y) || !rng.chance(0.1)) continue;
+        t.px(x + dx, y, c('foliage', 3));
+      }
+
+      // Cień kontaktowy: dwa piksele **poza** kształtem, coraz słabsze.
+      if (!isIn(x, y + 1)) {
+        t.px(x, y + 1, [...hexToRgb(c('earth', 0)), 120]);
+        if (rng.chance(0.55)) t.px(x, y + 2, [...hexToRgb(c('earth', 0)), 55]);
+        // Ciemniejsza nasada nad cieniem — trawa styka się z ziemią, nie unosi.
+        t.px(x, y, c('foliage', 1));
+      }
+    }
+  }
+  return t;
+}
+
+/**
+ * Lita skała — nieprzekraczalna granica mapy. Też nakładka: pod spodem leży
+ * ziemia, więc skała ma na czym stać i może mieć obły obrys.
+ *
+ * Poprzednia wersja sypała krótkie poziome kreski w regularnych odstępach
+ * i z góry czytała się jako **mur z cegły**, a nie jako lita skała. Bloki są
+ * teraz plamami o różnej wielkości: skałę rozpoznaje się po nieregularnym
+ * podziale na bryły, nie po rytmie spoin.
+ */
 function rockWall(name) {
   const rng = rngFor(name);
   const t = new Canvas(TILE, TILE);
+  // Skała jest **ciemna**. To granica świata, a granica ma się czytać jako
+  // „tędy nie" — jasny kamień wygląda jak niski murek do przeskoczenia. Plamy
+  // schodzą więc w dół rampy, a jaśniejszy stopień dostaje sam obrys bryły.
   t.fill(c('stone', 0));
-  t.speckle(rng, c('stone', 1), 0.25);
-  t.speckle(rng, c('soot', 1), 0.15);
-  for (let i = 0; i < 4; i++) {
-    const x = rng.int(TILE - 4);
-    const y = rng.int(TILE - 4);
-    const w = rng.between(3, 6);
-    t.hline(x, x + w, y, c('stone', 2));
-    t.hline(x, x + w, y + 1, c('soot', 0));
+  blotches(t, rng, [c('soot', 2)], { count: 4, rmin: 2.5, rmax: 5.5 });
+  blotches(t, rng, [c('stone', 1)], { count: 3, rmin: 2.0, rmax: 4.0 });
+  blotches(t, rng, [c('soot', 1)], { count: 2, rmin: 1.5, rmax: 3.5 });
+  t.speckle(rng, c('stone', 1), 0.08);
+  t.speckle(rng, c('soot', 1), 0.08);
+  // Szczeliny: krótkie łamane, nie proste kreski o równej długości.
+  for (let i = 0; i < 3; i++) {
+    let x = rng.int(TILE);
+    let y = rng.int(TILE);
+    const len = rng.between(3, 7);
+    const dx = rng.chance(0.5) ? 1 : -1;
+    for (let j = 0; j < len; j++) {
+      t.px(x, y, c('soot', 0));
+      t.px(x, y - 1, c('stone', 3));
+      x += dx;
+      if (rng.chance(0.35)) y += rng.between(-1, 1);
+    }
   }
   return t;
 }
@@ -348,38 +618,6 @@ function grassTuft(name) {
     const h = rng.between(2, 4);
     for (let j = 0; j < h; j++) t.px(x, y - j, c('foliage', j === 0 ? 1 : 3));
     if (rng.chance(0.5)) t.px(x + 1, y - h + 1, c('foliage', 4));
-  }
-  return t;
-}
-
-/**
- * Postrzępiona obwódka trawy, kładziona na kaflu ZIEMI od strony trawy.
- *
- * Bez niej granica trawy z ziemią to prosta linia co szesnaście pikseli i widać
- * gołe kafle zamiast terenu — przy dużej łacie trawy wygląda to jak szachownica.
- * Ten sam problem rozwiązuje się zwykle kompletem kafli przejściowych na każdą
- * kombinację sąsiadów (szesnaście sztuk); tutaj wystarczy **jeden ślad na krawędź**
- * położony na wierzchu, bo trawa i tak jest nieregularna.
- *
- * `side` to strona, po której leży trawa. Zęby są coraz krótsze w głąb ziemi,
- * a ich długość losowa — prosta obwódka o stałej głębokości czytałaby się jako
- * druga, równie sztuczna linia.
- */
-function grassFringe(name, side) {
-  const rng = rngFor(name);
-  const t = new Canvas(TILE, TILE);
-
-  for (let i = 0; i < TILE; i++) {
-    const depth = rng.between(1, 5);
-    for (let d = 0; d < depth; d++) {
-      // Im głębiej w ziemię, tym rzadziej — ząb ma się rozmywać, nie kończyć.
-      if (d > 1 && rng.chance(0.45)) continue;
-      const shade = d === 0 ? 2 : d < 3 ? 1 : 3;
-      if (side === 'up') t.px(i, d, c('foliage', shade));
-      else if (side === 'down') t.px(i, TILE - 1 - d, c('foliage', shade));
-      else if (side === 'left') t.px(d, i, c('foliage', shade));
-      else t.px(TILE - 1 - d, i, c('foliage', shade));
-    }
   }
   return t;
 }
@@ -516,18 +754,32 @@ export function buildTiles() {
   add('roof_beam', roofBeam('roof_beam'));
   add('roof_ridge', roofRidge('roof_ridge'));
 
-  for (let i = 0; i < 4; i++) add(`dirt_${i}`, dirt(`dirt_${i}`));
+  // Dwanaście wariantów ziemi, nie cztery. Ziemia leży teraz pod **całym**
+  // światem, a nie tylko na placu, więc jej powtarzalność widać najbardziej ze
+  // wszystkiego: przy czterech kaflach plamy układały się w czytelny ukośny rytm
+  // na całej otwartej przestrzeni. Trawa i droga tego problemu nie mają, bo każdy
+  // z ich 240 kafli nakładki ma własną, osobno losowaną powierzchnię.
+  for (let i = 0; i < DIRT_VARIANTS; i++) add(`dirt_${i}`, dirt(`dirt_${i}`));
   for (let i = 0; i < 2; i++) add(`path_${i}`, path(`path_${i}`));
   for (let i = 0; i < 3; i++) add(`grass_${i}`, grass(`grass_${i}`));
   for (let i = 0; i < 3; i++) add(`rock_${i}`, rockWall(`rock_${i}`));
 
+  // Nakładki: piętnaście układów rogów (zero rogów to pusty kafel, którego nie ma
+  // po co rysować) razy cztery fazy szumu. Fazę wybiera pozycja komórki, więc
+  // nierówność krawędzi ma okres dwóch kafli zamiast jednego i długa granica nie
+  // wpada w rytm widoczny jako powtarzany ząbek.
+  for (const kind of ['grass', 'path', 'rock']) {
+    for (let mask = 1; mask < 16; mask++) {
+      for (let phase = 0; phase < PHASES; phase++) {
+        const key = `ov_${kind}_${mask}_${phase}`;
+        add(key, surfaceOverlay(key, kind, mask, phase));
+      }
+    }
+  }
+
   add('decal_soot_0', sootSplat('decal_soot_0', 0.6));
   add('decal_soot_1', sootSplat('decal_soot_1', 0.32));
   for (let i = 0; i < 3; i++) add(`decal_tuft_${i}`, grassTuft(`decal_tuft_${i}`));
-  // Po dwa warianty na stronę, żeby dłuższa krawędź nie powtarzała jednego wzoru.
-  for (const side of ['up', 'down', 'left', 'right']) {
-    for (let i = 0; i < 2; i++) add(`decal_fringe_${side}_${i}`, grassFringe(`decal_fringe_${side}_${i}`, side));
-  }
   // Cztery rozmiary, od zastoiny w koleinie po rozlewisko. Jeden rozmiar
   // powtórzony po całym placu widać od razu jako ten sam obrazek.
   // Stosunek osi trzymany blisko 1:1,7. Płaskie kałuże nie mają gdzie zmieścić

@@ -88,6 +88,56 @@ całkowitym 2–4×. Phaser 3.80 z CDN, `pixelArt: true`, bez kroku budowania.
   zmieniała świata bez powodu.
 - Cieni **nie wmalowywać w sprite'y** — rzuca je silnik.
 
+### Podłoże jest warstwowe, nie „albo/albo"
+
+Ustalone 2026-07-31, po tym jak użytkownik nazwał problem wprost: *za mało
+zaokrągleń, wszystko kanciaste, warstwy kończą się jedna przy drugiej*.
+
+Pod całym światem leży **ziemia**. Trawa, droga i skała to `surfaceOverlay()`
+z `tools/art/tiles.js` — osobna warstwa rysowana na wierzchu, o własnym obłym
+kształcie, która **nachodzi** na ziemię zamiast do niej przylegać.
+
+Poprzedni układ wybierał jeden kafel na pole (`n > 0.68 ? ziemia : trawa`)
+i dokładał pasek zębów na styku. To nie mogło zadziałać: twardy próg na ciągłym
+szumie daje binarną granicę, a siatka tnie ją na schodki co 16 px. **Nic
+dorysowanego po tej decyzji tego nie odwraca**, bo podłoże już zadeklarowało się
+jako kwadrat.
+
+- **Siatka nakładek jest przesunięta o pół kafla.** Komórka dotyka czterech pól
+  świata, po jednym na róg, a kształt bierze się z tego, ile z nich jest danym
+  materiałem: **piętnaście układów** zamiast czterdziestu siedmiu autokafli.
+  Obłe narożniki wychodzą z konstrukcji, nie z rysowania ich po jednym.
+- **Wartość liczona dwuliniowo z czterech rogów.** Dwie sąsiednie komórki dzielą
+  dwa rogi, więc wzdłuż wspólnej krawędzi liczą to samo — kształty schodzą się
+  bez szwu, choć każdy powstał osobno. To jest cały powód przesunięcia siatki.
+- **Szum krawędzi musi mieć okres będący wielokrotnością kafla**, bo inaczej
+  ząbek urywa się na granicy komórki i wraca prosty szew. Dziś **cztery kafle**,
+  czyli szesnaście faz wybieranych z pozycji komórki. Przy dwóch kaflach długa
+  prosta granica — skalna ściana miasta — dostawała rząd jednakowych garbów.
+  `PHASES` w `tiles.js` i `phase` w `buildOverlay()` muszą się zgadzać.
+- **Kolejność warstw:** ziemia → trawa → droga → skała. Droga przecina trawę,
+  bo ludzie ją wydeptali; skała przecina jedno i drugie, bo była pierwsza.
+- `tiles` zostaje **niezmienione** i dalej jest jedyną prawdą o tym, po czym
+  gracz chodzi. Krok na polu `grass_1` brzmi jak trawa niezależnie od tego, ile
+  trawy narysowała nakładka w tym rogu.
+
+**Kafel musi mieć własny kształt, nie sam szum.** Ziemia, trawa i skała powstają
+przez `blotches()` — plamy o promieniu kilku pikseli — a dopiero potem przez
+`speckle()`. Szum pojedynczymi pikselami jest fakturą, nie formą: przy zoomie
+2-4x uśrednia się w płaską plamę koloru, a dwa pola jednorodnego szumu o różnej
+średniej barwie stykają się **idealnie prostą linią**, którą oko czyta od razu.
+
+**Ziemi ma być dużo wariantów** (dziś dwanaście, `DIRT_VARIANTS`). Leży pod całym
+światem, więc jej powtarzalność widać najbardziej ze wszystkiego — przy czterech
+kaflach plamy układały się w czytelny ukośny rytm na całym placu. Trawa, droga
+i skała tego problemu nie mają: każda z ich 240 komórek ma osobno losowaną
+powierzchnię. Wariant bazy wybiera **hasz pozycji**, nie `(x + y) % n` — ten
+ostatni układa kafle w ukośne pasy.
+
+**Znana niedoróbka:** cień kontaktowy trawy i skały jest ucinany, gdy krawędź
+wypadnie w ostatnich pikselach komórki. Widać to sporadycznie jako brakujący
+cień pod pojedynczym fragmentem obrysu.
+
 ### Pułapki, które już kosztowały czas
 
 - Sprite postaci ma 27 pikseli wysokości, bo grzebień hełmu sięga 4 piksele nad
@@ -103,6 +153,17 @@ całkowitym 2–4×. Phaser 3.80 z CDN, `pixelArt: true`, bez kroku budowania.
 - Pnie drzew trzymać wewnątrz skalnej granicy (`y < 544`, `x` w 60–706).
 - Pochodnia ma krótki trzonek i wspornik wbity w mur. Długi kij czytał się jak
   włócznia postawiona przy ścianie.
+- **Po przesunięciu miasta o `CITY_OX`/`CITY_OY` trzeba przejrzeć wszystkie pętle
+  i kadry, nie tylko rysowanie mapy.** `buildDecals()` została na `x < CITY_W`,
+  `y < CITY_H` i przez to dekorowała lewy górny róg **wielkiej mapy** — w 97%
+  litą skałę. W całym świecie powstawało sześć dekali i dwie kępki trawy zamiast
+  stu czterdziestu i tysiąca pięciuset, kuźnia nie dostawała ani jednej plamy
+  sadzy, a plac ani jednej kałuży. Na ekranie wygląda to jak „grafika jest słaba",
+  nie jak „mechanizm nie działa" — wyszło dopiero z **policzenia** ich po
+  wygenerowaniu świata. Ten sam błąd miały kadry `preview_doba.js`
+  i `preview_world.js`: osiem kratek jednakowej skały w ośmiu porach dnia.
+  **Podgląd, który nie pokazuje sceny, jest gorszy niż żaden, bo wygląda na
+  działający.**
 
 ## Oświetlenie i cienie
 
@@ -447,6 +508,11 @@ Kilka błędów w układzie mapy dało się zauważyć dopiero w grze. Stąd:
   składanie maski, bo płótna 2D przeglądarki w Node nie ma. `--deszcz` pokazuje **samo
   przygaszenie i wypranie koloru** — padających kropli tu nie ma i być nie może,
   rysuje je Phaser wprost na kanwę gry.
+- `node tools/art/preview_podloze.js` — warstwa nakładkowa do `docs/preview/podloze.png`:
+  komplet piętnastu układów rogów, łata terenu złożona z nich **i ten sam kadr
+  starym sposobem** (kafel trawy albo kafel ziemi). Ta trzecia kratka jest tu
+  najważniejsza — bez niej nie da się odróżnić „nowe jest obłe" od „nowe jest tak
+  samo kanciaste, tylko inaczej pokolorowane".
 - `node tools/art/preview_bubble.js` — arkusz dymków czatu do `docs/preview/dymek.png`,
   na dwóch tłach: ciepły mrok hali i chłodna trawa placu. Geometria pochodzi
   z `client/src/render/bubble.js`, czyli z kodu gry. **Dwa tła są tu po coś** —

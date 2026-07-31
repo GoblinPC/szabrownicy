@@ -22,7 +22,7 @@ import { c } from './palette.js';
 import { buildFont, drawText } from './font.js';
 import { buildTiles, TILE } from './tiles.js';
 import { buildProps } from './props.js';
-import { buildWorld, INTERIOR_PX } from '../../client/src/world/forge.js';
+import { buildWorld, INTERIOR_PX, CITY_OX, CITY_OY } from '../../client/src/world/forge.js';
 import { skyColor, darkness, partOfDay } from '../../client/src/world/daylight.js';
 import { AMBIENT_FORGE, FORGE_NIGHT, TORCH_DAY, VIGNETTE_DAY, overcast } from '../../client/src/render/lighting.js';
 
@@ -42,7 +42,17 @@ const world = buildWorld();
 // widać na styku dwóch świateł. Z `--bez-dachu` zdejmujemy dach, żeby ocenić
 // wnętrze; z dachem widać to, co widzi gracz stojący na placu.
 const noRoof = process.argv.includes('--bez-dachu');
-const CROP = { x0: 14, y0: 8, x1: 34, y1: 28 };
+// Kadr w **układzie wielkiej mapy**, nie miasta.
+//
+// Te liczby zostały wpisane, gdy cała mapa miała 48x36 kafli i była samym miastem.
+// Po przesunięciu miasta o `CITY_OX`/`CITY_OY` arkusz doby pokazywał kafle 14-34
+// wielkiej mapy, czyli lity kamień w rogu skaliska — osiem kratek jednakowej skały
+// w ośmiu porach dnia. Podgląd, który nie pokazuje sceny, jest gorszy niż żaden,
+// bo wygląda na działający.
+const CROP = {
+  x0: CITY_OX + 14, y0: CITY_OY + 8,
+  x1: CITY_OX + 34, y1: CITY_OY + 28,
+};
 const W = (CROP.x1 - CROP.x0 + 1) * TILE;
 const H = (CROP.y1 - CROP.y0 + 1) * TILE;
 const ox = CROP.x0 * TILE;
@@ -55,9 +65,14 @@ function drawScene() {
 
   for (let y = CROP.y0; y <= CROP.y1; y++) {
     for (let x = CROP.x0; x <= CROP.x1; x++) {
-      const tile = tiles.get(world.tiles[y][x]);
+      const tile = tiles.get(world.base[y][x]);
       if (tile) canvas.blit(tile, x * TILE - ox, y * TILE - oy);
     }
+  }
+  for (const cell of world.overlay) {
+    if (cell.x < ox - TILE || cell.y < oy - TILE || cell.x >= ox + W || cell.y >= oy + H) continue;
+    const tile = tiles.get(cell.key);
+    if (tile) canvas.blit(tile, cell.x - ox, cell.y - oy);
   }
   for (const d of [...world.decals, ...world.tufts]) {
     if (d.x < ox || d.y < oy || d.x >= ox + W || d.y >= oy + H) continue;

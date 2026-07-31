@@ -295,24 +295,32 @@ function pickTile(x, y, rng) {
  * pod przechodzącą postacią. Wypalone w teksturę nie dałyby się ruszyć, a robienie
  * sprite'a z każdej plamy sadzy byłoby marnotrawstwem — sadza się nie rusza.
  */
-// Strona sąsiada i przesunięcie do niego. Nazwa opisuje, gdzie leży TRAWA,
-// bo obwódkę rysujemy od tej właśnie strony kafla ziemi.
-const EDGES = [['up', 0, -1], ['down', 0, 1], ['left', -1, 0], ['right', 1, 0]];
+// Palenisko w układzie miasta. Sadza gęstnieje w jego stronę, a odległość liczy
+// się na wielkiej mapie — stąd przesunięcie w jednym miejscu, nie w czterech.
+const FORGE_HEARTH = { x: CITY_OX + 11, y: CITY_OY + 8 };
 
 function buildDecals(tiles) {
   const rng = makeRng(seedFrom('forge-decals'));
   const decals = [];
   const tufts = [];
 
-  for (let y = 0; y < CITY_H; y++) {
-    for (let x = 0; x < CITY_W; x++) {
+  // Pętla idzie po **całej mapie**, nie po wymiarach miasta.
+  //
+  // Kiedy świat urósł z 48x36 do 160x120, a miasto przesunęło się o `CITY_OX`,
+  // ta pętla została na starych granicach i dekorowała lewy górny róg dziczy —
+  // w 97% litą skałę. W całym świecie powstawało sześć dekali i dwie kępki trawy,
+  // a kuźnia nie dostawała ani jednej plamy sadzy. Wyszło to dopiero z policzenia
+  // ich po wygenerowaniu świata, bo na ekranie wygląda to jak „grafika jest słaba",
+  // a nie jak „mechanizm nie działa".
+  for (let y = 0; y < MAP_H; y++) {
+    for (let x = 0; x < MAP_W; x++) {
       const tile = tiles[y][x];
       const px = x * TILE;
       const py = y * TILE;
+      const wCity = x >= CITY_OX && x < CITY_OX + CITY_W && y >= CITY_OY && y < CITY_OY + CITY_H;
 
       if (tile.startsWith('floor_stone')) {
-        // Sadza gęstnieje w stronę paleniska.
-        const d = Math.hypot(x - 11, y - 8);
+        const d = Math.hypot(x - FORGE_HEARTH.x, y - FORGE_HEARTH.y);
         if (d < 9 && rng.chance(0.35 - d * 0.03)) {
           decals.push({ key: rng.chance(0.5) ? 'decal_soot_0' : 'decal_soot_1', x: px, y: py });
         }
@@ -320,7 +328,7 @@ function buildDecals(tiles) {
       } else if (tile.startsWith('floor_wood')) {
         // Sadza wysypana z paleniska na deski. To ona rozmywa styk kamiennego
         // przedpiecka z podłogą — bez niej granica jest linią prostą.
-        const d = Math.hypot(x - 11.5, y - 8.5);
+        const d = Math.hypot(x - (FORGE_HEARTH.x + 0.5), y - (FORGE_HEARTH.y + 0.5));
         if (d < 10 && rng.chance(0.3 - d * 0.026)) {
           decals.push({ key: rng.chance(0.5) ? 'decal_soot_0' : 'decal_soot_1', x: px, y: py });
         }
@@ -332,27 +340,78 @@ function buildDecals(tiles) {
           const size = rng.chance(0.55) ? rng.int(2) : 2 + rng.int(2);
           decals.push({ key: `decal_puddle_${size}`, x: px, y: py });
         }
-        // Postrzępiona obwódka trawy wchodząca na ziemię od strony sąsiada.
-        //
-        // Kładziemy ją na kaflu ZIEMI, nie trawy — inaczej trzeba by kompletu
-        // kafli przejściowych na każdą kombinację sąsiadów, czyli szesnastu sztuk
-        // zamiast ośmiu śladów. Bez tego łata trawy ma prostą krawędź co
-        // szesnaście pikseli i czyta się jako szachownica, a nie jako teren.
-        for (const [side, dx, dy] of EDGES) {
-          const neighbour = tiles[y + dy]?.[x + dx];
-          if (!neighbour?.startsWith('grass')) continue;
-          decals.push({ key: `decal_fringe_${side}_${rng.int(2)}`, x: px, y: py });
-        }
       } else if (tile.startsWith('path')) {
         if (rng.chance(0.15)) decals.push({ key: 'decal_rut', x: px, y: py });
       } else if (tile.startsWith('grass')) {
-        // Gęsto, bo to jedyne miejsce, gdzie kępki mają się w co wtopić — i to
-        // one, gnąc się pod postacią, robią cały efekt żywej trawy.
-        if (rng.chance(0.55)) tufts.push({ key: `decal_tuft_${rng.int(3)}`, x: px, y: py });
+        // Kępki są **żywymi obiektami** — każda dostaje sprite'a i jest ruszana co
+        // klatkę. W mieście jest ich czternaście razy mniej niż w dziczy, więc
+        // gęstość dobrana na plac (0,55) dałaby na wielkiej mapie ponad siedem
+        // tysięcy sprite'ów. W dziczy trawa jest tłem, po którym się biegnie;
+        // na placu jest tym, po czym się chodzi i widać, jak się ugina.
+        if (rng.chance(wCity ? 0.5 : 0.1)) {
+          tufts.push({ key: `decal_tuft_${rng.int(3)}`, x: px, y: py });
+        }
       }
     }
   }
   return { decals, tufts };
+}
+
+/**
+ * Warstwa nakładkowa: podłoże bazowe plus komórki trawy i drogi.
+ *
+ * Siatka nakładek jest przesunięta o pół kafla, więc komórka `(cx, cy)` siedzi
+ * na `(cx*16-8, cy*16-8)` i dotyka czterech pól świata — po jednym na róg.
+ * Kształt wynika z tego, ile z nich jest danym materiałem; szczegóły geometrii
+ * siedzą w `tools/art/tiles.js` przy `surfaceOverlay()`.
+ *
+ * `tiles` zostaje **niezmienione**: to dalej jedyna prawda o tym, po czym gracz
+ * chodzi. Krok stawiany na polu `grass_1` ma brzmieć jak trawa niezależnie od
+ * tego, ile trawy narysowała nakładka w tym rogu.
+ */
+function buildOverlay(tiles) {
+  // Ziemia leży pod wszystkim, po czym się chodzi na dworze. Wariant z hasza
+  // pozycji, nie z licznika — `(x + y) % n` układa kafle w ukośne pasy, które
+  // przy jednorodnej ziemi widać jako mory.
+  //
+  // Dwanaście wariantów, tak jak `DIRT_VARIANTS` w `tools/art/tiles.js`.
+  const dirtFor = (x, y) => `dirt_${(((x * 73856093) ^ (y * 19349663)) >>> 0) % 12}`;
+  const base = [];
+  for (let y = 0; y < MAP_H; y++) {
+    const row = [];
+    for (let x = 0; x < MAP_W; x++) {
+      const tile = tiles[y][x];
+      // Ziemia też idzie przez hasz, nie tylko pola pod nakładką: `pickTile()`
+      // i `terrainTile()` losują `dirt_0..3`, więc bez tego plac dostawał cztery
+      // warianty zamiast dwunastu i rytm było widać mimo dosypanych kafli.
+      const ziemia = tile.startsWith('grass') || tile.startsWith('path')
+        || tile.startsWith('rock') || tile.startsWith('dirt');
+      row.push(ziemia ? dirtFor(x, y) : tile);
+    }
+    base.push(row);
+  }
+
+  // Kolejność warstw: trawa, na niej wydeptana droga, na wszystkim skała.
+  // Droga przecina trawę, bo to ludzie ją wydeptali; skała przecina jedno i drugie,
+  // bo była tu pierwsza.
+  const cells = [];
+  for (const kind of ['grass', 'path', 'rock']) {
+    const is = (x, y) => Boolean(tiles[y]?.[x]?.startsWith(kind));
+    for (let cy = 0; cy <= MAP_H; cy++) {
+      for (let cx = 0; cx <= MAP_W; cx++) {
+        const mask = (is(cx - 1, cy - 1) ? 1 : 0) | (is(cx, cy - 1) ? 2 : 0)
+          | (is(cx - 1, cy) ? 4 : 0) | (is(cx, cy) ? 8 : 0);
+        if (!mask) continue;
+        // Faza szumu z pozycji komórki. Cztery kafle okresu w każdą stronę —
+        // przy dwóch skalna ściana miasta dostawała rząd jednakowych garbów.
+        // Ta liczba musi się zgadzać z `PHASES` w `tools/art/tiles.js`.
+        const phase = (cx & 3) | ((cy & 3) << 2);
+        cells.push({ key: `ov_${kind}_${mask}_${phase}`, x: cx * TILE - 8, y: cy * TILE - 8 });
+      }
+    }
+  }
+
+  return { base, cells };
 }
 
 /**
@@ -803,9 +862,12 @@ export function buildWorld() {
   });
 
   const ground = buildDecals(tiles);
+  const overlay = buildOverlay(tiles);
 
   return {
     tiles,
+    base: overlay.base,
+    overlay: overlay.cells,
     decals: ground.decals,
     tufts: ground.tufts,
     roof: buildRoof().map(shift),
