@@ -49,7 +49,22 @@ export const WORLD_W = MAP_W * TILE;
 export const WORLD_H = MAP_H * TILE;
 
 /** Przesunięcie punktu z układu miasta na wielką mapę. */
-const shift = (p) => ({ ...p, x: p.x + OFF_X, y: p.y + OFF_Y });
+/**
+ * Przesunięcie z układu miasta na wielką mapę.
+ *
+ * **Razem z `y` musi iść `depth`.** Głębokość obiektów to ich `y` w układzie
+ * świata, więc płomień z głębokością wpisaną w układzie miasta lądował o `OFF_Y`
+ * za nisko w kolejce rysowania — czyli za wszystkim, na czym płonął. Ognisko
+ * zasłaniało własny ogień, dokładnie ten błąd, który CLAUDE.md opisuje od dawna,
+ * tylko wprowadzony z drugiej strony: nie przez złą liczbę, tylko przez to, że
+ * dobra liczba nie została przeliczona.
+ */
+const shift = (p) => ({
+  ...p,
+  x: p.x + OFF_X,
+  y: p.y + OFF_Y,
+  ...(typeof p.depth === 'number' ? { depth: p.depth + OFF_Y } : {}),
+});
 
 // Obrys budynku w kaflach.
 const BUILDING = { x0: 5, x1: 42, y0: 2, y1: 19 };
@@ -513,6 +528,11 @@ function buildProps() {
  * fazy, żeby pochodnie nie pulsowały zgodnie jak jedna.
  */
 function buildLights() {
+  // `indoor` liczone z obrysu hali, nie wpisane ręcznie — inaczej przesunięcie
+  // budynku zostawiłoby ogień „pod dachem" na środku placu. Decyduje o dwóch
+  // rzeczach naraz: czy ogień przygasa w dzień i czy w dzień rzuca cień.
+  const podDachem = (x, y) => x >= BUILDING.x0 * TILE && x <= (BUILDING.x1 + 1) * TILE
+    && y >= BUILDING.y0 * TILE && y <= (BUILDING.y1 + 1) * TILE;
   return [
     { x: 176, y: 118, radius: 132, color: [255, 150, 48], intensity: 1.0, flicker: 0.22, phase: 0 },
     { x: 176, y: 130, radius: 62, color: [255, 220, 130], intensity: 0.9, flicker: 0.3, phase: 1.4 },
@@ -525,7 +545,7 @@ function buildLights() {
     // Trzy niebieskie światła przy portalach zeszły razem z nimi. Jedynym źródłem
     // światła na placu jest teraz ognisko — i tak ma zostać, dopóki nie stanie tam
     // coś, co naprawdę świeci.
-  ];
+  ].map((light) => ({ ...light, indoor: podDachem(light.x, light.y) }));
 }
 
 /** Animowane płomienie doklejone do paleniska, pochodni i ogniska. */

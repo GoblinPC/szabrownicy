@@ -29,7 +29,7 @@ export function ensureContactTexture(scene) {
  * ważone siłą i odległością, więc obiekt między dwoma ogniskami rzuca cień
  * w kierunku pośrednim, a nie skacze między nimi.
  */
-export function lightAt(lights, x, y, minDistance = 18) {
+export function lightAt(lights, x, y, minDistance = 18, outdoorScale = 1) {
   let dx = 0;
   let dy = 0;
   let weight = 0;
@@ -40,7 +40,18 @@ export function lightAt(lights, x, y, minDistance = 18) {
     // Lampa tuż obok obiektu siedzi praktycznie w nim — nie ma z czego rzucać
     // cienia, a próba dawała gigantyczną czarną plamę pod ogniskiem.
     if (distance < minDistance || distance > light.radius) continue;
-    const contribution = light.intensity * (1 - distance / light.radius);
+    // Ogień **na dworze przestaje rzucać cień w dzień**. W południe ognisko nie
+    // rzuca żadnego widocznego cienia, bo słońce jest o rzędy wielkości jaśniejsze;
+    // bez tego beczka przy ognisku miała w samo południe cień odchylony od ognia,
+    // a beczka dziesięć kroków dalej od słońca — i od razu było widać, że jeden
+    // z nich kłamie.
+    //
+    // Ognie **pod dachem** zostają na pełnej mocy przez całą dobę, dokładnie tak
+    // jak w masce światła: hala jest ciemna niezależnie od pory i to palenisko
+    // jest w niej głównym źródłem.
+    const skala = light.indoor ? 1 : outdoorScale;
+    if (skala <= 0.001) continue;
+    const contribution = light.intensity * (1 - distance / light.radius) * skala;
     dx += (vx / distance) * contribution;
     dy += (vy / distance) * contribution;
     weight += contribution;
@@ -56,6 +67,9 @@ export class ShadowCaster {
     this.sunDx = 0;
     this.sunDy = 1;
     this.sunPower = 0;
+    // Do pierwszego `setNight()` ogień działa pełną mocą — czyli tak jak przed
+    // dołożeniem doby. Zero dawałoby jedną klatkę bez cieni przy wejściu do gry.
+    this.outdoorFire = 1;
     ensureContactTexture(scene);
   }
 
@@ -124,6 +138,19 @@ export class ShadowCaster {
     this.sunPower = power;
   }
 
+  /**
+   * Ile mocy zostaje ogniom na dworze. Ta sama liczba, która steruje maską
+   * światła — jedno źródło prawdy, więc cień nie może się rozjechać z blaskiem.
+   *
+   * @param night `darkness(phase)`: 0 w południe, 1 w nocy
+   */
+  setNight(night) {
+    // Kwadrat, bo cień ma znikać **szybciej** niż sam blask ognia. Płomień widać
+    // po ciepłym odcieniu na murze jeszcze długo po wschodzie; jego cienia nie
+    // widać już zaraz po nim.
+    this.outdoorFire = night * night;
+  }
+
   refresh(shadow, x, y) {
     const { cast, contact } = shadow;
     contact.setPosition(x, y);
@@ -132,7 +159,7 @@ export class ShadowCaster {
     // zniknąć w nocy, plama nie.
     contact.setAlpha(0.5 + 0.2 * (this.sunPower ?? 0));
 
-    let { dx, dy, weight } = lightAt(this.lights, x, y);
+    let { dx, dy, weight } = lightAt(this.lights, x, y, 18, this.outdoorFire ?? 1);
     // Poza zasięgiem ognia rządzi słońce. Dokładamy je zawsze, więc obiekt przy
     // ognisku ma cień od ognia, a dziesięć kroków dalej płynnie od słońca.
     if (this.sunPower > 0) {

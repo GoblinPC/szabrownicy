@@ -56,6 +56,7 @@ export class ForgeScene extends Phaser.Scene {
     // Slonce ustawiamy raz na starcie, zeby cienie nie mrugnely w pierwszej klatce.
     const start = sunShadow(0.5);
     this.shadows.setSun(start.angle, start.power);
+    this.shadows.setNight(darkness(0.5));
 
     this.setupCamera();
     this.setupInput();
@@ -900,6 +901,9 @@ export class ForgeScene extends Phaser.Scene {
     // a skoku przy tym tempie nie widac.
     const sun = sunShadow(phase);
     this.shadows.setSun(sun.angle, sun.power);
+    // Ta sama liczba, po której sterują się wszystkie nocne rzeczy — świetliki,
+    // ćmy, przygaszone pochodnie. Cień od ognia na dworze jest jedną z nich.
+    this.shadows.setNight(darkness(phase));
     if (time - (this.lastShadowSweep ?? 0) > 250) {
       this.lastShadowSweep = time;
       this.shadows.refreshStatics(this.cameras.main.worldView);
