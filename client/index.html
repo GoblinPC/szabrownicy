@@ -127,6 +127,69 @@
   }
   .chat-left { min-width: 18px; text-align: right; font-size: 10px; color: #6b5d54; }
 
+  /* Plecak-siatka. Leży na grze, a nie zamiast niej — świat widać dalej przez
+     przyciemnione tło, bo otwarcie plecaka nie zatrzymuje gry i nie zatrzyma:
+     przekładanie łupu stojąc nad trupem w otwartym świecie ma być ryzykiem. */
+  #backpack {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    place-content: center;
+    background: rgba(11, 9, 8, .55);
+    z-index: 11;
+  }
+  #bag-panel {
+    padding: 14px 16px 10px;
+    background: rgba(20, 16, 15, .96);
+    border: 1px solid #453b37;
+    border-radius: 5px;
+    box-shadow: 0 0 0 1px #14100f, 0 14px 40px rgba(0, 0, 0, .6);
+  }
+  #bag-title {
+    font-size: 12px;
+    letter-spacing: 4px;
+    color: #f2700f;
+    margin-bottom: 10px;
+  }
+  #bag-hint {
+    margin-top: 9px;
+    font-size: 10px;
+    letter-spacing: 1px;
+    color: #6b5d54;
+  }
+  #bag-hint b { color: #a08d7e; font-weight: normal; }
+
+  /* Kratki rysowane gradientem, nie osobnymi elementami: przy plecaku 8x5 to
+     czterdzieści węzłów mniej w drzewie, a wygląda tak samo. */
+  #bag-grid {
+    position: relative;
+    background-color: #14100f;
+    background-image:
+      linear-gradient(to right, #2e2725 1px, transparent 1px),
+      linear-gradient(to bottom, #2e2725 1px, transparent 1px);
+    border: 1px solid #453b37;
+  }
+  .bag-item {
+    position: absolute;
+    box-sizing: border-box;
+    border: 1px solid #5c4f49;
+    background: rgba(69, 59, 55, .5);
+    cursor: grab;
+  }
+  .bag-item--drag {
+    cursor: grabbing;
+    z-index: 2;
+    opacity: .85;
+    border-color: #f2700f;
+  }
+  /* Czerwona ramka zamiast blokady: gracz ma widzieć, że tu się nie zmieści,
+     a nie odbijać się od niewidzialnej ściany. */
+  .bag-item--bad { border-color: #8e2233; background: rgba(142, 34, 51, .3); }
+  .bag-icon {
+    pointer-events: none;
+    image-rendering: pixelated;
+  }
+
   #mixer {
     position: fixed;
     top: 10px;

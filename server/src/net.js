@@ -347,6 +347,23 @@ export function attachGame(sockets, dataDir, variantCount = 6, { guests = false 
         return;
       }
 
+      // Plecak. Klient przysyła **zamiar**, nie wynik — „przesuń przedmiot 3 na
+      // kratkę 2,4 obrócony". Sprawdza `game.moveItem()`; stąd tylko odsiew
+      // wartości, które nie są liczbami.
+      if (message.t === 'bag') {
+        if (message.a === 'move') {
+          if (!Number.isInteger(message.i)) return;
+          game.moveItem(session.player, message.i, message.x | 0, message.y | 0, message.r ? 1 : 0);
+          return;
+        }
+        if (message.a === 'drop') {
+          if (!Number.isInteger(message.i)) return;
+          game.dropItem(session.player, message.i, Date.now());
+          return;
+        }
+        return;
+      }
+
       if (message.t === 'variant') {
         if (!Number.isInteger(message.v)) return;
         const variant = ((message.v % variantCount) + variantCount) % variantCount;
@@ -451,9 +468,6 @@ export function attachGame(sockets, dataDir, variantCount = 6, { guests = false 
           ds: me.dodgeSeq ?? 0,
           ddx: Math.round((me.dodgeDx ?? 0) * 1000) / 1000,
           ddy: Math.round((me.dodgeDy ?? 0) * 1000) / 1000,
-          // Zebrane surowce. Licznikami zarządza wyłącznie serwer — klient je
-          // rysuje i nic więcej.
-          it: me.items,
           is: me.pickSeq,
         },
         ps: all.filter((p) => p.id !== me.id),
@@ -462,6 +476,10 @@ export function attachGame(sockets, dataDir, variantCount = 6, { guests = false 
         // listy są przycięte do tego, co ten gracz może zobaczyć.
         nd: game.nodeSnapshot(me),
         dr: game.dropSnapshot(me),
+        // Plecak leci **tylko do właściciela**. Przy grze, w której łupi się
+        // innych, cudza zawartość nie ma prawa być u nikogo w pamięci — inaczej
+        // przerobiony klient pokazuje, kogo warto zabić.
+        bg: game.bagSnapshot(me),
       }));
     }
   }, 1000 / TICK_HZ);

@@ -18,6 +18,7 @@ import { darkness, sunShadow } from '../world/daylight.js';
 import { Wind } from '../render/wind.js';
 import { Nodes } from '../render/nodes.js';
 import { Drops } from '../render/drops.js';
+import { createBackpack } from '../ui/backpack.js';
 
 // Jak długo trzymamy wciśnięcie ciosu w buforze po puszczeniu klawisza.
 const ATTACK_BUFFER_MS = 140;
@@ -218,13 +219,46 @@ export class ForgeScene extends Phaser.Scene {
       audio.hit(1.1);
     };
 
-    // Podniesienie z ziemi. Rozdzielone na dwa sygnały, bo licznik w rogu ekranu
-    // rosnący o jeden umyka oku, gdy patrzy się na postać: dźwięk mówi „doszło",
-    // rozjaśniony napis mówi „doszło **tego**".
-    this.net.onPickUp = () => {
-      audio.step('wood');
-      this.scene.get('Hud')?.flashLoot();
-    };
+    // Podniesienie z ziemi — sam dźwięk. Żadnego napisu: to, co się podniosło,
+    // widać w plecaku, a licznik w rogu ekranu byłby drugą, gorszą odpowiedzią
+    // na to samo pytanie.
+    this.net.onPickUp = () => audio.step('wood');
+
+    // Plecak. Ikony bierze z atlasu `props` — tego samego, z którego powstaje
+    // świat — więc nie ma osobnego kompletu obrazków do rozjechania.
+    this.backpack = createBackpack({
+      onMove: (id, x, y, rot) => this.net.bagMove(id, x, y, rot),
+      onDrop: (id) => this.net.bagDrop(id),
+    });
+    // Ramki z menedżera tekstur, nie z cache'u JSON: `load.atlas()` oddaje metryki
+    // Phaserowi, a nie do `cache.json`, więc czytanie ich stamtąd dawało pustkę
+    // i wszystkie ikony były niewidoczne.
+    const tex = this.textures.get('props');
+    const ramki = {};
+    for (const name of tex.getFrameNames()) {
+      const f = tex.frames[name];
+      ramki[name] = { frame: { x: f.cutX, y: f.cutY, w: f.cutWidth, h: f.cutHeight } };
+    }
+    this.backpack.useAtlas(ramki, {
+      w: tex.source[0].width,
+      h: tex.source[0].height,
+    });
+
+    // TAB otwiera i zamyka. Wolny, bo tabela graczy poszła pod `F1` razem
+    // z panelem diagnostycznym — plecak sięga się sto razy częściej.
+    // Bez tego przeglądarka zabiera TAB na przenoszenie zaznaczenia i klawisz
+    // nigdy nie dochodzi do gry.
+    this.input.keyboard.addCapture('TAB');
+    this.input.keyboard.on('keydown-TAB', (event) => {
+      event.preventDefault();
+      if (document.activeElement?.tagName === 'INPUT') return;
+      this.backpack.toggle();
+      // Klawisz trzymany w chwili otwarcia nigdy nie dostanie `keyup`, bo panel
+      // przechwytuje zdarzenia — bez tego postać sama ruszałaby w stronę,
+      // w którą szła. Ten sam błąd co przy otwieraniu czatu.
+      this.input.keyboard.resetKeys();
+    });
+    this.input.keyboard.on('keydown-ESC', () => this.backpack.close());
 
     // O tym, czy pokazać formularz, decyduje serwer, nie klient — dzięki temu
     // wyłączenie logowania na czas testów nie da się włączyć podmianą pliku
@@ -875,6 +909,7 @@ export class ForgeScene extends Phaser.Scene {
     this.nodes.update(Date.now());
     this.drops.apply(this.net.drops ?? []);
     this.drops.update(time);
+    this.backpack.apply(this.net.bag);
     this.predictHits(time);
     this.updateDodge(time);
     this.updateGhosts(delta);
@@ -1220,7 +1255,6 @@ export class ForgeScene extends Phaser.Scene {
     hud?.setDiagnostics(this.net.stats());
     hud?.setHealth(this.net.hp ?? 0, this.net.maxHp ?? 100, this.net.safe);
     hud?.setDodge(dodgeFuel(this.net.body ?? {}));
-    hud?.setLoot(this.net.items);
 
     // Plakietki rysuje HUD, bo jego kamera nie jest powiększana — dzięki temu
     // nick zostaje mały i ostry niezależnie od zoomu świata.

@@ -16,6 +16,7 @@ import {
   advance, poseOf, KEY_MASK, inAttackArc, ATTACK_STEPS,
 } from '../../client/src/world/movement.js';
 import { buildNodes, NODE_KINDS } from '../../client/src/world/nodes.js';
+import { makeBag, addItem, fits } from '../../client/src/world/items.js';
 
 export const TICK_HZ = 20;
 const TICK_MS = 1000 / TICK_HZ;
@@ -356,10 +357,71 @@ export class Game {
       const dx = drop.x - player.x;
       const dy = (drop.y - player.y) * 1.6;   // rzut 3/4: w pionie jest ciaśniej
       if (dx * dx + dy * dy > PICK_RANGE * PICK_RANGE) continue;
-      player.items[drop.item] = (player.items[drop.item] ?? 0) + 1;
+      // **Pełny plecak zostawia rzecz na ziemi.** To jest cały sens siatki:
+      // miejsce jest zasobem, więc gdy się skończy, łup przestaje wchodzić sam
+      // i trzeba coś wyrzucić. Bez tego kratki byłyby ozdobą.
+      if (!addItem(player.bag, drop.item)) continue;
+      player.bagSeq++;
       player.pickSeq++;
       this.drops.delete(id);
     }
+  }
+
+  /**
+   * Przełożenie w plecaku na prośbę gracza.
+   *
+   * Klient przysyła **zamiar**, nie wynik: „przesuń przedmiot 3 na kratkę 2,4
+   * obrócony". Sprawdzenie, czy taki przedmiot istnieje i czy tam wchodzi, jest
+   * tutaj i tylko tutaj. Klient rysujący siatkę u siebie może twierdzić, co chce.
+   */
+  moveItem(player, id, x, y, rot) {
+    const item = player.bag.items.find((it) => it.id === id);
+    if (!item) return false;
+    const r = rot ? 1 : 0;
+    if (!Number.isInteger(x) || !Number.isInteger(y)) return false;
+    if (!fits(player.bag, item.kind, r, x, y, item.id)) return false;
+    item.x = x;
+    item.y = y;
+    item.rot = r;
+    player.bagSeq++;
+    return true;
+  }
+
+  /**
+   * Wyrzucenie z plecaka na ziemię.
+   *
+   * Druga połowa tej samej decyzji co pełny plecak: żeby coś weszło, coś musi
+   * wyjść. Rzecz ląduje **pod nogami**, a nie znika — ma dać się podnieść z
+   * powrotem i ma dać się zabrać komuś innemu.
+   */
+  dropItem(player, id, now) {
+    const i = player.bag.items.findIndex((it) => it.id === id);
+    if (i < 0) return false;
+    const [item] = player.bag.items.splice(i, 1);
+    player.bagSeq++;
+
+    const dropId = this.nextDrop++;
+    this.drops.set(dropId, {
+      id: dropId,
+      item: item.kind,
+      x: Math.round(player.x + (Math.random() * 10 - 5)),
+      y: Math.round(player.y + 4 + Math.random() * 4),
+      // Dłuższa zwłoka niż przy łupie z drzewa: bez niej rzecz wyrzucona spod
+      // nóg wskakuje z powrotem do plecaka, zanim gracz zdąży odejść.
+      ready: now + 1200,
+      until: now + 120_000,
+    });
+    return true;
+  }
+
+  /** Opis plecaka dla właściciela. Nikt inny go nie dostaje. */
+  bagSnapshot(player) {
+    return {
+      w: player.bag.w,
+      h: player.bag.h,
+      s: player.bagSeq,
+      it: player.bag.items.map((it) => ({ i: it.id, k: it.kind, x: it.x, y: it.y, r: it.rot })),
+    };
   }
 
   /** Odrastanie i sprzątanie tego, czego nikt nie podniósł. */
@@ -727,10 +789,14 @@ export class Game {
       hurtDx: 0,
       hurtDy: 0,
       lastHurtAt: 0,
-      // Zebrane surowce. Na razie zwykły licznik na rodzaj — **zaślepka pod
-      // plecak-siatkę**. Właścicielem zawartości jest i zostanie serwer, więc
-      // gdy dojdzie siatka, zmienia się tu tylko struktura, nie to, kto decyduje.
-      items: {},
+      // Plecak-siatka. **Właścicielem zawartości jest serwer** — klient rysuje
+      // kratki i prosi o przełożenie, a o tym, czy przedmiot się zmieścił i czy
+      // w ogóle był, rozstrzyga ta struktura. Przy grze, w której łupi się innych
+      // graczy, nie ma innej możliwości.
+      bag: makeBag(),
+      // Znacznik zmiany zawartości: klient odświeża siatkę tylko wtedy, gdy coś
+      // się naprawdę zmieniło, a nie dwadzieścia razy na sekundę.
+      bagSeq: 0,
       // Znacznik podniesienia, tak samo jak `hurtSeq`: klient po nim poznaje,
       // że coś doszło, nawet gdy dwa podniesienia wypadną między migawkami.
       pickSeq: 0,

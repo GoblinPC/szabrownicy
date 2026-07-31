@@ -651,6 +651,73 @@ function itemStone() {
   return finish(t);
 }
 
+// --- Ikony do plecaka ---------------------------------------------------------
+//
+// Rysowane **pod rozmiar w kratkach**, nie skalowane z rzeczy leżącej na ziemi.
+// Kratka ma 16 px, więc kłoda 2x1 to obrazek 32x16. Skalowanie sprite'a z ziemi
+// dałoby albo rozmyte piksele, albo ikonę, która nie wypełnia swojego pola —
+// a w siatce, w której chodzi o zajmowane miejsce, ikona musi pokazywać
+// dokładnie tyle, ile przedmiot zajmuje.
+//
+// Ikony rysujemy **z góry i płasko**, bez perspektywy 3/4. Przedmiot w plecaku
+// leży na dnie i patrzy się na niego prosto — ten sam rysunek co w świecie
+// wyglądałby w kratce jak coś, co zaraz się przewróci.
+
+const CELL = 16;
+
+/** Kłoda: 2x1. */
+function iconWood() {
+  const rng = rngFor('icon_wood');
+  const t = new Canvas(CELL * 2, CELL);
+  t.rect(2, 4, 28, 8, c('wood', 2));
+  t.hline(2, 29, 4, c('wood', 3));
+  t.hline(2, 29, 11, c('wood', 0));
+  t.vline(2, 4, 11, c('wood', 0));
+  // Czoło ze słojami po prawej — po nim widać, że to walec, a nie deska.
+  t.ellipse(28, 8, 3, 4, c('wood', 3));
+  t.ellipse(28, 8, 2, 2, c('wood', 1));
+  t.px(28, 8, c('wood', 4));
+  // Kora: krótkie kreski wzdłuż, nie kropki.
+  for (let i = 0; i < 5; i++) {
+    const x = 5 + rng.int(18);
+    const y = 6 + rng.int(5);
+    t.hline(x, x + 1 + rng.int(3), y, c('wood', rng.chance(0.5) ? 1 : 3));
+  }
+  return finish(t);
+}
+
+/** Kamień: 1x1. */
+function iconStone() {
+  const rng = rngFor('icon_stone');
+  const t = new Canvas(CELL, CELL);
+  t.ellipse(8, 8, 6, 5, c('stone', 1));
+  t.ellipse(8, 7, 5, 4, c('stone', 2));
+  t.ellipse(6, 6, 3, 2, c('stone', 3));
+  t.speckle(rng, c('stone', 0), 0.12, { x: 3, y: 4, w: 11, h: 9 });
+  return finish(t);
+}
+
+/** Dzida: 1x4. Pion, bo tak leży w plecaku najkrótszym bokiem do przodu. */
+function iconSpear() {
+  const t = new Canvas(CELL, CELL * 4);
+  const cx = 8;
+  // Drzewce na całą wysokość.
+  t.rect(cx - 1, 8, 3, 52, c('wood', 2));
+  t.vline(cx - 1, 8, 59, c('wood', 3));
+  t.vline(cx + 1, 8, 59, c('wood', 0));
+  // Grot: trójkąt zwężający się ku górze, z żeberkiem.
+  for (let i = 0; i < 10; i++) {
+    const half = Math.max(0, Math.round(3 * (i / 9)));
+    for (let j = -half; j <= half; j++) t.px(cx + j, 2 + i, c('iron', j < 0 ? 3 : 2));
+  }
+  t.vline(cx, 3, 11, c('iron', 4));
+  // Osada grotu i przeciwwaga u dołu.
+  t.hline(cx - 2, cx + 2, 12, c('iron', 1));
+  t.hline(cx - 2, cx + 2, 13, c('iron', 0));
+  t.rect(cx - 1, 60, 3, 3, c('iron', 1));
+  return finish(t);
+}
+
 function fence() {
   const t = new Canvas(16, 18);
   t.rect(1, 4, 3, 13, c('wood', 2));
@@ -1042,6 +1109,9 @@ export function buildProps() {
   add('stump', stump());
   add('item_wood', itemWood());
   add('item_stone', itemStone());
+  add('icon_wood', iconWood());
+  add('icon_stone', iconStone());
+  add('icon_spear', iconSpear());
   add('fence', fence());
   add('campfire', campfire());
   add('gate', gateArch());

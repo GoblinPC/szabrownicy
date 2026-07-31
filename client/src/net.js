@@ -78,7 +78,7 @@ export class Net {
     // pada wtedy, gdy padnie na serwerze, nie wtedy, gdy gracz wyprowadzi cios.
     this.nodes = [];
     this.drops = [];
-    this.items = {};
+    this.bag = null;
     this.pickSeq = 0;
 
     // Pomiary do podglądu w HUD. `error` to odległość między tym, co klient
@@ -121,6 +121,22 @@ export class Net {
    * Odstęp sprawdzamy także tutaj, mimo że pilnuje go serwer: tam odrzucenie jest
    * ciche, a gracz musi wiedzieć, czemu jego zdanie nie poszło.
    */
+  /**
+   * Prośby o przełożenie w plecaku.
+   *
+   * **Prośby, nie zmiany.** Nic tu nie ruszamy u siebie — o tym, czy przedmiot
+   * się zmieścił, rozstrzyga serwer i dopiero jego migawka przestawia siatkę.
+   * Zmiana u klienta „na zapas" oznaczałaby, że przy odrzuceniu trzeba by ją
+   * cofać, a cofający się przedmiot w otwartym plecaku wygląda jak błąd gry.
+   */
+  bagMove(id, x, y, rot) {
+    this.send({ t: 'bag', a: 'move', i: id, x, y, r: rot ? 1 : 0 });
+  }
+
+  bagDrop(id) {
+    this.send({ t: 'bag', a: 'drop', i: id });
+  }
+
   sendChat(text) {
     const clean = String(text ?? '').replace(/\s+/g, ' ').trim().slice(0, MAX_CHAT_CHARS);
     if (!clean) return { ok: false, reason: null };   // puste — bez komentarza
@@ -364,9 +380,10 @@ export class Net {
     this.body.vx = message.you.vx;
     this.body.vy = message.you.vy;
 
-    // Surowce. Znacznik osobno od liczb, bo dwa podniesienia mogą wypaść między
-    // migawkami i sam skok licznika nie powiedziałby, ile razy coś doszło.
-    if (message.you.it) this.items = message.you.it;
+    // Plecak. Znacznik podniesienia osobno od zawartości, bo dwa podniesienia
+    // mogą wypaść między migawkami i sama zmiana siatki nie powiedziałaby,
+    // ile razy coś doszło.
+    if (message.bg) this.bag = message.bg;
     if (typeof message.you.is === 'number') {
       if (message.you.is > this.pickSeq) this.onPickUp?.();
       this.pickSeq = message.you.is;

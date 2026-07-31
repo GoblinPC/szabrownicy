@@ -682,32 +682,14 @@ export class HudScene extends Phaser.Scene {
     }
     this.dodgeFuel = DODGE_CHARGES;
 
-    // Zebrane surowce — pod znacznikami uniku.
+    // Licznika surowców tu nie ma i nie będzie.
     //
-    // Zwykły napis, bo to **zaślepka pod plecak-siatkę**. Rysowanie ikon
-    // i kratek teraz oznaczałoby wyrzucenie tego przy pierwszym prawdziwym
-    // ekwipunku; napis mówi to samo i nie udaje, że jest czymś więcej. Jest
-    // tu wyłącznie po to, żeby po ścięciu drzewa było widać, że coś przybyło —
-    // bez tego rąbanie nie ma żadnego skutku widocznego dla gracza.
-    this.loot = this.add.bitmapText(
-      PANEL_X, PANEL_Y + (BAR_H + 4 + 12) * UI_SCALE, 'goblin', '', 11
-    ).setScale(UI_SCALE).setTint(TEXT).setDepth(DEPTH.plate + 1);
-    this.lootFlash = 0;
-  }
-
-  /** @param items mapa rodzaj → sztuk, prosto z serwera */
-  setLoot(items) {
-    const nazwy = { wood: 'drewno', stone: 'kamien' };
-    const czesci = [];
-    for (const [rodzaj, ile] of Object.entries(items ?? {})) {
-      if (ile > 0) czesci.push(`${nazwy[rodzaj] ?? rodzaj} ${ile}`);
-    }
-    this.loot?.setText(czesci.join('   '));
-  }
-
-  /** Mrugnięcie przy podniesieniu — sam licznik rosnący o jeden umyka oku. */
-  flashLoot() {
-    this.lootFlash = 1;
+    // Przez pół dnia stał tu napis „drewno 3  kamien 2" jako zaślepka. Zszedł
+    // razem z wejściem plecaka-siatki i to jest właściwa kolejność: dwie
+    // odpowiedzi na to samo pytanie są gorsze niż jedna, a **liczba przy nazwie
+    // mówi coś innego niż kratki**. Liczba mówi „masz trzy kłody", kratki mówią
+    // „masz trzy kłody i zostały ci dwa pola" — a to drugie jest tą informacją,
+    // wokół której zbudowany jest cały plecak.
   }
 
   setPlayerName() {}
@@ -773,15 +755,6 @@ export class HudScene extends Phaser.Scene {
     this.updateRoster(time);
     this.updateHealth(delta ?? 16);
     this.updateBanner(time);
-
-    // Mrugnięcie licznika łupu wygasa samo. Rozjaśnienie do bieli, nie
-    // powiększenie: napis stoi w rogu i skacząca skala przyciąga uwagę mocniej
-    // niż zdarzenie, które ją wywołało.
-    if (this.lootFlash > 0) {
-      this.lootFlash = Math.max(0, this.lootFlash - (delta ?? 16) / 320);
-      const k = Math.round(0xe8 + (0xff - 0xe8) * this.lootFlash);
-      this.loot?.setTint((k << 16) | (k << 8) | k);
-    }
   }
 
   reposition() {
