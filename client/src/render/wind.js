@@ -68,6 +68,19 @@ export class Wind {
   }
 
   /**
+   * Wyjmuje roślinę spod wiatru.
+   *
+   * Potrzebne, gdy obrotem tego samego sprite'a steruje coś innego — dziś
+   * przewracające się drzewo. `update()` ustawia `rotation` co klatkę, więc bez
+   * tego drzewo padałoby i natychmiast wracało do kołysania, dwadzieścia razy
+   * na sekundę.
+   */
+  release(sprite) {
+    const i = this.plants.findIndex((p) => p.sprite === sprite);
+    if (i >= 0) this.plants.splice(i, 1);
+  }
+
+  /**
    * @param time czas sceny w ms
    * @param gust 0–1: siła wiatru. Deszcz ją podnosi — burza ma wyglądać na burzę.
    */

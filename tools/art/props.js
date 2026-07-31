@@ -487,20 +487,48 @@ function tree(damage = 0) {
   t.line(19, 42, 23, 45, c('wood', 1));
 
   if (damage > 0) {
-    // Klin: trójkąt wycięty z pnia, z jasnym świeżym drewnem w środku i ciemnym
-    // dnem. Sam ciemny wykrój czytałby się jako dziura, nie jako rana.
-    const deep = damage === 1 ? 3 : 5;
-    for (let i = 0; i < deep; i++) {
-      const h = deep - i;
+    // Klin wycięty z pnia. **Świeże drewno jest najjaśniejsze w całym drzewie**
+    // i o to chodzi: pień ma 6 px szerokości, więc różnicy odcienia w obrębie
+    // kory nikt z zoomu nie zobaczy. Widać dopiero jasną plamę na ciemnym pniu.
+    //
+    // Pierwsza wersja miała klin głęboki na 3 px w jednym rzędzie pikseli
+    // i etapy były nierozróżnialne — trzeba było je porównywać obok siebie,
+    // a gracz ogląda je jeden po drugim.
+    const glebokosc = damage === 1 ? 4 : 6;   // pień jest szeroki na 6 px
+    const wysokosc = damage === 1 ? 4 : 6;
+    for (let i = 0; i < glebokosc; i++) {
+      const h = Math.round((wysokosc / 2) * (1 - i / glebokosc));
       for (let j = -h; j <= h; j++) {
-        t.px(14 + i, 39 + j, c('wood', i === deep - 1 ? 0 : 4));
+        const x = 13 + i;
+        const y = 38 + j;
+        // Dno klina ciemne, reszta świeżym drewnem — sam jasny klin czyta się
+        // jak naklejka, sam ciemny jak dziura na wylot.
+        t.px(x, y, c('wood', i >= glebokosc - 1 ? 1 : 4));
       }
     }
-    t.px(14, 36, c('wood', 4));
-    t.px(14, 42, c('wood', 4));
-    // Wióry pod nacięciem.
-    for (let i = 0; i < 3 + damage * 2; i++) {
-      t.px(10 + rng.int(6), 43 + rng.int(3), c('wood', rng.chance(0.5) ? 3 : 4));
+    // Górna i dolna warga nacięcia — kora odchodzi.
+    t.px(13, 38 - Math.round(wysokosc / 2) - 1, c('wood', 3));
+    t.px(13, 38 + Math.round(wysokosc / 2) + 1, c('wood', 3));
+
+    // Wióry rozsypane u podstawy. Drugi sygnał, niezależny od pnia: nawet gdy
+    // postać zasłoni nacięcie, po wiórach widać, że ktoś tu rąbał.
+    for (let i = 0; i < 4 + damage * 4; i++) {
+      const x = 8 + rng.int(12);
+      const y = 42 + rng.int(4);
+      t.px(x, y, c('wood', rng.chance(0.5) ? 3 : 4));
+      if (rng.chance(0.4)) t.px(x + 1, y, c('wood', 2));
+    }
+  }
+  if (damage > 1) {
+    // Korona przerzedzona od brzegów. Nie zmienia gatunku drzewa, bo sylwetka
+    // zostaje — ubywa tylko obrzeża, tak jak przy drzewie, którym się szarpie.
+    for (let x = 0; x < 34; x++) {
+      for (let y = 0; y < 30; y++) {
+        if (t.alphaAt(x, y) === 0) continue;
+        const brzeg = t.alphaAt(x - 2, y) === 0 || t.alphaAt(x + 2, y) === 0
+          || t.alphaAt(x, y - 2) === 0;
+        if (brzeg && rng.chance(0.4)) t.set(x, y, [0, 0, 0, 0]);
+      }
     }
   }
 
@@ -523,13 +551,103 @@ function tree(damage = 0) {
   return finish(t);
 }
 
-function boulder() {
-  const rng = rngFor('boulder');
+/**
+ * Głaz. `damage` 0-2 to **pęknięcia i ubytki**, nie mniejszy kamień.
+ *
+ * Zmniejszanie bryły z każdym ciosem wyglądało jak wymiana obiektu na inny,
+ * mniejszy — z daleka nie widać, że to ten sam głaz. Pęknięcie zostaje na miejscu
+ * i rośnie, więc widać postęp bez zmiany sylwetki.
+ */
+function boulder(damage = 0) {
+  const rng = rngFor(`boulder${damage}`);
   const t = new Canvas(17, 14);
   t.ellipse(8, 9, 8, 5, c('stone', 1));
   t.ellipse(8, 8, 7, 4, c('stone', 2));
   t.ellipse(6, 6, 4, 2, c('stone', 3));
   t.speckle(rng, c('stone', 0), 0.12, { x: 1, y: 5, w: 15, h: 9 });
+
+  if (damage > 0) {
+    // Rysa biegnie przez całą bryłę, z jasną krawędzią po jednej stronie —
+    // to ona robi głębokość. Sama ciemna kreska czyta się jak zadrapanie.
+    let x = 4 + rng.int(3);
+    for (let y = 4; y < 13; y++) {
+      if (t.alphaAt(x, y) === 0) { x += rng.chance(0.5) ? 1 : -1; continue; }
+      t.px(x, y, c('soot', 0));
+      t.px(x + 1, y, c('stone', 3));
+      if (rng.chance(0.4)) x += rng.chance(0.5) ? 1 : -1;
+    }
+  }
+  if (damage > 1) {
+    // Druga rysa i wyszczerbiony górny narożnik — brakujący kawałek jest tym,
+    // co mówi „jeszcze jeden cios".
+    let x = 10 + rng.int(3);
+    for (let y = 5; y < 12; y++) {
+      if (t.alphaAt(x, y) === 0) { x += 1; continue; }
+      t.px(x, y, c('soot', 0));
+      t.px(x - 1, y, c('stone', 3));
+      if (rng.chance(0.45)) x += rng.chance(0.5) ? 1 : -1;
+    }
+    for (let i = 0; i < 5; i++) t.set(11 + rng.int(4), 4 + rng.int(2), [0, 0, 0, 0]);
+  }
+  return finish(t);
+}
+
+/**
+ * Pniak po ściętym drzewie.
+ *
+ * Zostaje na miejscu do czasu, aż las odrośnie, i to on niesie informację
+ * „tu już byłem". Bez niego wyrąbany kawałek lasu wygląda jak polana, czyli
+ * jak coś, co tam było od zawsze.
+ */
+function stump() {
+  const rng = rngFor('stump');
+  const t = new Canvas(18, 15);
+
+  // Korzenie najpierw, żeby trzon je przykrył u nasady.
+  for (const [dx, dy] of [[-8, 13], [-5, 14], [4, 14], [8, 13]]) {
+    t.line(9, 11, 9 + dx, dy, c('wood', 1));
+    t.px(9 + dx, dy, c('wood', 0));
+  }
+
+  // Trzon: walec kory, wyraźnie wyższy niż szeroki u góry. Pierwsza wersja była
+  // płaskim krążkiem 14x12, w którym jasne przecięcie zajmowało kilka pikseli —
+  // z zoomu wychodziła z tego brązowa kropka, nie pniak.
+  t.rect(3, 6, 13, 7, c('wood', 1));
+  t.vline(3, 6, 12, c('wood', 0));
+  t.vline(15, 6, 12, c('wood', 0));
+  t.ellipse(9, 12, 6, 2, c('wood', 0));      // podstawa wtopiona w ziemię
+
+  // Przecięcie: **najjaśniejsza plama w całym sprite'cie**. To jej kontrast
+  // z ciemną korą mówi, że drzewo ścięto, a nie że uschło albo że to kamień.
+  t.ellipse(9, 6, 6, 3, c('wood', 0));       // rant kory
+  t.ellipse(9, 6, 5, 2, c('wood', 4));
+  t.ellipse(9, 6, 3, 1, c('wood', 3));       // słój
+  t.px(9, 6, c('wood', 4));
+  // Pęknięcie w poprzek przecięcia — po nim widać, że to rąbane, nie cięte piłą.
+  t.hline(6, 12, 6, c('wood', 2));
+
+  t.speckle(rng, c('wood', 0), 0.14, { x: 4, y: 8, w: 11, h: 5 });   // faktura kory
+  return finish(t);
+}
+
+/** Rzecz leżąca na ziemi — kłoda drewna. */
+function itemWood() {
+  const t = new Canvas(12, 8);
+  t.rect(1, 3, 10, 4, c('wood', 2));
+  t.hline(1, 10, 3, c('wood', 3));
+  t.hline(1, 10, 6, c('wood', 0));
+  // Czoło kłody z słojami — bez niego to prostokąt, nie kawałek drewna.
+  t.ellipse(2, 5, 2, 2, c('wood', 3));
+  t.ellipse(2, 5, 1, 1, c('wood', 1));
+  return finish(t);
+}
+
+/** Rzecz leżąca na ziemi — odłupany kamień. */
+function itemStone() {
+  const t = new Canvas(10, 8);
+  t.ellipse(5, 5, 4, 3, c('stone', 1));
+  t.ellipse(5, 4, 3, 2, c('stone', 2));
+  t.ellipse(4, 3, 2, 1, c('stone', 3));
   return finish(t);
 }
 
@@ -916,8 +1034,14 @@ export function buildProps() {
   add('logs', logPile());
   // Kukła w czterech stanach zużycia: cała, obita, mocno obita, zwalona.
   for (let d = 0; d <= 3; d++) add(`dummy${d}`, dummy(d));
+  // Zasoby: etap 0 to nazwa bez numeru, bo tak stoją w `world.props`.
   add('tree', tree());
   add('boulder', boulder());
+  for (let d = 1; d <= 2; d++) add(`tree${d}`, tree(d));
+  for (let d = 1; d <= 2; d++) add(`boulder${d}`, boulder(d));
+  add('stump', stump());
+  add('item_wood', itemWood());
+  add('item_stone', itemStone());
   add('fence', fence());
   add('campfire', campfire());
   add('gate', gateArch());

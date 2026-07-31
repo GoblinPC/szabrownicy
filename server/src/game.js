@@ -63,6 +63,16 @@ const KNOCKBACK_DAMPING = 13;
 const HOME_PULL = 40;
 const RESPAWN_MS = 4000;
 
+// Ile świata dosyłamy graczowi poza to, co widzi. Kamera przy zoomie 2x pokazuje
+// jakieś 480 px, więc 700 daje zapas na dojście i na to, żeby rzeczy nie
+// pojawiały się dokładnie na krawędzi ekranu.
+const VIEW_RANGE = 700;
+
+// Zasięg podnoszenia z ziemi. Trochę większy od promienia stopy, żeby nie trzeba
+// było celować w kłodę — ale mniejszy od zasięgu ciosu, bo podnoszenie ma być
+// osobną czynnością, nie skutkiem ubocznym machania.
+const PICK_RANGE = 15;
+
 // --- Gracz: życie, śmierć, strefa bezpieczna ----------------------------------
 //
 // Bez tego nie ma pętli gry: wychodzi się po surowce dlatego, że można ich nie
@@ -279,10 +289,76 @@ export class Game {
         item: spec.drop,
         x: Math.round(node.x + Math.cos(a) * d),
         y: Math.round(node.y + Math.sin(a) * d * 0.6),
+        // Chwila zwłoki, zanim da się podnieść. Bez niej rzecz znika w tej samej
+        // klatce, w której wypadła — gracz stoi przy pniu, więc jest w zasięgu —
+        // i nie widać, że cokolwiek wypadło.
+        ready: now + 500,
         // Rzeczy na ziemi znikają po chwili, żeby las nie zarósł drewnem
         // po godzinie rąbania.
         until: now + 120_000,
       });
+    }
+  }
+
+  /**
+   * Odstępstwa od pełnego świata — **tylko zasoby uszkodzone albo ścięte**.
+   *
+   * Drzew jest kilkaset i wszystkie są w tym samym stanie przez większość czasu,
+   * więc wysyłanie ich listy byłoby marnowaniem pasma na powtarzanie zera.
+   * Numer w `this.nodes` jest identyfikatorem, bo lista powstaje po obu stronach
+   * z tego samego świata (patrz `world/nodes.js`).
+   *
+   * Filtrujemy po odległości, bo inaczej gracz, który wyrąbał pół lasu, wysyła
+   * całą tę listę wszystkim dwadzieścia razy na sekundę.
+   */
+  nodeSnapshot(me) {
+    const list = [];
+    for (const [id, state] of this.hurtNodes) {
+      const node = this.nodes[id];
+      if (!node) continue;
+      if (Math.abs(node.x - me.x) > VIEW_RANGE || Math.abs(node.y - me.y) > VIEW_RANGE) continue;
+      const entry = { i: id, h: state.hp };
+      if (state.hp <= 0) {
+        // Kierunek ciosu i chwila ścięcia: drzewo ma się przewrócić w tę stronę,
+        // w którą je uderzono, a gracz wchodzący do lasu po fakcie ma zobaczyć
+        // pniak, nie drzewo padające drugi raz.
+        entry.dx = state.dx ?? 0;
+        entry.dy = state.dy ?? 1;
+        entry.t = state.at ?? 0;
+      }
+      list.push(entry);
+    }
+    return list;
+  }
+
+  /** Rzeczy leżące na ziemi w zasięgu wzroku gracza. */
+  dropSnapshot(me) {
+    const list = [];
+    for (const drop of this.drops.values()) {
+      if (Math.abs(drop.x - me.x) > VIEW_RANGE || Math.abs(drop.y - me.y) > VIEW_RANGE) continue;
+      list.push({ i: drop.id, k: drop.item, x: drop.x, y: drop.y });
+    }
+    return list;
+  }
+
+  /**
+   * Podnoszenie z ziemi — samo, przez wejście na rzecz.
+   *
+   * Bez guzika, bo dopóki nie ma plecaka-siatki, nie ma czego wybierać: wszystko,
+   * co leży, i tak się mieści. Gdy dojdzie siatka, to jest **dokładnie to miejsce**,
+   * w którym podnoszenie przestanie być automatyczne, bo wtedy pojawi się decyzja
+   * „co zostawiam".
+   */
+  pickDrops(player, now) {
+    if (player.hp <= 0) return;
+    for (const [id, drop] of this.drops) {
+      if (now < drop.ready) continue;
+      const dx = drop.x - player.x;
+      const dy = (drop.y - player.y) * 1.6;   // rzut 3/4: w pionie jest ciaśniej
+      if (dx * dx + dy * dy > PICK_RANGE * PICK_RANGE) continue;
+      player.items[drop.item] = (player.items[drop.item] ?? 0) + 1;
+      player.pickSeq++;
+      this.drops.delete(id);
     }
   }
 
@@ -651,6 +727,13 @@ export class Game {
       hurtDx: 0,
       hurtDy: 0,
       lastHurtAt: 0,
+      // Zebrane surowce. Na razie zwykły licznik na rodzaj — **zaślepka pod
+      // plecak-siatkę**. Właścicielem zawartości jest i zostanie serwer, więc
+      // gdy dojdzie siatka, zmienia się tu tylko struktura, nie to, kto decyduje.
+      items: {},
+      // Znacznik podniesienia, tak samo jak `hurtSeq`: klient po nim poznaje,
+      // że coś doszło, nawet gdy dwa podniesienia wypadną między migawkami.
+      pickSeq: 0,
       kills: 0,
       deaths: 0,
     };
@@ -755,6 +838,7 @@ export class Game {
     this.resolveHits(now);
     this.stepMobs(now, TICK_MS / 1000);
     this.stepPlayers();
+    for (const player of this.players.values()) this.pickDrops(player, now);
     this.stepNodes(now);
   }
 

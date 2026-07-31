@@ -451,9 +451,17 @@ export function attachGame(sockets, dataDir, variantCount = 6, { guests = false 
           ds: me.dodgeSeq ?? 0,
           ddx: Math.round((me.dodgeDx ?? 0) * 1000) / 1000,
           ddy: Math.round((me.dodgeDy ?? 0) * 1000) / 1000,
+          // Zebrane surowce. Licznikami zarządza wyłącznie serwer — klient je
+          // rysuje i nic więcej.
+          it: me.items,
+          is: me.pickSeq,
         },
         ps: all.filter((p) => p.id !== me.id),
         ms: mobs,
+        // Zasoby i rzeczy na ziemi liczone **osobno dla każdego gracza**, bo obie
+        // listy są przycięte do tego, co ten gracz może zobaczyć.
+        nd: game.nodeSnapshot(me),
+        dr: game.dropSnapshot(me),
       }));
     }
   }, 1000 / TICK_HZ);

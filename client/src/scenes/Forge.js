@@ -16,6 +16,8 @@ import { Rain } from '../render/rain.js';
 import { Grass } from '../render/grass.js';
 import { darkness, sunShadow } from '../world/daylight.js';
 import { Wind } from '../render/wind.js';
+import { Nodes } from '../render/nodes.js';
+import { Drops } from '../render/drops.js';
 
 // Jak długo trzymamy wciśnięcie ciosu w buforze po puszczeniu klawisza.
 const ATTACK_BUFFER_MS = 140;
@@ -33,6 +35,10 @@ export class ForgeScene extends Phaser.Scene {
     this.drawGround();
     this.wind = new Wind(this);
     this.shadows = new ShadowCaster(this, this.world.lights);
+    // Przed `spawnProps()`, bo to ona podaje mu sprite'y drzew i głazów w tej
+    // samej kolejności, w jakiej numeruje je serwer.
+    this.nodes = new Nodes(this, this.world, this.shadows, this.wind);
+    this.drops = new Drops(this, this.shadows);
     this.spawnProps();
     this.spawnFlames();
     this.spawnPlayer();
@@ -132,6 +138,11 @@ export class ForgeScene extends Phaser.Scene {
   }
 
   spawnProps() {
+    // Licznik zasobów. Musi iść **dokładnie tak samo jak `buildNodes()`**: numer
+    // w tej kolejności jest identyfikatorem w sieci, więc pomyłka o jeden wpis
+    // oznacza, że gracz rąbie jedno drzewo, a pada inne.
+    let nodeId = 0;
+
     for (const prop of this.world.props) {
       const sprite = this.add.image(prop.x, prop.y, 'props', prop.key)
         .setOrigin(0.5, 1)
@@ -146,11 +157,16 @@ export class ForgeScene extends Phaser.Scene {
       // Próg obniżony z 12 na 7 pikseli: **krzaki też mają się przyklejać do
       // ziemi**. Bez plamy kontaktowej drobne rośliny wyglądają, jakby unosiły
       // się nad trawą — a to właśnie one leżą najgęściej i najbardziej to widać.
+      let shadow = null;
       if (sprite.height >= 7 && !prop.noShadow) {
-        this.shadows.add(prop.x, prop.y, 'props', prop.key, {
+        shadow = this.shadows.add(prop.x, prop.y, 'props', prop.key, {
           squash: 0.42,
           width: Math.min(34, sprite.width + 4),
         });
+      }
+
+      if (prop.key === 'tree' || prop.key === 'boulder') {
+        this.nodes.attach(nodeId++, sprite, shadow);
       }
     }
   }
@@ -199,6 +215,14 @@ export class ForgeScene extends Phaser.Scene {
       this.kickX = (this.kickX ?? 0) + (Math.random() - 0.5) * 3;
       this.kickY = (this.kickY ?? 0) + 2;
       audio.hit(1.1);
+    };
+
+    // Podniesienie z ziemi. Rozdzielone na dwa sygnały, bo licznik w rogu ekranu
+    // rosnący o jeden umyka oku, gdy patrzy się na postać: dźwięk mówi „doszło",
+    // rozjaśniony napis mówi „doszło **tego**".
+    this.net.onPickUp = () => {
+      audio.step('wood');
+      this.scene.get('Hud')?.flashLoot();
     };
 
     // O tym, czy pokazać formularz, decyduje serwer, nie klient — dzięki temu
@@ -844,6 +868,12 @@ export class ForgeScene extends Phaser.Scene {
     // Kolejność: najpierw stan celów z serwera, potem przewidywanie własnego
     // trafienia — przewidywanie potrzebuje aktualnych pozycji celów.
     this.updateMobs(time);
+    // Zasoby i rzeczy na ziemi. Przed przewidywaniem trafień, tak samo jak cele
+    // do bicia — przewidywanie potrzebuje aktualnego stanu świata.
+    this.nodes.apply(this.net.nodes ?? [], Date.now());
+    this.nodes.update(Date.now());
+    this.drops.apply(this.net.drops ?? []);
+    this.drops.update(time);
     this.predictHits(time);
     this.updateDodge(time);
     this.updateGhosts(delta);
@@ -1186,6 +1216,7 @@ export class ForgeScene extends Phaser.Scene {
     hud?.setDiagnostics(this.net.stats());
     hud?.setHealth(this.net.hp ?? 0, this.net.maxHp ?? 100, this.net.safe);
     hud?.setDodge(dodgeFuel(this.net.body ?? {}));
+    hud?.setLoot(this.net.items);
 
     // Plakietki rysuje HUD, bo jego kamera nie jest powiększana — dzięki temu
     // nick zostaje mały i ostry niezależnie od zoomu świata.

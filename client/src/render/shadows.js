@@ -85,6 +85,22 @@ export class ShadowCaster {
     return shadow;
   }
 
+  /**
+   * Usuwa cień razem z obiektem, który go rzucał.
+   *
+   * Cień nie jest sprite'em, tylko **parą** obrazków (plama kontaktowa i rzucona
+   * sylwetka) plus wpisem na liście odświeżanej przy wędrówce słońca. `destroy()`
+   * wołane wprost na tym obiekcie nic by nie zrobiło, a wpis zostałby na liście
+   * i `refreshStatics()` sięgałby po zniszczone obrazki.
+   */
+  remove(shadow) {
+    if (!shadow) return;
+    shadow.contact.destroy();
+    shadow.cast.destroy();
+    const i = this.statics.indexOf(shadow);
+    if (i >= 0) this.statics.splice(i, 1);
+  }
+
   /** Odświeża cienie stojących obiektów w kadrze. Wołane rzadko, nie co klatkę. */
   refreshStatics(view, margin = 64) {
     for (const shadow of this.statics) {

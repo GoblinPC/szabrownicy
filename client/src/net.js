@@ -73,6 +73,13 @@ export class Net {
     this.lastChatAt = -Infinity;
     this.socket = null;
     this.retryIn = 500;
+    // Zasoby uszkodzone albo ścięte, rzeczy leżące na ziemi i własne surowce.
+    // Wszystkie trzy przychodzą z serwera i klient ich nie przewiduje: drzewo
+    // pada wtedy, gdy padnie na serwerze, nie wtedy, gdy gracz wyprowadzi cios.
+    this.nodes = [];
+    this.drops = [];
+    this.items = {};
+    this.pickSeq = 0;
 
     // Pomiary do podglądu w HUD. `error` to odległość między tym, co klient
     // przewidział, a tym, co wyszło po zestawieniu z serwerem — przy zdrowym
@@ -357,6 +364,14 @@ export class Net {
     this.body.vx = message.you.vx;
     this.body.vy = message.you.vy;
 
+    // Surowce. Znacznik osobno od liczb, bo dwa podniesienia mogą wypaść między
+    // migawkami i sam skok licznika nie powiedziałby, ile razy coś doszło.
+    if (message.you.it) this.items = message.you.it;
+    if (typeof message.you.is === 'number') {
+      if (message.you.is > this.pickSeq) this.onPickUp?.();
+      this.pickSeq = message.you.is;
+    }
+
     // Stan ciosu przywracamy razem z pozycją i **z tego samego powodu**: zaraz
     // odtworzymy niepotwierdzone komendy, a one przewijają cios. Gdyby licznik
     // ciosu nie był resetowany, każde odtworzenie przewijałoby go od nowa i cios
@@ -404,6 +419,13 @@ export class Net {
     // Cele do bicia. Pozycji nie interpolujemy jak graczy: kukła po ciosie szarpie
     // się gwałtownie i wygładzanie zjadałoby właśnie to, co ma być widoczne.
     if (message.ms) this.mobs = message.ms;
+
+    // Zasoby i rzeczy na ziemi. Obie listy są **pełnym stanem tego, co gracz
+    // widzi**, a nie różnicą — czego w nich nie ma, tego u gracza nie ma.
+    // Przy kilkunastu wpisach nie ma sensu liczyć różnic, a lista pełna sama
+    // sprząta po zasobie, który odrósł poza ekranem.
+    if (message.nd) this.nodes = message.nd;
+    if (message.dr) this.drops = message.dr;
 
     // Pora dnia. Zapamiętujemy razem z chwilą odbioru, żeby między migawkami
     // posuwać ją samodzielnie — dwadzieścia skoków na sekundę byłoby widać
