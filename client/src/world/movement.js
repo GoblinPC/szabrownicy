@@ -213,7 +213,7 @@ const ATTACK_ARC_COS = Math.cos((ATTACK_ARC_DEG / 2) * (Math.PI / 180));
  *
  * `body` musi mieć ustawione `atkDx`/`atkDy`, czyli być w trakcie ciosu.
  */
-export function inAttackArc(body, dx, dy, radius = 0) {
+export function inAttackArc(body, dx, dy, radius = 0, { minArc = 0, bonusRange = 0 } = {}) {
   // Zasięg bierzemy z **tego ciosu, który właśnie sięgnął**, a nie z bieżącego
   // stanu: rozliczenie trafienia dzieje się tik po zaznaczeniu cięcia, więc
   // postać może już być w kolejnym ogniwie łańcucha.
@@ -221,8 +221,11 @@ export function inAttackArc(body, dx, dy, radius = 0) {
   // Zasięg z broni, którą trzyma bijący. Domyślnie pięści — **stan startowy jest
   // stanem najgorszym**, więc brak informacji o broni ma znaczyć „gołe ręce",
   // a nie „włócznia".
-  const range = (step.range ?? ATTACK_RANGE) * weaponOf(body.weapon).range;
-  const arcCos = step.arc ? Math.cos((step.arc / 2) * (Math.PI / 180)) : ATTACK_ARC_COS;
+  const range = (step.range ?? ATTACK_RANGE) * weaponOf(body.weapon).range + bonusRange;
+  // `minArc` rozszerza stożek, ale nigdy go nie zwęża. Używane przy celach,
+  // które nie uciekają i nie oddają — patrz `NODE_ARC` w `world/nodes.js`.
+  const arcDeg = Math.max(step.arc ?? ATTACK_ARC_DEG, minArc);
+  const arcCos = Math.cos((arcDeg / 2) * (Math.PI / 180));
 
   const distance = Math.hypot(dx, dy);
 

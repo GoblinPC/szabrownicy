@@ -15,7 +15,7 @@ import {
 import {
   advance, poseOf, KEY_MASK, inAttackArc, ATTACK_STEPS, weaponOf,
 } from '../../client/src/world/movement.js';
-import { buildNodes, NODE_KINDS } from '../../client/src/world/nodes.js';
+import { buildNodes, NODE_KINDS, NODE_ARC, NODE_REACH_BONUS } from '../../client/src/world/nodes.js';
 import { makeBag, addItem, fits, ITEMS } from '../../client/src/world/items.js';
 
 export const TICK_HZ = 20;
@@ -268,7 +268,7 @@ export class Game {
     for (const node of this.nodes) {
       const state = this.nodeState(node);
       if (state.hp <= 0) continue;
-      if (!this.reaches(player, node)) continue;
+      if (!this.reachesNode(player, node)) continue;
 
       const hp = Math.max(0, state.hp - 1);
       this.hurtNodes.set(node.id, { hp, downUntil: 0, at: now });
@@ -556,7 +556,7 @@ export class Game {
    * Geometria siedzi w `movement.js`, żeby klient mógł jej użyć do rysowania
    * podpowiedzi zasięgu tym samym kodem, którym serwer liczy trafienia.
    */
-  reaches(player, target) {
+  reaches(player, target, opcje = undefined) {
     // Liczone od tułowia do tułowia, a nie od stóp do stóp: przy stopach wszystko
     // jest na tej samej wysokości i cios sięgałby za daleko w pionie. Wysokość
     // tułowia jest cechą celu (`torso`), bo kukła i goblin są różnej wielkości.
@@ -565,7 +565,13 @@ export class Game {
       target.x - player.x,
       (target.y - (target.torso ?? 12)) - (player.y - 12),
       target.radius ?? 0,
+      opcje,
     );
+  }
+
+  /** Ułatwienia przy celach, które nie uciekają i nie oddają. */
+  reachesNode(player, node) {
+    return this.reaches(player, node, { minArc: NODE_ARC, bonusRange: NODE_REACH_BONUS });
   }
 
   /**

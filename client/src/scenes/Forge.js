@@ -467,6 +467,10 @@ export class ForgeScene extends Phaser.Scene {
     for (const mob of this.mobs.values()) {
       const state = mob.state;
       if (!state || state.h <= 0) continue;
+      // Przewidujemy **tylko cele żywe**. Drzewa i głazy liczy wyłącznie serwer
+      // (`reachesNode()`, szerszy stożek) i klient czeka na migawkę — zasób nie
+      // ucieka, więc te sto milisekund zwłoki nie zmienia decyzji gracza, a
+      // przewidziane i cofnięte ścięcie drzewa wyglądałoby jak błąd świata.
       const reaches = inAttackArc(
         body,
         state.x - body.x,
