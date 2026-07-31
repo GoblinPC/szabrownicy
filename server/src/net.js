@@ -23,6 +23,20 @@ const MAX_CHAT_CHARS = 120;
 const CHAT_INTERVAL_MS = 1500;       // jedna wiadomość na tyle — liczone tutaj, nie u klienta
 
 /**
+ * Chwila narodzin świata — moment uruchomienia serwera.
+ *
+ * Od niej liczy się doba i pogoda, więc **świat zawsze zaczyna się rankiem
+ * i sucho**. Wcześniej obie brały się wprost z czasu epoki i każde uruchomienie
+ * wypadało w przypadkowym momencie doby; przy dobie szesnastominutowej co drugi
+ * start witał gracza nocą, a co kilka — nocą w ulewie.
+ *
+ * Restart serwera cofa więc porę dnia do rana. To jest świadomy kompromis:
+ * alternatywą byłoby zapisywanie zegara na dysk, a przy grze, która i tak ma
+ * mieć cykliczne wipe'y, ciągłość doby przez restart nie jest nic warta.
+ */
+const WORLD_EPOCH = Date.now();
+
+/**
  * Czyszczenie wiadomości czatu.
  *
  * Wszystko, co nie jest zwykłym tekstem, zamieniamy na spację: znaki sterujące,
@@ -444,10 +458,10 @@ export function attachGame(sockets, dataDir, variantCount = 6, { guests = false 
         // Pora dnia jako ułamek doby. Wysyłamy **czas, nie policzony kolor** —
         // to jedna liczba zamiast trzech na klatkę, a przeliczeniem i tak musi
         // zająć się klient, bo to on rysuje.
-        d: Math.round(phaseOf(Date.now()) * 10000) / 10000,
+        d: Math.round(phaseOf(Date.now(), WORLD_EPOCH) * 10000) / 10000,
         // Deszcz tą samą drogą i z tego samego powodu: o pogodzie rozstrzyga
         // serwer, a jedna liczba na migawkę nic nie waży.
-        r: Math.round(rainAt(Date.now()) * 1000) / 1000,
+        r: Math.round(rainAt(Date.now(), WORLD_EPOCH) * 1000) / 1000,
         ack: me.seq,
         // Stan ciosu należy do serwera dokładnie tak samo jak pozycja.
         //

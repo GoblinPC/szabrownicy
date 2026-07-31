@@ -55,11 +55,41 @@ const smooth = (k) => k * k * (3 - 2 * k);
  * włączać się jak przełącznik. To jedyny powód, dla którego bloki w ogóle się
  * mieszają — bez tego ulewa zaczynałaby się w pełnej sile w jednej klatce.
  */
-export function rainAt(now = Date.now()) {
-  const position = now / WEATHER_BLOCK_MS;
+/**
+ * Ile bloków pogody po starcie świata jest **na pewno suchych**.
+ *
+ * Z tego samego powodu co ranek na starcie: bloki liczyły się z czasu epoki,
+ * więc co któreś uruchomienie serwera zaczynało się w ulewie. Deszcz ma być
+ * wydarzeniem, a nie powitaniem — pierwsze półtorej minuty jest sucho zawsze,
+ * a potem pogoda wraca do swojego zwykłego, losowego rytmu.
+ */
+const DRY_START_BLOCKS = 1;
+
+/**
+ * Przesunięcie numeracji bloków przy odliczaniu od startu świata.
+ *
+ * Hasz jest globalnie w porządku — 18,2% bloków mokrych przy zakładanych 18% —
+ * ale akurat bloki 0–18 wypadły wszystkie suche. Bez przesunięcia pierwszy deszcz
+ * padałby dopiero po **28 minutach**, czyli po prawie dwóch dobach w świecie.
+ * Przy 12 pierwszy mokry blok wypada po dziesięciu minutach, a rozkład dalej
+ * jest ten sam — przesuwamy okno, nie zmieniamy losowania.
+ */
+const WEATHER_OFFSET = 12;
+
+export function rainAt(now = Date.now(), origin = null) {
+  const czas = origin === null ? now : now - origin;
+  const position = czas / WEATHER_BLOCK_MS;
   const block = Math.floor(position);
   const k = smooth(position - block);
-  return targetFor(block) * (1 - k) + targetFor(block + 1) * k;
+
+  // Przy odliczaniu od startu świata pierwsze bloki wymuszamy na sucho. Przejście
+  // zostaje gładkie, bo mieszamy tak samo jak zawsze — po prostu jeden z sąsiadów
+  // jest zerem.
+  const target = (b) => {
+    if (origin === null) return targetFor(b);
+    return b < DRY_START_BLOCKS ? 0 : targetFor(b + WEATHER_OFFSET);
+  };
+  return target(block) * (1 - k) + target(block + 1) * k;
 }
 
 /** Nazwa pogody — do panelu diagnostycznego. */

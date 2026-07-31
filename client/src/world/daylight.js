@@ -65,15 +65,35 @@ const KEYFRAMES = [
   { at: 1.00, sky: [56, 68, 104] },
 ];
 
-/** Ułamek doby dla podanego czasu zegara. */
-export function phaseOf(now = Date.now()) {
+/**
+ * Pora dnia, od której zaczyna się świat po starcie serwera.
+ *
+ * **Wczesny ranek, nie losowa godzina.** Wcześniej doba liczyła się wprost
+ * z czasu epoki (`now % DAY_MS`), więc każde uruchomienie serwera wypadało
+ * w przypadkowym momencie — a przy szesnastominutowej dobie oznaczało to, że
+ * co drugi start zaczynał się w nocy. Świat, który wita nowego gracza ciemnością
+ * i ulewą, wygląda na zepsuty, a nie na klimatyczny.
+ *
+ * 0,28 to okolice 06:45: po świcie, przed pełnym dniem. Widać wszystko, a mimo
+ * to pierwsze minuty mają jeszcze ciepłe światło.
+ */
+export const START_PHASE = 0.34;
+
+/**
+ * Ułamek doby dla podanego czasu zegara.
+ *
+ * @param origin chwila startu świata. Bez niej doba dalej liczy się z epoki —
+ *   zostawione dla podglądów, które pytają o konkretną porę, a nie o „teraz".
+ */
+export function phaseOf(now = Date.now(), origin = null) {
   if (FOLLOW_REAL_CLOCK) {
     // Godzina serwera, nie gracza — świat musi mieć jedną porę dnia dla wszystkich.
     const date = new Date(now);
     const seconds = date.getHours() * 3600 + date.getMinutes() * 60 + date.getSeconds();
     return seconds / 86400;
   }
-  return (now % DAY_MS) / DAY_MS;
+  if (origin === null) return (now % DAY_MS) / DAY_MS;
+  return (((START_PHASE + (now - origin) / DAY_MS) % 1) + 1) % 1;
 }
 
 /**
