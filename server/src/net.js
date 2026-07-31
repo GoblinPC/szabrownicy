@@ -493,7 +493,7 @@ export function attachGame(sockets, dataDir, variantCount = 6, { guests = false 
           w: me.weapon ?? '',
           // Czy jest co podnieść pod nogami — po tym klient zapala podpowiedź.
           // Liczy serwer, bo to on wie, co naprawdę leży i czy już wolno to wziąć.
-          pk: game.reachableDrop(me, Date.now()) ? 1 : 0,
+          pk: (game.reachableDrop(me, Date.now()) || game.reachableGather(me)) ? 1 : 0,
           // Czy stoimy przy kowadle. Po tym klient pokazuje listę wyrobów —
           // i po tym samym warunku serwer pozwala kuć, więc nie da się ich
           // rozjechać.

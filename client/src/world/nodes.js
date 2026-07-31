@@ -82,14 +82,20 @@ export const NODE_KINDS = {
     tool: 'pick',
   },
 
-  // --- Małe zasoby: idą gołą ręką ---------------------------------------------
+  // --- Małe zasoby: **podnoszone, nie tłuczone** -------------------------------
   //
-  // Jeden cios, jeden–dwa przedmioty, szybkie odrastanie. Nie mają być
-  // źródłem surowców na dłuższą metę — mają wystarczyć na **pierwsze
-  // narzędzie**, po którym otwiera się reszta.
+  // `gather: true` znaczy „bierze się to ręką", a nie „bije się w to słabiej".
+  // Pierwsza wersja robiła z nich zwykłe zasoby o jednym punkcie życia i wyszło
+  // dokładnie tak, jak użytkownik to nazwał: *czemu kamienie i gałęzie łamią się
+  // jak drzewo?* Walenie pięścią w leżący patyk jest absurdalne — to jest rzecz
+  // do schylenia się, nie do rozbicia.
+  //
+  // Idą więc tą samą drogą co rzeczy leżące na ziemi: podchodzisz, świeci się
+  // `E`, naciskasz. Różnica jest jedna i istotna — **odrastają**, więc las się
+  // z nich nie wyczerpuje na stałe.
   //
   // Bez zapory: przez leżącą gałąź się przechodzi. Numer zasobu bierze się
-  // teraz z `prop.node`, więc brak kolizji niczego nie psuje.
+  // z `prop.node`, więc brak kolizji niczego nie psuje.
   branch: {
     hp: 1,
     radius: 12,
@@ -97,7 +103,7 @@ export const NODE_KINDS = {
     respawn: 45_000,
     drop: 'wood',
     dropCount: [1, 2],
-    tool: null,
+    gather: true,
   },
   pebbles: {
     hp: 1,
@@ -106,9 +112,12 @@ export const NODE_KINDS = {
     respawn: 45_000,
     drop: 'stone',
     dropCount: [1, 2],
-    tool: null,
+    gather: true,
   },
 };
+
+/** Zasięg zbierania małych zasobów. Ten sam co przy rzeczach leżących na ziemi. */
+export const GATHER_RANGE = 24;
 
 /**
  * Buduje listę zasobów z obiektów świata.

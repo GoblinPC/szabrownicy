@@ -928,7 +928,8 @@ export class ForgeScene extends Phaser.Scene {
     this.nodes.apply(this.net.nodes ?? [], Date.now());
     this.nodes.update(Date.now());
     this.drops.apply(this.net.drops ?? []);
-    this.drops.updateHint(dt, this.px, this.py, this.net.canPick);
+    this.drops.updateHint(dt, this.px, this.py, this.net.canPick,
+      this.nodes.nearestGather(this.px, this.py, 26));
     this.backpack.apply(this.net.bag, this.net.atAnvil);
     this.predictHits(time);
     this.updateDodge(time);

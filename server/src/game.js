@@ -15,7 +15,7 @@ import {
 import {
   advance, poseOf, KEY_MASK, inAttackArc, ATTACK_STEPS, weaponOf,
 } from '../../client/src/world/movement.js';
-import { buildNodes, NODE_KINDS, NODE_ARC, NODE_REACH_BONUS } from '../../client/src/world/nodes.js';
+import { buildNodes, NODE_KINDS, NODE_ARC, NODE_REACH_BONUS, GATHER_RANGE } from '../../client/src/world/nodes.js';
 import {
   makeBag, addItem, fits, ITEMS, RECIPES, hasTool, canCraft, craft,
 } from '../../client/src/world/items.js';
@@ -277,6 +277,9 @@ export class Game {
     for (const node of this.nodes) {
       const state = this.nodeState(node);
       if (state.hp <= 0) continue;
+      // Małych zasobów **nie da się uderzyć** — bierze się je na `E`. Cios
+      // przelatuje przez gałąź, bo tłuczenie patyka pięścią nie jest czynnością.
+      if (NODE_KINDS[node.kind].gather) continue;
       if (!this.reachesNode(player, node)) continue;
 
       // **Ręką nie rozwalisz drzewa ani skały.**
@@ -421,14 +424,57 @@ export class Game {
    */
   pickRequest(player, now) {
     if (player.hp <= 0) return;
+
+    // Rzeczy leżące na ziemi mają pierwszeństwo przed zasobami: jeśli gracz
+    // stoi nad własnym wysypanym łupem i nad kępką gałęzi, chodzi mu o łup.
     const drop = this.reachableDrop(player, now);
-    if (!drop) return;
-    // Pełny plecak zostawia rzecz na ziemi. To jest cały sens siatki: gdy miejsce
-    // się kończy, łup przestaje wchodzić i trzeba coś wyrzucić.
-    if (!addItem(player.bag, drop.item)) return;
+    if (drop) {
+      // Pełny plecak zostawia rzecz na ziemi. To jest cały sens siatki: gdy
+      // miejsce się kończy, łup przestaje wchodzić i trzeba coś wyrzucić.
+      if (!addItem(player.bag, drop.item)) return;
+      player.bagSeq++;
+      player.pickSeq++;
+      this.drops.delete(drop.id);
+      return;
+    }
+
+    const node = this.reachableGather(player);
+    if (!node) return;
+    const spec = NODE_KINDS[node.kind];
+    const [lo, hi] = spec.dropCount;
+    const ile = lo + Math.floor(Math.random() * (hi - lo + 1));
+
+    // Zbieramy **tyle, ile wejdzie**. Gałąź daje jedną albo dwie kłody, a przy
+    // niemal pełnym plecaku pierwsza się mieści, druga nie — i wtedy zasób i tak
+    // znika. Alternatywa (wszystko albo nic) kazałaby graczowi robić miejsce na
+    // dwie kłody, żeby wziąć jedną.
+    let wzięte = 0;
+    for (let i = 0; i < ile; i++) {
+      if (!addItem(player.bag, spec.drop)) break;
+      wzięte++;
+    }
+    if (!wzięte) return;
+
+    this.hurtNodes.set(node.id, { hp: 0, downUntil: now + spec.respawn, at: now, dx: 0, dy: 1 });
     player.bagSeq++;
     player.pickSeq++;
-    this.drops.delete(drop.id);
+  }
+
+  /** Najbliższy mały zasób w zasięgu ręki, albo `null`. */
+  reachableGather(player) {
+    let best = null;
+    let bestD = GATHER_RANGE * GATHER_RANGE;
+    for (const node of this.nodes) {
+      if (!NODE_KINDS[node.kind].gather) continue;
+      if (this.nodeState(node).hp <= 0) continue;
+      const dx = node.x - player.x;
+      const dy = (node.y - player.y) * 1.6;
+      const d = dx * dx + dy * dy;
+      if (d >= bestD) continue;
+      bestD = d;
+      best = node;
+    }
+    return best;
   }
 
   /**

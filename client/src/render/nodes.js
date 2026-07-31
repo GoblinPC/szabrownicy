@@ -43,6 +43,29 @@ export class Nodes {
   }
 
   /**
+   * Najbliższy mały zasób w zasięgu ręki — po nim klient stawia podpowiedź `E`.
+   *
+   * O tym, czy wolno go wziąć, i tak rozstrzyga serwer; tutaj chodzi wyłącznie
+   * o to, **gdzie** postawić literę. Pominięcie zebranych jest istotne: bez tego
+   * `E` wisiałoby nad pustym miejscem przez całą minutę odrastania.
+   */
+  nearestGather(x, y, range) {
+    let best = null;
+    let bestD = range * range;
+    for (const node of this.list) {
+      if (!NODE_KINDS[node.kind]?.gather) continue;
+      if (this.state.get(node.id)?.falling) continue;
+      const dx = node.x - x;
+      const dy = (node.y - y) * 1.6;
+      const d = dx * dx + dy * dy;
+      if (d >= bestD) continue;
+      bestD = d;
+      best = node;
+    }
+    return best;
+  }
+
+  /**
    * Nowa migawka. `list` to wpisy `{ i, h, dx, dy, t }` — wyłącznie zasoby
    * uszkodzone albo ścięte.
    */
@@ -128,6 +151,16 @@ export class Nodes {
       if (!ref) continue;
       const node = this.list[id];
       const t = now - st.fellAt;
+
+      // Zebrane gałęzie i kamienie **po prostu znikają**. Obracanie ich wokół
+      // podstawy byłoby przewracaniem leżącego patyka — a on nie stoi.
+      if (NODE_KINDS[node.kind]?.gather) {
+        const zanik = t / 180;
+        ref.sprite.setAlpha(Math.max(0, 1 - zanik));
+        if (zanik >= 1) ref.sprite.setVisible(false);
+        if (ref.shadow) ref.shadow.cast.setVisible(false);
+        continue;
+      }
 
       if (t < FALL_MS) {
         // Obrót wokół **podstawy**, bo zaczepienie sprite'a to (0.5, 1).

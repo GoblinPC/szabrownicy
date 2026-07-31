@@ -76,8 +76,11 @@ export class Drops {
    * @param mozna czy serwer potwierdza, że jest co podnieść — o tym rozstrzyga on,
    *   bo to on wie, czy rzecz już wolno wziąć i czy jeszcze leży
    */
-  updateHint(dt, x, y, mozna) {
-    const cel = mozna ? this.nearest(x, y, 26) : null;
+  updateHint(dt, x, y, mozna, zapasowy = null) {
+    // Rzeczy leżące mają pierwszeństwo przed zasobami — tak samo jak na serwerze
+    // w `pickRequest()`. Gdyby kolejność się różniła, litera świeciłaby nad
+    // gałęzią, a `E` podnosiłoby leżącą obok kłodę.
+    const cel = mozna ? (this.nearest(x, y, 26) ?? zapasowy) : null;
     this.hintAlpha += ((cel ? 1 : 0) - this.hintAlpha) * Math.min(1, dt * 9);
     this.hint.setAlpha(this.hintAlpha * 0.85);
     if (!cel) return;
