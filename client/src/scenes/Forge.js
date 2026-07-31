@@ -35,7 +35,7 @@ export class ForgeScene extends Phaser.Scene {
 
     this.drawGround();
     this.wind = new Wind(this);
-    this.shadows = new ShadowCaster(this, this.world.lights);
+    this.shadows = new ShadowCaster(this, this.world.lights, BUILDING_PX);
     // Przed `spawnProps()`, bo to ona podaje mu sprite'y drzew i głazów w tej
     // samej kolejności, w jakiej numeruje je serwer.
     this.nodes = new Nodes(this, this.world, this.shadows, this.wind);

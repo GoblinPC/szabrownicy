@@ -589,7 +589,7 @@ function buildProps() {
   // Przedsionek (px 352-416, y 256-304) zostaje **pusty**. To nie jest dziura
   // do zapełnienia, tylko miejsce, z którego gracz odczytuje, gdzie jest.
   add('campfire', 392, 152, { w: 16, h: 7 }, { noShadow: true });
-  add('cookpot', 432, 154, { w: 16, h: 8 });
+  add('cookpot', 424, 158, { w: 16, h: 8 });
   add('bench', 392, 122, { w: 26, h: 6 });          // za ogniem
   add('bench', 340, 168, { w: 26, h: 6 });          // z lewej
   add('bench', 444, 172, { w: 26, h: 6 });          // z prawej
@@ -606,12 +606,9 @@ function buildProps() {
   add('barrel', 288, 118, { w: 12, h: 8 });
   add('crate', 304, 130, { w: 14, h: 8 });
 
-  // Schody na górę, do pokoi — **w prawym górnym rogu salonu**.
-  //
-  // Nie w warsztacie i nie w osobnej klatce: stoją naprzeciwko bramy, więc widać
-  // je od razu po wejściu. Pokoje są miejscem, do którego idzie się celowo,
-  // ale najpierw trzeba wiedzieć, że istnieją.
-  add('stairs', 480, 122, { w: 28, h: 10 });
+  // Schodów na razie nie ma. Trzy podejścia dały kolejno pochylnię, drabinę
+  // i skrzynię z czarną dziurą — czytelne schody w rzucie 3/4 wymagają widoku
+  // z boku i profilu, a nie stosu poziomych pasów. Wrócą razem z pokojem gracza.
 
   // POMIESZCZENIE 3 — SKLEP. Kafle x 33-41, y 4-10 (px 528-671, y 64-175).
   //

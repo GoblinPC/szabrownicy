@@ -816,33 +816,41 @@ function counter(name) {
  */
 function stairs(name) {
   const rng = rngFor(name);
-  const t = new Canvas(30, 30);
+  const W = 48;
+  const H = 40;
+  const t = new Canvas(W, H);
 
-  // Pierwsza wersja zwężała stopnie ku górze i wychodziła z tego pochylnia
-  // z paskami — użytkownik nie rozpoznał, co to jest. Schody czyta się po
-  // **stopniach o równej szerokości i wyraźnym podcieniu pod każdym**: to cień
-  // pod nosem stopnia mówi, że jedno jest wyżej od drugiego, a nie zbieżność.
-  const KROK = 5;
-  for (let i = 0; i < 5; i++) {
-    const y = 25 - i * KROK;
-    t.rect(3, y - 3, 24, 4, c('wood', 2));           // podnóżek
-    t.hline(3, 26, y - 3, c('wood', 4));             // światło na krawędzi stopnia
-    t.hline(3, 26, y, c('wood', 0));                 // podcień — najważniejszy piksel
-    t.hline(3, 26, y + 1, c('soot', 1));
-    t.speckle(rng, c('wood', 1), 0.14, { x: 4, y: y - 2, w: 22, h: 2 });
+  // Bez poręczy i bez ozdób. Poprzednia próba dokleiła jasną tralkę, która
+  // z zoomu czytała się jak papieros wetknięty w stopnie — a schody i tak
+  // wyglądały jak drabina. Zostaje sam bieg: **jednolite stopnie rozdzielone
+  // cienką kreską** i ciemny otwór u szczytu. To otwór mówi „w górę", nie stopnie.
+  const POLICZEK = 4;
+  const KROK = 6;
+
+  // Bieg: jedna płaszczyzna, potem same kreski podziału. Rysowanie stopni jako
+  // osobnych belek zawsze dawało szczeble.
+  t.rect(POLICZEK, 9, W - POLICZEK * 2, H - 9, c('wood', 2));
+  for (let y = H - KROK; y > 10; y -= KROK) {
+    // Podstopnica **musi być widoczna**. Wersja z `wood 1` na `wood 2` to różnica
+    // jednego stopnia rampy, czyli w praktyce żadna — stopnie znikały i zostawała
+    // skrzynia z czarną dziurą u góry.
+    t.hline(POLICZEK, W - POLICZEK - 1, y, c('wood', 0));
+    t.hline(POLICZEK, W - POLICZEK - 1, y + 1, c('wood', 4));   // nosek stopnia
+  }
+  t.speckle(rng, c('wood', 1), 0.07, { x: POLICZEK + 1, y: 10, w: W - POLICZEK * 2 - 2, h: H - 11 });
+
+  // Policzki: proste belki, ciemniejsze od stopni, po jednym pikselu obrysu.
+  for (const x of [0, W - POLICZEK]) {
+    t.rect(x, 6, POLICZEK, H - 6, c('wood', 1));
+    t.vline(x, 6, H - 1, c('wood', 0));
+    t.vline(x + POLICZEK - 1, 6, H - 1, c('wood', 0));
   }
 
-  // Policzki po bokach — bez nich stopnie wiszą w powietrzu.
-  t.rect(1, 2, 3, 27, c('wood', 1));
-  t.rect(26, 2, 3, 27, c('wood', 1));
-  t.vline(1, 2, 28, c('wood', 0));
-  t.vline(28, 2, 28, c('wood', 0));
+  // Otwór na piętro.
+  t.rect(POLICZEK, 0, W - POLICZEK * 2, 10, c('soot', 1));
+  t.rect(POLICZEK + 1, 1, W - POLICZEK * 2 - 2, 7, c('soot', 0));
+  t.hline(POLICZEK, W - POLICZEK - 1, 10, c('wood', 3));
 
-  // Otwór na górze: ciemność, do której prowadzą. Bez niej schody kończą się
-  // w połowie i wyglądają jak podest.
-  t.rect(4, 0, 22, 5, c('soot', 1));
-  t.rect(5, 0, 20, 3, c('soot', 0));
-  t.hline(4, 25, 5, c('wood', 3));                   // próg u szczytu
   return finish(t);
 }
 

@@ -60,9 +60,16 @@ export function lightAt(lights, x, y, minDistance = 18, outdoorScale = 1) {
 }
 
 export class ShadowCaster {
-  constructor(scene, lights) {
+  /**
+   * @param building prostokąt budynku. Obiekty stojące w środku **nie dostają
+   *   cienia od słońca** — nad nimi jest dach. Bez tego ławki i skrzynie
+   *   w karczmie rzucały cień słoneczny przez całą salę, mimo że słońca tam nie
+   *   ma, a jedynym światłem są palenisko i pochodnie.
+   */
+  constructor(scene, lights, building = null) {
     this.scene = scene;
     this.lights = lights;
+    this.building = building;
     this.statics = [];
     this.sunDx = 0;
     this.sunDy = 1;
@@ -89,7 +96,15 @@ export class ShadowCaster {
       .setDepth(-59)
       .setTint(0x000000);
 
-    const shadow = { contact, cast, squash, x, y };
+    // Miękka otoczka cienia — ta sama sylwetka, większa i bledsza. Rysowana POD
+    // ostrym cieniem, więc razem dają wrażenie przejścia.
+    const soft = this.scene.add.image(x, y, textureKey, frameName)
+      .setOrigin(0.5, 1)
+      .setDepth(-60.5)
+      .setTint(0x000000)
+      .setAlpha(0);
+
+    const shadow = { contact, cast, soft, squash, x, y };
     // Cienie obiektów **stojących** trzymamy na liście, bo słońce wędruje i trzeba
     // je odświeżać. Przy dwóch tysiącach roślin robimy to rzadko i tylko w kadrze —
     // co ćwierć sekundy nikt nie zauważy skoku, a co klatkę byłoby to najdroższą
@@ -111,6 +126,7 @@ export class ShadowCaster {
     if (!shadow) return;
     shadow.contact.destroy();
     shadow.cast.destroy();
+    shadow.soft?.destroy();
     const i = this.statics.indexOf(shadow);
     if (i >= 0) this.statics.splice(i, 1);
   }
@@ -159,10 +175,17 @@ export class ShadowCaster {
     // zniknąć w nocy, plama nie.
     contact.setAlpha(0.5 + 0.2 * (this.sunPower ?? 0));
 
-    let { dx, dy, weight } = lightAt(this.lights, x, y, 18, this.outdoorFire ?? 1);
-    // Poza zasięgiem ognia rządzi słońce. Dokładamy je zawsze, więc obiekt przy
-    // ognisku ma cień od ognia, a dziesięć kroków dalej płynnie od słońca.
-    if (this.sunPower > 0) {
+    // Pod dachem ogień świeci pełną mocą niezależnie od pory — tak samo jak
+    // w masce światła.
+    const podDachem = this.building
+      && x >= this.building.x && x <= this.building.x + this.building.w
+      && y >= this.building.y && y <= this.building.y + this.building.h;
+
+    let { dx, dy, weight } = lightAt(this.lights, x, y, 18, podDachem ? 1 : (this.outdoorFire ?? 1));
+    // Poza zasięgiem ognia rządzi słońce. Dokładamy je zawsze **poza budynkiem**:
+    // obiekt przy ognisku ma cień od ognia, a dziesięć kroków dalej płynnie od
+    // słońca. Pod dachem słońca nie ma i cień idzie wyłącznie od ognia.
+    if (this.sunPower > 0 && !podDachem) {
       dx += this.sunDx * this.sunPower;
       dy += this.sunDy * this.sunPower;
       weight += this.sunPower;
@@ -171,6 +194,7 @@ export class ShadowCaster {
     const length = Math.hypot(dx, dy);
     if (weight < 0.06 || length < 0.001) {
       cast.setVisible(false);
+      shadow.soft?.setVisible(false);
       return;
     }
     cast.setVisible(true);
@@ -179,12 +203,28 @@ export class ShadowCaster {
     // ucieczki od światła, a skala Y spłaszcza go do płaszczyzny ziemi.
     cast.rotation = Math.atan2(dx / length, -(dy / length));
     cast.scaleY = shadow.squash;
-    cast.setAlpha(Math.min(0.45, 0.1 + weight * 0.38));
+    // Krycie niższe niż wcześniej (0,45 → 0,3) i **druga, większa kopia** o niskim
+    // kryciu: razem dają miękką krawędź zamiast ostrej sylwetki. Prawdziwy półcień
+    // rozmywa się z odległością od podstawy, a tego bez shaderów nie zrobimy —
+    // ale dwie warstwy o różnej wielkości czytają się już jako miękki cień,
+    // a nie jako czarny prostokąt wycięty nożyczkami.
+    const krycie = Math.min(0.3, 0.07 + weight * 0.26);
+    cast.setAlpha(krycie);
+    if (shadow.soft) {
+      shadow.soft.setVisible(true);
+      shadow.soft.setPosition(x, y);
+      shadow.soft.rotation = cast.rotation;
+      shadow.soft.scaleX = 1.35;
+      shadow.soft.scaleY = shadow.squash * 1.3;
+      shadow.soft.setAlpha(krycie * 0.42);
+    }
   }
 
   setFrame(shadow, frameName, flipX) {
     shadow.cast.setFrame(frameName);
     shadow.cast.setFlipX(flipX);
+    shadow.soft?.setFrame(frameName);
+    shadow.soft?.setFlipX(flipX);
   }
 
   /** Potrzebne przy graczach — kiedy ktoś wyjdzie, jego cień ma zniknąć razem z nim. */

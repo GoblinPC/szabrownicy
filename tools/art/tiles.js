@@ -260,9 +260,9 @@ function partitionWall(name, dir) {
     t.rect(x0, 0, GRUBOSC, TILE, c('wood', 1));
     t.vline(x0, 0, TILE - 1, c('wood', 3));
     t.vline(x0 + 1, 0, TILE - 1, c('wood', 2));
-    t.vline(x0 + GRUBOSC - 2, 0, TILE - 1, c('wood', 0));
-    // Kant od strony ciemnej — najciemniejszy odcień drewna, nie sadza:
-    // obrys ma być najciemniejszym odcieniem materiału, nigdy czernią.
+    // **Jeden** ciemny piksel na kant, nie dwa. Podwójna ciemna kolumna czytała
+    // się jako pas cienia domalowany z boku ścianki — czyli dokładnie to, czego
+    // w kaflu być nie może.
     t.vline(x0 + GRUBOSC - 1, 0, TILE - 1, c('wood', 0));
     t.speckle(rng, c('wood', 2), 0.16, { x: x0 + 1, y: 0, w: GRUBOSC - 2, h: TILE });
     // Poprzeczne styki bali — inaczej ścianka jest gładką rurą.
@@ -279,7 +279,10 @@ function partitionWall(name, dir) {
   t.hline(0, TILE - 1, 2 + GRUBOSC - 1, c('wood', 0));
   t.speckle(rng, c('wood', 1), 0.18, { x: 0, y: 4, w: TILE, h: GRUBOSC - 3 });
   for (let x = 2; x < TILE; x += 6) t.vline(x, 3, 2 + GRUBOSC - 2, c('wood', 1));
-  t.hline(0, TILE - 1, 2 + GRUBOSC, c('soot', 0));
+  // **Bez kreski z sadzy pod ścianką.** Miała być stykiem, a była czarnym pasem
+  // na całą szerokość kafla, położonym na środku podłogi — czyli dokładnie tym
+  // cieniem wmalowanym w grafikę, którego w kaflach być nie może. Ciemna krawędź
+  // samej belki (`wood 0`, wiersz wyżej) w zupełności wystarcza.
   return t;
 }
 
