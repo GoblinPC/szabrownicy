@@ -983,6 +983,17 @@ zbieranie ręką → siekiera przy warsztacie → drzewa i głazy → skrzynia j
    do ciemnej dziury z czymś, co gryzie", a nie „idę kawałek dalej".
 4. **Pochodnia jako przedmiot** — zajmuje rękę. Nosisz światło albo broń.
 
+### Etap 2b — kupowanie u karczmarza
+
+Dziś karczmarz tylko **skupuje**, a złoto ma jedno wyjście: większa skrzynia.
+Do dołożenia: mikstury lecznicze za średnią cenę i **miecz za dużą** — coś,
+na co się zbiera przez kilka wypraw. Sprzedaż broni przez karczmarza jest tu
+w porządku, bo nie da się jej wykuć samemu: kupno zostaje jedyną drogą i złoto
+dostaje drugi, mocniejszy powód.
+
+Uwaga na balans: cena musi być **wyraźnie wyższa** niż rozbudowa skrzyni,
+inaczej miecz staje się pierwszym zakupem i bank przestaje być celem.
+
 ### Etap 3 — pokój gracza
 
 Skrzynia stoi dziś w warsztacie, wspólnym dla wszystkich. Pokój daje jej

@@ -37,7 +37,7 @@ export function createBackpack({ onMove, onDrop, onEat, onTake, slotAt, onSlot, 
           </div>
           <div id="bag-grid"></div>
         </div>
-        <div id="bag-hint">przeciągnij &nbsp;·&nbsp; <b>PPM</b> obróć &nbsp;·&nbsp; <b>2×LPM</b> zjedz &nbsp;·&nbsp; wyrzuć poza siatkę</div>
+        <div id="bag-hint"><b>Shift+LPM</b> przerzuć &nbsp;·&nbsp; przeciągnij &nbsp;·&nbsp; <b>PPM</b> obróć &nbsp;·&nbsp; <b>2×LPM</b> zjedz &nbsp;·&nbsp; wyrzuć poza siatkę</div>
       </div>
       <div id="bag-shop" style="display:none">
         <div id="bag-title">karczmarz</div>
@@ -425,7 +425,10 @@ export function createBackpack({ onMove, onDrop, onEat, onTake, slotAt, onSlot, 
     // Przełożenie z worka. Prośba idzie zawsze — o tym, czy rzecz jeszcze tam
     // leży i czy zmieści się w siatce, rozstrzyga serwer.
     const sackCell = event.target.closest('.sack-cell');
-    if (sackCell && sack) {
+    // **`sack || chest`, nie samo `sack`.** Warunek pytał wyłącznie o worek, więc
+    // przy skrzyni ta gałąź nie wchodziła nigdy i nie dało się nic wyjąć.
+    // Zgłoszone z gry: „do skrzyni da się włożyć, ze skrzyni nie da się wyjąć".
+    if (sackCell && (sack || chest)) {
       event.preventDefault();
       // Kliknięcie bierze — z worka albo ze skrzyni, zależnie od tego, co jest
       // otwarte. Ten sam gest w obu miejscach.
@@ -458,6 +461,18 @@ export function createBackpack({ onMove, onDrop, onEat, onTake, slotAt, onSlot, 
 
     const id = Number(itemEl.dataset.id);
     const item = bag.items.find((it) => it.id === id);
+
+    // **Shift przerzuca bez przeciągania.** Przy skrzyni chowa, przy ladzie
+    // sprzedaje. Przeciąganie jest w porządku przy jednej rzeczy, ale przy
+    // opróżnianiu pełnego plecaka to trzydzieści gestów myszą — a czynność
+    // jest za każdym razem ta sama, więc powinna być jednym kliknięciem.
+    if (event.shiftKey && item) {
+      event.preventDefault();
+      if (shop) onSell?.(id);
+      else if (chest && !sack) onChestPut?.(id);
+      return;
+    }
+
     const now = performance.now();
     if (item && ITEMS[item.kind]?.food && id === lastClick.id && now - lastClick.at < DBL_MS) {
       lastClick = { id: -1, at: 0 };

@@ -15,6 +15,29 @@
     color: #bda997;
   }
   #game { width: 100vw; height: 100vh; }
+
+  /* Bramka dla telefonów.
+     Sprawdzamy **brak myszy**, a nie szerokość ekranu: wąskie okno na laptopie
+     to dalej komputer, a tablet z rysikiem dalej nie ma WSAD. `pointer: coarse`
+     plus brak `hover` opisuje dokładnie to, o co chodzi — palec zamiast kursora. */
+  #mobile-gate { display: none; }
+  @media (pointer: coarse) and (hover: none) {
+    #mobile-gate {
+      position: fixed;
+      inset: 0;
+      display: grid;
+      place-content: center;
+      background: #0b0908;
+      z-index: 100;
+      padding: 24px;
+    }
+    #game { display: none; }
+  }
+  #mobile-box { max-width: 420px; text-align: center; line-height: 1.6; }
+  #mobile-box h1 { color: #f2700f; letter-spacing: 4px; margin: 0 0 4px; font-size: 22px; }
+  #mobile-box p { font-size: 13px; color: #a08d7e; }
+  #mobile-box b { color: #e8dcc0; }
+  .mobile-sub { letter-spacing: 4px; color: #6b5d54; font-size: 11px; }
   #game canvas { display: block; image-rendering: pixelated; }
   #boot {
     position: fixed;
@@ -486,6 +509,17 @@
 </style>
 </head>
 <body>
+  <div id="mobile-gate">
+    <div id="mobile-box">
+      <h1>SZABROWNICY</h1>
+      <p class="mobile-sub">kuźnia</p>
+      <p>Gra wymaga <b>klawiatury i myszy</b> — ruch idzie na WSAD, celowanie
+        kursorem, a plecak jest siatką, po której się przeciąga.</p>
+      <p>Na telefonie nie da się w to zagrać, więc lepiej powiedzieć to od razu
+        niż pozwolić Ci stać pod bramą i nie móc ruszyć.</p>
+      <p class="mobile-sub">wejdź z komputera</p>
+    </div>
+  </div>
   <div id="game"></div>
   <div id="boot">rozpalanie pieca…</div>
   <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
