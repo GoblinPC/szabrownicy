@@ -426,6 +426,16 @@ export function attachGame(sockets, dataDir, variantCount = 6, { guests = false 
           game.takeFromSack(session.player, message.s, message.i);
           return;
         }
+        if (message.a === 'chestput') {
+          if (!Number.isInteger(message.i)) return;
+          game.chestPut(session.player, message.i);
+          return;
+        }
+        if (message.a === 'chesttake') {
+          if (!Number.isInteger(message.i)) return;
+          game.chestTake(session.player, message.i);
+          return;
+        }
         return;
       }
 
@@ -600,6 +610,10 @@ export function attachGame(sockets, dataDir, variantCount = 6, { guests = false 
         ht: game.hotSnapshot(me),
         gr: game.gearSnapshot(me),
         sk: game.sackSnapshot(me),
+        // Skrzynia leci **tylko właścicielowi i tylko gdy przy niej stoi**.
+        // Cudza zawartość nie ma prawa być u nikogo w pamięci — przy grze,
+        // w której się łupi, przerobiony klient pokazywałby, kogo warto zabić.
+        ch: game.chestSnapshot(me),
         sc: game.sackContents(me),
         // Plecak leci **tylko do właściciela**. Przy grze, w której łupi się
         // innych, cudza zawartość nie ma prawa być u nikogo w pamięci — inaczej

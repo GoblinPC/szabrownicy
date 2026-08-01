@@ -907,6 +907,50 @@ function stairs(name) {
   return finish(t);
 }
 
+/**
+ * Skrzynia gracza — **bank**, nie mebel.
+ *
+ * Musi się odróżniać od zwykłych skrzyń stojących po kątach, bo to jedyne
+ * miejsce w grze, w którym rzeczy są bezpieczne. Stąd okucia z mosiądzu,
+ * kłódka i wieko wypukłe zamiast płaskiego: skrzynia z zamkiem czyta się jako
+ * czyjaś własność, a nie jako zapas w kącie.
+ */
+function playerChest(name) {
+  const rng = rngFor(name);
+  const t = new Canvas(24, 20);
+
+  // Korpus.
+  t.rect(1, 8, 22, 12, c('wood', 2));
+  t.hline(1, 22, 19, c('wood', 0));
+  t.vline(1, 8, 19, c('wood', 1));
+  t.vline(22, 8, 19, c('wood', 0));
+  t.speckle(rng, c('wood', 1), 0.14, { x: 2, y: 9, w: 20, h: 9 });
+
+  // Wieko wypukłe — łuk, nie prostokąt.
+  for (let x = 1; x < 23; x++) {
+    const k = (x - 12) / 11;
+    const h = Math.round(7 - k * k * 4);
+    t.vline(x, 8 - h, 8, c('wood', 3));
+    t.px(x, 8 - h, c('wood', 4));
+  }
+  t.hline(1, 22, 8, c('wood', 0));
+
+  // Okucia: dwa pasy przez wieko i korpus.
+  for (const x of [5, 18]) {
+    t.vline(x, 2, 18, c('iron', 2));
+    t.vline(x + 1, 2, 18, c('iron', 0));
+    t.px(x, 10, c('iron', 4));
+    t.px(x, 16, c('iron', 4));
+  }
+
+  // Kłódka — najjaśniejszy punkt. To ona mówi „twoje".
+  t.rect(11, 7, 3, 4, c('copper'));
+  t.px(12, 6, c('copper'));
+  t.px(12, 8, c('soot', 0));
+  t.px(11, 7, c('bone'));
+  return finish(t);
+}
+
 /** Rama do wyprawiania skór — pod przyszłe zbroje ze skóry. */
 function tanRack(name) {
   const rng = rngFor(name);
@@ -1798,6 +1842,7 @@ export function buildProps() {
   add('counter', counter('counter'));
   add('stairs', stairs('stairs'));
   add('tanrack', tanRack('tanrack'));
+  add('chest', playerChest('chest'));
   add('coal', coalPile('coal'));
 
   // Małe zasoby: po dwa warianty, żeby las nie powtarzał jednego rysunku.

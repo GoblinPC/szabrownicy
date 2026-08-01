@@ -99,6 +99,10 @@ const FOOD_DRAIN = FOOD_MAX / (15 * 60);   // punktów na sekundę
 // zostawić czas na dobiegnięcie do czegoś jadalnego.
 const STARVE_DPS = 1.0;
 
+// Ile mieści skrzynia gracza. Czterdzieści to pięć plecaków — dość, żeby
+// gromadzenie miało sens, i za mało, żeby przestać wybierać, co warto trzymać.
+const CHEST_SLOTS = 40;
+
 // Gdzie się rzemieślniczy, liczy `atCraftStation()` w `world/forge.js` — po
 // **pozycji warsztatu wyszukanej w liście obiektów**. Wpisana tu wcześniej
 // liczba została po przebudowie wnętrza w miejscu, w którym nic już nie stało.
@@ -701,6 +705,54 @@ export class Game {
       },
       food: Math.round(player.food),
       hp: Math.round(player.hp),
+      chest: player.chest.map((it) => ({ i: it.id, k: it.kind })),
+    };
+  }
+
+  /**
+   * Skrzynia gracza: schowanie i wyjęcie.
+   *
+   * To jest **jedyne miejsce w grze, gdzie rzeczy są bezpieczne**. Wszystko poza
+   * nią nosi się na plecach i traci przy śmierci — dlatego dopiero skrzynia
+   * zamienia „mam drewno" w „buduję się do czegoś", a drogę powrotną do miasta
+   * w coś, co ma stawkę.
+   *
+   * Stać przy niej trzeba naprawdę: sprawdza to serwer, tak samo jak przy
+   * kowadle i garnku.
+   */
+  chestPut(player, itemId) {
+    if (this.stationOf(player) !== 'chest') return false;
+    if (player.chest.length >= CHEST_SLOTS) return false;
+    const i = player.bag.items.findIndex((it) => it.id === itemId);
+    if (i < 0) return false;
+    const [item] = player.bag.items.splice(i, 1);
+    player.chest.push({ id: player.chestNextId ?? (player.chestNextId = 1), kind: item.kind });
+    player.chestNextId++;
+    player.bagSeq++;
+    player.chestSeq++;
+    return true;
+  }
+
+  chestTake(player, itemId) {
+    if (this.stationOf(player) !== 'chest') return false;
+    const i = player.chest.findIndex((it) => it.id === itemId);
+    if (i < 0) return false;
+    // **Pełny plecak zostawia rzecz w skrzyni.** Ta sama reguła co przy ziemi:
+    // miejsce jest zasobem, więc wyjęcie też jest decyzją.
+    if (!addItem(player.bag, player.chest[i].kind)) return false;
+    player.chest.splice(i, 1);
+    player.bagSeq++;
+    player.chestSeq++;
+    return true;
+  }
+
+  /** Zawartość skrzyni — **tylko dla właściciela i tylko gdy przy niej stoi**. */
+  chestSnapshot(player) {
+    if (this.stationOf(player) !== 'chest') return null;
+    return {
+      s: player.chestSeq,
+      max: CHEST_SLOTS,
+      it: player.chest.map((item) => [item.id, item.kind]),
     };
   }
 
@@ -1505,6 +1557,11 @@ export class Game {
       // w ogóle był, rozstrzyga ta struktura. Przy grze, w której łupi się innych
       // graczy, nie ma innej możliwości.
       bag: makeBag(),
+      // **Bank.** Płaska lista, nie siatka — i to jest decyzja, nie oszczędność:
+      // układanka w plecaku ma znaczenie, bo miejsca jest mało i trzeba wybierać.
+      // W skrzyni miejsca jest dużo i układanie byłoby samą pracą, bez decyzji.
+      chest: [],
+      chestSeq: 0,
       // Głód. Pełny na start, bo pierwsze minuty mają iść na rozejrzenie się,
       // a nie na natychmiastowe szukanie żarcia.
       food: FOOD_MAX,
@@ -1544,6 +1601,13 @@ export class Game {
       }
       if (Number.isFinite(state.food)) player.food = Math.max(0, Math.min(FOOD_MAX, state.food));
       if (Number.isFinite(state.hp)) player.hp = Math.max(1, Math.min(player.maxHp, state.hp));
+      if (Array.isArray(state.chest)) {
+        player.chest = state.chest
+          .filter((it) => ITEMS[it.k])
+          .slice(0, CHEST_SLOTS)
+          .map((it) => ({ id: it.i, kind: it.k }));
+        player.chestNextId = 1 + Math.max(0, ...player.chest.map((it) => it.id));
+      }
     }
 
     this.players.set(id, player);

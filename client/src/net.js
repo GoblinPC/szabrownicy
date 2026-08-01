@@ -170,6 +170,15 @@ export class Net {
     this.send({ t: 'bag', a: 'take', s: sackId, i: itemId });
   }
 
+  /** Skrzynia gracza: schowanie i wyjęcie. O jednym i drugim rozstrzyga serwer. */
+  chestPut(itemId) {
+    this.send({ t: 'bag', a: 'chestput', i: itemId });
+  }
+
+  chestTake(itemId) {
+    this.send({ t: 'bag', a: 'chesttake', i: itemId });
+  }
+
   /**
    * Podniesienie z ziemi.
    *
@@ -441,6 +450,7 @@ export class Net {
     // Noszony ekwipunek: co siedzi w gnieździe. Leci tylko do właściciela.
     this.gear = message.gr ?? this.gear ?? { s: 0, b: null };
     this.sacks = message.sk ?? [];
+    this.chest = message.ch ?? null;
     this.sackNear = message.sc ?? null;
     // Cios odbity od zasobu, do którego brakuje narzędzia. Znacznik, nie flaga,
     // bo dwa odbicia mogą wypaść między migawkami.

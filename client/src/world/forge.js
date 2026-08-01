@@ -63,7 +63,7 @@ export function craftStation(world, key = 'workbench') {
  * bo po niej klient wybiera listę wyrobów, a serwer sprawdza, czy dany wyrób
  * wolno wykonać tutaj.
  */
-export const STATIONS = ['workbench', 'tanrack', 'cookpot'];
+export const STATIONS = ['workbench', 'tanrack', 'cookpot', 'chest'];
 
 export function stationAt(world, x, y) {
   for (const key of STATIONS) if (atCraftStation(world, x, y, key)) return key;
@@ -695,6 +695,9 @@ function buildProps() {
   // celowo, a nie mija po drodze.
   add('workbench', 566, 224, { w: 30, h: 8 });
   add('tanrack', 640, 224, { w: 24, h: 8 });
+  // Skrzynia gracza — **bank**. Stoi w warsztacie, przy ścianie, z dala od
+  // przedsionka: po nią idzie się celowo, na koniec wyprawy.
+  add('chest', 638, 292, { w: 22, h: 10 });
   add('crate', 546, 282, { w: 14, h: 8 });
   add('barrel', 566, 292, { w: 12, h: 8 });
   add('bucket', 596, 286, { w: 10, h: 6 });

@@ -24,7 +24,7 @@ const CELL = 48;
 const ICON_PX = 16;
 
 
-export function createBackpack({ onMove, onDrop, onEat, onTake, slotAt, onSlot, onGear, onUngear }) {
+export function createBackpack({ onMove, onDrop, onEat, onTake, slotAt, onSlot, onGear, onUngear, onChestPut, onChestTake }) {
   const box = document.createElement('div');
   box.id = 'backpack';
   box.innerHTML = `
@@ -55,6 +55,7 @@ export function createBackpack({ onMove, onDrop, onEat, onTake, slotAt, onSlot, 
 
   // Zawartość worka, przy którym stoi gracz. `null` znaczy „nie ma przy czym stać".
   let sack = null;
+  let chest = null;
   // Noszony ekwipunek — co siedzi w gnieździe.
   let gear = { s: -1, b: null };
 
@@ -151,6 +152,21 @@ export function createBackpack({ onMove, onDrop, onEat, onTake, slotAt, onSlot, 
    * serwer. Gdyby worek też był siatką, decyzja „co biorę" zamieniłaby się
    * w układankę w cudzym plecaku — a chodzi o wybór, nie o Tetris nad trupem.
    */
+  /**
+   * Skrzynia idzie **tym samym panelem co worek po trupie**.
+   *
+   * To nie jest oszczędność, tylko spójność: jedno i drugie jest cudzą kupą
+   * rzeczy, z której się bierze, a nie siatką do układania. Gracz uczy się
+   * jednego zachowania i działa ono w obu miejscach.
+   */
+  function applyChest(state) {
+    const był = chest ? JSON.stringify(chest) : '';
+    chest = state ?? null;
+    if (!open) return;
+    if (JSON.stringify(chest ?? '') === był) return;
+    renderSack();
+  }
+
   function applySack(state) {
     const był = sack ? JSON.stringify(sack) : '';
     sack = state ?? null;
@@ -202,11 +218,18 @@ export function createBackpack({ onMove, onDrop, onEat, onTake, slotAt, onSlot, 
   }
 
   function renderSack() {
-    sackBox.style.display = sack ? 'block' : 'none';
+    // Worek ma pierwszeństwo: stojąc nad trupem przy skrzyni chodzi o trupa.
+    const pojemnik = sack ?? chest;
+    const jestSkrzynia = !sack && Boolean(chest);
+    sackBox.style.display = pojemnik ? 'block' : 'none';
     sackGrid.innerHTML = '';
-    if (!sack) return;
+    if (!pojemnik) return;
+    sackBox.querySelector('#bag-title').textContent = jestSkrzynia
+      ? `skrzynia  ${pojemnik.it.length}/${pojemnik.max}`
+      : 'worek';
+    sackBox.dataset.rodzaj = jestSkrzynia ? 'chest' : 'sack';
 
-    for (const [id, kind] of sack.it) {
+    for (const [id, kind] of pojemnik.it) {
       const cell = document.createElement('div');
       cell.className = 'sack-cell';
       cell.dataset.id = String(id);
@@ -341,7 +364,11 @@ export function createBackpack({ onMove, onDrop, onEat, onTake, slotAt, onSlot, 
     const sackCell = event.target.closest('.sack-cell');
     if (sackCell && sack) {
       event.preventDefault();
-      onTake?.(sack.i, Number(sackCell.dataset.id));
+      // Kliknięcie bierze — z worka albo ze skrzyni, zależnie od tego, co jest
+      // otwarte. Ten sam gest w obu miejscach.
+      const id = Number(sackCell.dataset.id);
+      if (sack) onTake?.(sack.i, id);
+      else if (chest) onChestTake?.(id);
       return;
     }
 
@@ -416,6 +443,7 @@ export function createBackpack({ onMove, onDrop, onEat, onTake, slotAt, onSlot, 
     apply,
     applyGear,
     applySack,
+    applyChest,
     /** Otwarcie bez przełączania — przy worku `E` ma otwierać, a nie zamykać. */
     openNow: () => setOpen(true),
     toggle: () => setOpen(!open),

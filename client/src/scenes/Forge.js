@@ -277,6 +277,8 @@ export class ForgeScene extends Phaser.Scene {
     // Plecak. Ikony bierze z atlasu `props` — tego samego, z którego powstaje
     // świat — więc nie ma osobnego kompletu obrazków do rozjechania.
     this.backpack = createBackpack({
+      onChestPut: (id) => this.net.chestPut(id),
+      onChestTake: (id) => this.net.chestTake(id),
       onMove: (id, x, y, rot) => this.net.bagMove(id, x, y, rot),
       onDrop: (id) => this.net.bagDrop(id),
       onEat: (id) => this.net.bagEat(id),
@@ -1133,6 +1135,7 @@ export class ForgeScene extends Phaser.Scene {
     this.backpack.apply(this.net.bag);
     this.backpack.applyGear(this.net.gear);
     this.backpack.applySack(this.net.sackNear);
+    this.backpack.applyChest(this.net.chest);
     this.hotbar.apply(this.net.hot, this.net.bag);
     this.craft.setStation(this.net.station);
     this.craft.apply(this.net.bag);
