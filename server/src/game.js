@@ -1531,22 +1531,23 @@ export class Game {
       kills: 0,
       deaths: 0,
     };
-    this.players.set(id, player);
-    return player;
-    // Przywrócenie stanu z konta. **Po zbudowaniu gracza, nie zamiast niego** —
-    // brakujące pola mają zostać domyślne, a nie zniknąć, bo zapis może pochodzić
-    // ze starszej wersji gry.
+    // Przywrócenie stanu z konta. **Przed `return`** — pierwsza wersja stała za
+    // nim i była zwykłym martwym kodem: zapis powstawał, plik rósł, a wczytanie
+    // nie wykonywało się ani razu. Nie zgłosił tego ani interpreter, ani kontrola
+    // świata; wyszło dopiero z przejścia pełnego obiegu zapis→odczyt w izolacji.
     if (state) {
       if (state.bag?.items) {
         player.bag.items = state.bag.items
           .filter((it) => ITEMS[it.k])
           .map((it) => ({ id: it.i, kind: it.k, x: it.x, y: it.y, rot: it.r ? 1 : 0 }));
-        player.bag.nextId = Math.max(1, ...player.bag.items.map((it) => it.id + 1));
+        player.bag.nextId = Math.max(1, 1 + Math.max(0, ...player.bag.items.map((it) => it.id)));
       }
       if (Number.isFinite(state.food)) player.food = Math.max(0, Math.min(FOOD_MAX, state.food));
       if (Number.isFinite(state.hp)) player.hp = Math.max(1, Math.min(player.maxHp, state.hp));
     }
 
+    this.players.set(id, player);
+    return player;
   }
 
   remove(id) {

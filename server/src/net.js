@@ -82,6 +82,14 @@ export function attachGame(sockets, dataDir, variantCount = 6, { guests = false 
   const game = new Game();
   const accounts = new Accounts(dataDir);
   const sessions = new Map();   // socket → sesja
+  // Stan gości — **w pamięci, po nicku**.
+  //
+  // Gość nie ma konta i mieć nie powinien: godzina testów zostawiłaby w pliku
+  // kilkaset losowych nicków. Ale serwer deweloperski przeładowuje przeglądarkę
+  // po każdym zapisie pliku, a gość wraca **na tym samym nicku** — bez tego
+  // każde przeładowanie czyściło plecak i trybu bez logowania nie dało się użyć
+  // do niczego, co trwa dłużej niż minutę. Ginie razem z serwerem i tak ma być.
+  const guestState = new Map();
   let nextId = 1;
 
   /**
@@ -172,7 +180,7 @@ export function attachGame(sockets, dataDir, variantCount = 6, { guests = false 
     const name = guestNameAllowed(wanted) ? wanted.trim() : freeGuestName();
 
     const id = nextId++;
-    const player = game.add(id, { name, variant: 0, admin: false });
+    const player = game.add(id, { name, variant: 0, admin: false, state: guestState.get(name) ?? null });
     session.player = player;
     session.guest = true;
     session.joining = false;
@@ -453,9 +461,9 @@ export function attachGame(sockets, dataDir, variantCount = 6, { guests = false 
       if (session.player) {
         // Zapis **przed** usunięciem gracza ze świata — po `remove()` nie ma już
         // czego zapisywać. Goście pomijani, bo nie mają konta.
-        if (!session.guest) {
-          accounts.setState(session.player.name, game.exportState(session.player));
-        }
+        const stan = game.exportState(session.player);
+        if (session.guest) guestState.set(session.player.name, stan);
+        else accounts.setState(session.player.name, stan);
         game.remove(session.player.id);
         broadcast({ t: 'bye', id: session.player.id });
         broadcast({ t: 'system', m: `${session.player.name} wychodzi` });
@@ -492,8 +500,10 @@ export function attachGame(sockets, dataDir, variantCount = 6, { guests = false 
   // i ogranicza stratę do pół minuty gry.
   setInterval(() => {
     for (const session of sessions.values()) {
-      if (!session.player || session.guest) continue;
-      accounts.setState(session.player.name, game.exportState(session.player));
+      if (!session.player) continue;
+      const stan = game.exportState(session.player);
+      if (session.guest) guestState.set(session.player.name, stan);
+      else accounts.setState(session.player.name, stan);
     }
   }, 30_000);
 
