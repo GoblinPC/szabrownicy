@@ -113,8 +113,18 @@ export const CITY_OY = 8;
 const OFF_X = CITY_OX * TILE;
 const OFF_Y = CITY_OY * TILE;
 
-export const MAP_W = 160;
-export const MAP_H = 120;
+// **Świat ma być duży i nieznany.**
+//
+// 160×120 dawało się obejść w niecałe dwie minuty, więc „wyprawa" znaczyła
+// tyle co spacer. 384×288 to siedem razy większa powierzchnia: od bramy do
+// najdalszego krańca idzie się kilka minut, a przez większość tej drogi nie
+// widać miasta. Dopiero wtedy odległość jest kosztem, a nie liczbą.
+//
+// Podłoże wypala się w kawałki po 128 kafli (`drawGround`), więc rozmiar mapy
+// nie ma już sufitu — wcześniej jedna tekstura na całą mapę zatrzymałaby to
+// na 256 kaflach.
+export const MAP_W = 384;
+export const MAP_H = 288;
 export const WORLD_W = MAP_W * TILE;
 export const WORLD_H = MAP_H * TILE;
 
@@ -509,7 +519,12 @@ function buildDecals(tiles) {
         // gęstość dobrana na plac (0,55) dałaby na wielkiej mapie ponad siedem
         // tysięcy sprite'ów. W dziczy trawa jest tłem, po którym się biegnie;
         // na placu jest tym, po czym się chodzi i widać, jak się ugina.
-        if (rng.chance(wCity ? 0.5 : 0.1)) {
+        // Gęstość w dziczy zeszła z 0,1 na 0,03 razem z powiększeniem mapy.
+        // Przy siedmiokrotnie większym świecie ta sama gęstość dawała **dziesięć
+        // tysięcy żywych obiektów sceny** — każdy z własnym sprite'em i sprężyną.
+        // Poza kadrem nic ich nie liczy, ale samo ich istnienie kosztuje pamięć
+        // i czas budowy. W mieście zostaje gęsto, bo tam się chodzi najwięcej.
+        if (rng.chance(wCity ? 0.5 : 0.03)) {
           tufts.push({ key: `decal_tuft_${rng.int(3)}`, x: px, y: py });
         }
       }

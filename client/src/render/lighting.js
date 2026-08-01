@@ -297,8 +297,19 @@ export class Lighting {
     const by0 = Math.round(toMaskY(this.building.y));
     const bx1 = Math.round(toMaskX(this.building.x + this.building.w));
     const by1 = Math.round(toMaskY(this.building.y + this.building.h));
-    ctx.fillStyle = `rgb(${forge.join(',')})`;
-    ctx.fillRect(bx0, by0, bx1 - bx0, by1 - by0);
+    // **Przygaszamy wnętrze tylko wtedy, gdy gracz jest w środku.**
+    //
+    // Prostokąt budynku pokrywa się co do piksela z dachem, więc stała ciemna
+    // plama gasiła **dach oglądany z placu** — w samo południe był czarny, mimo
+    // że leży w słońcu. Zgłoszone z gry: *w karczmie jest bardzo ciemno*.
+    //
+    // Z zewnątrz widać dach i ma być oświetlony niebem; ze środka widać halę
+    // i ta ma być ciemna. To jest ta sama informacja co `inside`, więc nie ma
+    // po co liczyć jej drugi raz.
+    if (inside) {
+      ctx.fillStyle = `rgb(${forge.join(',')})`;
+      ctx.fillRect(bx0, by0, bx1 - bx0, by1 - by0);
+    }
 
     // 2. Źródła światła, dodawane do maski.
     //

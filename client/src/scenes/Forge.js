@@ -107,12 +107,53 @@ export class ForgeScene extends Phaser.Scene {
    * Podłoże i dekale trafiają raz na jedną teksturę wielkości mapy. Zamiast
    * tysiąca siedmiuset osobnych obrazków silnik rysuje potem jeden.
    */
+  /**
+   * Podłoże wypalone w **kawałki**, nie w jedną teksturę.
+   *
+   * Jedna tekstura wielkości mapy działała do 160×120 kafli (2560×1920 px)
+   * i była sufitem, o który powiększanie świata rozbiłoby się natychmiast:
+   * WebGL gwarantuje tylko 4096 px na bok, a mapa 320×240 to już 5120 px.
+   * Kawałki po 128 kafli (2048 px) mieszczą się z zapasem na każdej karcie
+   * i **znoszą ograniczenie rozmiaru mapy** — dochodzi ich tylko więcej.
+   *
+   * Rysowanie idzie tak samo jak wcześniej, tylko każdy kafel trafia do tego
+   * kawałka, w którym leży. Phaser sam pomija kawałki poza kadrem, więc przy
+   * dużej mapie to jest też oszczędność, a nie sam koszt.
+   */
   drawGround() {
-    const ground = this.add.renderTexture(0, 0, WORLD_W, WORLD_H)
-      .setOrigin(0, 0)
-      .setDepth(-100);
+    const CHUNK = 128 * TILE;
+    const kawalki = [];
+    for (let y = 0; y < WORLD_H; y += CHUNK) {
+      for (let x = 0; x < WORLD_W; x += CHUNK) {
+        const rt = this.add.renderTexture(x, y, Math.min(CHUNK, WORLD_W - x), Math.min(CHUNK, WORLD_H - y))
+          .setOrigin(0, 0)
+          .setDepth(-100);
+        rt.beginDraw();
+        kawalki.push({ rt, x, y });
+      }
+    }
+    const kolumny = Math.ceil(WORLD_W / CHUNK);
 
-    ground.beginDraw();
+    /** Kawałek, w którym leży punkt — plus przesunięcie na jego układ. */
+    const ground = {
+      batchDrawFrame: (klucz, ramka, px, py) => {
+        // Obiekty nakładki wychodzą pół kafla poza swoje pole, więc rysujemy je
+        // do **każdego** kawałka, którego mogą dotknąć — inaczej wzdłuż styku
+        // kawałków biegłaby szczelina szerokości pół kafla.
+        const x0 = Math.max(0, Math.floor((px - TILE) / CHUNK));
+        const x1 = Math.min(kolumny - 1, Math.floor((px + TILE) / CHUNK));
+        const y0 = Math.max(0, Math.floor((py - TILE * 4) / CHUNK));
+        const y1 = Math.floor((py + TILE * 4) / CHUNK);
+        for (let cy = y0; cy <= y1; cy++) {
+          for (let cx = x0; cx <= x1; cx++) {
+            const k = kawalki[cy * kolumny + cx];
+            if (k) k.rt.batchDrawFrame(klucz, ramka, px - k.x, py - k.y);
+          }
+        }
+      },
+      endDraw: () => { for (const k of kawalki) k.rt.endDraw(); },
+    };
+
     // Trzy warstwy, w tej kolejności: ziemia pod wszystkim, na niej trawa i droga
     // jako nakładki o własnym kształcie, na końcu ślady. Kolejność jest cała
     // różnica między terenem a szachownicą — nakładka rysowana pod podłożem albo
