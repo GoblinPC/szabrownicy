@@ -412,6 +412,19 @@ export class ForgeScene extends Phaser.Scene {
         this.input.keyboard.resetKeys();
         return;
       }
+      // **Skrzynia i lada otwierają się w plecaku, nie w oknie rzemiosła.**
+      //
+      // Oba są stanowiskami, więc trafiały do tej samej gałęzi co warsztat
+      // i otwierały okno receptur — a że żadnej dla nich nie ma, gracz widział
+      // pustkę. Zgłoszone z gry: *podchodzę do skrzyni i klikam E, a tam pusto*.
+      // Przy jednym i drugim chodzi o przekładanie rzeczy, a to jest czynność
+      // plecaka: trzeba widzieć obie strony naraz.
+      if (this.net.station === 'chest' || this.net.station === 'counter') {
+        this.craft.close();
+        this.backpack.openNow();
+        this.input.keyboard.resetKeys();
+        return;
+      }
       if (this.net.station) {
         this.backpack.close();
         this.craft.open();
@@ -877,9 +890,25 @@ export class ForgeScene extends Phaser.Scene {
       //
       // Zwłoki wrócą razem z oprawianiem: wtedy będzie po co przy nich stać.
       const dead = state.k !== 'dummy' && state.h <= 0;
-      mob.sprite.setVisible(!dead);
+
+      // **Śmierć ma trwać chwilę.** Zwierzę znikało w tej samej klatce, w której
+      // padło, więc nie było widać, że się je zabiło — tylko że przestało być.
+      // Pół sekundy zaniku plus przewrócenie na bok wystarczy: cios ma mieć
+      // widoczny skutek, a zwłok i tak jeszcze nie ma.
+      if (dead && !mob.padl) {
+        mob.padl = time;
+        audio.hit(0.75);
+      }
+      if (!dead) mob.padl = 0;
+
+      const zanik = mob.padl ? Math.max(0, 1 - (time - mob.padl) / 500) : 1;
+      mob.sprite.setVisible(zanik > 0);
+      mob.sprite.setAlpha(zanik);
+      // Obrót na bok: martwe zwierzę się przewraca, a nie wyparowuje na stojąco.
+      mob.sprite.setRotation(mob.padl ? (1 - zanik) * 1.4 : 0);
       mob.shadow.cast.setVisible(!dead);
-      mob.shadow.contact.setVisible(!dead);
+      mob.shadow.contact.setVisible(zanik > 0);
+      mob.shadow.contact.setAlpha(0.6 * zanik);
       if (dead) {
         // **Stan zapisujemy także dla martwego.**
         //

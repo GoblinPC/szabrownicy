@@ -63,7 +63,7 @@ export function craftStation(world, key = 'workbench') {
  * bo po niej klient wybiera listę wyrobów, a serwer sprawdza, czy dany wyrób
  * wolno wykonać tutaj.
  */
-export const STATIONS = ['workbench', 'tanrack', 'cookpot', 'chest', 'counter'];
+export const STATIONS = ['workbench', 'tanrack', 'cookpot', 'chest', 'counter', 'hearth'];
 
 export function stationAt(world, x, y) {
   for (const key of STATIONS) if (atCraftStation(world, x, y, key)) return key;
@@ -1162,6 +1162,26 @@ function buildWildProps(tiles) {
       : region.dir === 'west'
         ? { x0: 3 * TILE, y0: 3 * TILE, x1: (CITY_OX - 1) * TILE, y1: (CITY_OY + CITY_H) * TILE }
         : { x0: (CITY_OX + CITY_W + 1) * TILE, y0: 3 * TILE, x1: (MAP_W - 3) * TILE, y1: (CITY_OY + CITY_H) * TILE };
+
+    // Złoża miedzi — **daleko od miasta i tylko w skalisku**.
+    //
+    // To jest pierwszy powód, żeby iść dalej niż po patyki, więc muszą być tam,
+    // dokąd trzeba dojść: minimum dwadzieścia kafli od muru. Rzadkie i z dużym
+    // odstępem, żeby jedna wyprawa nie zamykała tematu miedzi na zawsze.
+    if (region.key === 'skalisko') {
+      const OD_MIASTA = 12 * TILE;
+      const zloza = scatter(rng, box, 26, 4000, (x, y) => {
+        if (!wolne(x, y, 16)) return false;
+        // **Na zachód od muru i to wyraźnie.** Sama odległość w linii prostej
+        // nie wystarczała: złoże stojące daleko na północ od miasta spełniało
+        // ją, leżąc tuż przy murze. Miedź ma być za drogą, nie obok bramy.
+        if (x > (CITY_OX - 3) * TILE - OD_MIASTA) return false;
+        return field(x / TILE, y / TILE, 4.1) < region.rock;
+      }, zajętość);
+      for (const p2 of zloza) {
+        out.push({ key: `copper${rng.int(2)}`, x: Math.round(p2.x), y: Math.round(p2.y), body: { w: 16, h: 8 } });
+      }
+    }
 
     // Drzewa. Promień 26 px, czyli dwa drzewa dzieli 52 px, a drzewo od głazu 56.
     //

@@ -45,6 +45,7 @@ export const NODE_REACH_BONUS = 8;
 export function nodeKindOf(key) {
   if (key === 'tree') return 'tree';
   if (key === 'boulder') return 'boulder';
+  if (key.startsWith('copper')) return 'copper';
   if (key.startsWith('branch')) return 'branch';
   if (key.startsWith('pebbles')) return 'pebbles';
   return null;
@@ -79,6 +80,23 @@ export const NODE_KINDS = {
     respawn: 120_000,
     drop: 'stone',
     dropCount: [1, 3],
+    tool: 'pick',
+  },
+
+  /**
+   * Złoże miedzi — **pierwszy powód, żeby iść dalej niż po patyki**.
+   *
+   * Twardsze od głazu (6 punktów zamiast 4) i rzadsze, więc kilofem kamiennym
+   * to jest robota; miedzianym schodzi o połowę szybciej. Odrasta wolno, bo
+   * ma być czymś, po co się wraca, a nie zapleczem tuż za bramą.
+   */
+  copper: {
+    hp: 6,
+    radius: 14,
+    torso: 10,
+    respawn: 240_000,
+    drop: 'copper_ore',
+    dropCount: [2, 3],
     tool: 'pick',
   },
 

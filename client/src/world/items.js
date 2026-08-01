@@ -71,6 +71,10 @@ export const ITEMS = {
   // inne — inaczej złoto jest jedyną rzeczą bez kosztu noszenia i bogaty gracz
   // przestaje cokolwiek wybierać.
   coin: { w: 1, h: 1, icon: 'icon_coin', name: 'moneta', stack: 50 },
+  copper_ore: { w: 1, h: 1, icon: 'icon_copper_ore', name: 'ruda miedzi' },
+  copper_bar: { w: 1, h: 1, icon: 'icon_copper_bar', name: 'sztaba miedzi' },
+  copper_axe: { w: 1, h: 3, icon: 'icon_copper_axe', name: 'miedziana siekiera', tool: 'axe', power: 2 },
+  copper_pick: { w: 1, h: 3, icon: 'icon_copper_pick', name: 'miedziany kilof', tool: 'pick', power: 2 },
   axe: { w: 1, h: 3, icon: 'icon_axe', name: 'siekiera', tool: 'axe' },
   pick: { w: 1, h: 3, icon: 'icon_pick', name: 'kilof', tool: 'pick' },
 };
@@ -106,6 +110,8 @@ export const ITEMS = {
  */
 export const PRICES = {
   wood: 2,
+  copper_ore: 9,
+  copper_bar: 25,
   stone: 2,
   hide: 5,
   meat: 3,
@@ -120,6 +126,11 @@ export const RECIPES = [
   // Pieczenie przy garnku. Jeden do jednego, bo to nie jest wytwarzanie —
   // to jest obróbka tego, co już się upolowało.
   { out: 'meat_cooked', cost: { meat: 1 }, station: 'cookpot' },
+  // Przetapianie przy palenisku kowala — nie przy garnku z zupą. Ruda idzie
+  // w ogień, nie do gotowania.
+  { out: 'copper_bar', cost: { copper_ore: 2 }, station: 'hearth' },
+  { out: 'copper_axe', cost: { copper_bar: 2, wood: 1 }, station: 'workbench' },
+  { out: 'copper_pick', cost: { copper_bar: 2, wood: 1 }, station: 'workbench' },
   // Wyprawianie: dwie surowe skóry na jedną wyprawioną. Stratne celowo — skóra
   // schnie i się kraje, a zbroja ma kosztować kilka polowań, nie jedno.
   { out: 'leather', cost: { hide: 2 }, station: 'tanrack' },
@@ -134,6 +145,23 @@ export function countOf(bag, kind) {
   let n = 0;
   for (const item of bag.items) if (item.kind === kind) n++;
   return n;
+}
+
+/**
+ * Moc najlepszego narzędzia danego rodzaju w plecaku.
+ *
+ * Bierzemy **najlepsze, nie pierwsze z brzegu**: gracz noszący kamienny
+ * i miedziany kilof naraz rąbie miedzianym, bo tak by zrobił. Brak narzędzia
+ * przy zasobie, który go nie wymaga, to moc 1 — czyli goła ręka przy gałęzi.
+ */
+export function toolPower(bag, tool) {
+  if (!tool) return 1;
+  let best = 0;
+  for (const item of bag.items) {
+    const spec = ITEMS[item.kind];
+    if (spec?.tool === tool) best = Math.max(best, spec.power ?? 1);
+  }
+  return best;
 }
 
 /** Czy plecak zawiera narzędzie o danej nazwie. `null` znaczy „nie trzeba nic". */

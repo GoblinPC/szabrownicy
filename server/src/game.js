@@ -17,7 +17,7 @@ import {
 } from '../../client/src/world/movement.js';
 import { buildNodes, NODE_KINDS, NODE_ARC, NODE_REACH_BONUS, GATHER_RANGE } from '../../client/src/world/nodes.js';
 import {
-  makeBag, addItem, fits, ITEMS, PRICES, RECIPES, canCraft, craft,
+  makeBag, addItem, fits, ITEMS, PRICES, toolPower, RECIPES, canCraft, craft,
 } from '../../client/src/world/items.js';
 
 export const TICK_HZ = 20;
@@ -390,7 +390,11 @@ export class Game {
         continue;
       }
 
-      const hp = Math.max(0, state.hp - 1);
+      // **Lepsze narzędzie bije mocniej**, a nie szybciej. Miedź zdejmuje dwa
+      // punkty zamiast jednego, więc głaz schodzi w dwóch ciosach zamiast
+      // czterech, a złoże miedzi w trzech zamiast sześciu. Trudność siedzi
+      // w tym, czym się rąbie — dokładnie tak, jak przy pięści kontra siekiera.
+      const hp = Math.max(0, state.hp - toolPower(player.bag, NODE_KINDS[node.kind].tool));
       this.hurtNodes.set(node.id, { hp, downUntil: 0, at: now });
 
       if (hp === 0) {

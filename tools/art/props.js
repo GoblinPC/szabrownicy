@@ -923,6 +923,84 @@ function stairs(name) {
  * handluje" — pusta lada nie mówi tego wcale, a gracz nie szuka panelu handlu
  * przy meblu, przy którym nikt nie stoi.
  */
+/**
+ * Złoże miedzi — głaz z żyłą rudy.
+ *
+ * Sylwetka zostaje kamienna, bo to dalej skała; **odróżnia je kolor żyły**,
+ * a nie kształt. Zielonkawy nalot na miedzi jest tu ważniejszy od samego
+ * pomarańczu: rdza miedziana jest tym, po czym rozpoznaje się rudę z daleka,
+ * a czysty pomarańcz zlewałby się z ogniem.
+ */
+function copperNode(name) {
+  const rng = rngFor(name);
+  const t = new Canvas(20, 16);
+  t.ellipse(10, 11, 9, 6, c('stone', 1));
+  t.ellipse(10, 10, 8, 5, c('stone', 2));
+  t.ellipse(7, 8, 4, 2, c('stone', 3));
+  t.speckle(rng, c('stone', 0), 0.12, { x: 2, y: 6, w: 17, h: 9 });
+
+  // Żyły: krótkie łamane, nie kropki. Kropki czytają się jak brud.
+  for (let i = 0; i < 4; i++) {
+    let x = 4 + rng.int(12);
+    let y = 7 + rng.int(6);
+    for (let j = 0; j < 3 + rng.int(3); j++) {
+      t.px(x, y, c('copper'));
+      t.px(x, y + 1, c('goblin', 1));      // zielonkawy nalot pod żyłą
+      x += rng.chance(0.5) ? 1 : -1;
+      if (rng.chance(0.4)) y += 1;
+    }
+  }
+  t.px(6, 8, c('bone'));
+  return finish(t);
+}
+
+/** Ruda w plecaku: bryłka kamienia z miedzianym przełamem. */
+function iconCopperOre() {
+  const rng = rngFor('icon_copper_ore');
+  const t = new Canvas(CELL, CELL);
+  t.ellipse(8, 9, 6, 5, c('stone', 1));
+  t.ellipse(8, 8, 5, 4, c('stone', 2));
+  t.speckle(rng, c('stone', 0), 0.1, { x: 3, y: 5, w: 11, h: 8 });
+  for (const [x, y] of [[6, 7], [9, 9], [7, 11], [11, 8]]) {
+    t.px(x, y, c('copper'));
+    t.px(x + 1, y, c('goblin', 1));
+  }
+  t.px(6, 6, c('bone'));
+  return finish(t);
+}
+
+/** Sztaba miedzi: trapez, bo odlew ma skos — prostokąt czytałby się jak cegła. */
+function iconCopperBar() {
+  const t = new Canvas(CELL, CELL);
+  for (let i = 0; i < 5; i++) {
+    t.hline(3 + i, 12 - i, 6 + i, c('copper'));
+  }
+  t.hline(3, 12, 6, c('stone', 4));
+  t.hline(7, 8, 10, c('wood', 0));
+  t.px(5, 7, c('bone'));
+  t.px(6, 7, c('bone'));
+  return finish(t);
+}
+
+/** Miedziana siekiera: ten sam kształt co kamienna, inny metal. */
+function copperAxeIcon() {
+  const t = axeIcon();
+  t.replaceColor(c('iron', 1), c('copper'));
+  t.replaceColor(c('iron', 2), c('copper'));
+  t.replaceColor(c('iron', 4), c('bone'));
+  t.replaceColor(c('iron', 3), c('stone', 4));
+  return t;
+}
+
+function copperPickIcon() {
+  const t = pickIcon();
+  t.replaceColor(c('iron', 1), c('copper'));
+  t.replaceColor(c('iron', 2), c('copper'));
+  t.replaceColor(c('iron', 4), c('bone'));
+  t.replaceColor(c('iron', 3), c('stone', 4));
+  return t;
+}
+
 function keeper(name) {
   const rng = rngFor(name);
   const t = new Canvas(16, 22);
@@ -1898,6 +1976,15 @@ export function buildProps() {
   add('tanrack', tanRack('tanrack'));
   add('chest', playerChest('chest'));
   add('keeper', keeper('keeper'));
+  for (let i = 0; i < 2; i++) add(`copper${i}`, copperNode(`copper${i}`));
+  add('icon_copper_ore', iconCopperOre());
+  add('icon_copper_bar', iconCopperBar());
+  add('icon_copper_axe', copperAxeIcon());
+  add('icon_copper_pick', copperPickIcon());
+  add('item_copper_ore', iconCopperOre());
+  add('item_copper_bar', iconCopperBar());
+  add('item_copper_axe', toolOnGround('item_copper_axe', c('copper')));
+  add('item_copper_pick', toolOnGround('item_copper_pick', c('copper')));
   add('coal', coalPile('coal'));
 
   // Małe zasoby: po dwa warianty, żeby las nie powtarzał jednego rysunku.
