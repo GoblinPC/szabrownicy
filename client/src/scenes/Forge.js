@@ -120,77 +120,82 @@ export class ForgeScene extends Phaser.Scene {
    * kawałka, w którym leży. Phaser sam pomija kawałki poza kadrem, więc przy
    * dużej mapie to jest też oszczędność, a nie sam koszt.
    */
+  /**
+   * Podłoże jako **warstwy kafli**, nie wypalona tekstura.
+   *
+   * Wypalanie miało twardy sufit i to nie rozmiar pojedynczej tekstury był
+   * problemem, tylko łączna pamięć: przy mapie 384×288 dziewięć kawałków
+   * 2048×2048 to 144 MB, których karta nie alokuje — tekstury wracały puste
+   * i całe podłoże było czarne.
+   *
+   * Warstwa kafli nie kosztuje **nic** poza samym zestawem kafli, bo Phaser
+   * rysuje wyłącznie to, co widać w kadrze. Dzięki temu rozmiar mapy przestaje
+   * mieć jakikolwiek związek z pamięcią karty i świat może rosnąć dowolnie.
+   *
+   * Warstw jest kilka, bo jedna komórka siatki trzyma jeden kafel, a podłoże
+   * jest **warstwowe z założenia**: ziemia, na niej trawa, na niej droga, na
+   * niej skała. Kolejność warstw jest tu tą samą kolejnością, którą wcześniej
+   * dawało rysowanie po sobie.
+   */
   drawGround() {
-    const CHUNK = 128 * TILE;
-    const kawalki = [];
-    for (let y = 0; y < WORLD_H; y += CHUNK) {
-      for (let x = 0; x < WORLD_W; x += CHUNK) {
-        const rt = this.add.renderTexture(x, y, Math.min(CHUNK, WORLD_W - x), Math.min(CHUNK, WORLD_H - y))
-          .setOrigin(0, 0)
-          .setDepth(-100);
-        rt.beginDraw();
-        kawalki.push({ rt, x, y });
-      }
-    }
-    const kolumny = Math.ceil(WORLD_W / CHUNK);
+    const W = this.world.base[0].length;
+    const H = this.world.base.length;
+    const PUSTY = -1;
 
-    /** Kawałek, w którym leży punkt — plus przesunięcie na jego układ. */
-    const ground = {
-      batchDrawFrame: (klucz, ramka, px, py) => {
-        // Obiekty nakładki wychodzą pół kafla poza swoje pole, więc rysujemy je
-        // do **każdego** kawałka, którego mogą dotknąć — inaczej wzdłuż styku
-        // kawałków biegłaby szczelina szerokości pół kafla.
-        const x0 = Math.max(0, Math.floor((px - TILE) / CHUNK));
-        const x1 = Math.min(kolumny - 1, Math.floor((px + TILE) / CHUNK));
-        const y0 = Math.max(0, Math.floor((py - TILE * 4) / CHUNK));
-        const y1 = Math.floor((py + TILE * 4) / CHUNK);
-        for (let cy = y0; cy <= y1; cy++) {
-          for (let cx = x0; cx <= x1; cx++) {
-            const k = kawalki[cy * kolumny + cx];
-            if (k) k.rt.batchDrawFrame(klucz, ramka, px - k.x, py - k.y);
-          }
-        }
-      },
-      endDraw: () => { for (const k of kawalki) k.rt.endDraw(); },
+    /** Warstwa z gotowej tablicy indeksów; `dx`/`dy` przesuwają jej siatkę. */
+    const warstwa = (dane, depth, dx = 0, dy = 0) => {
+      const mapa = this.make.tilemap({ data: dane, tileWidth: TILE, tileHeight: TILE });
+      const zestaw = mapa.addTilesetImage('tiles');
+      return mapa.createLayer(0, zestaw, dx, dy).setDepth(depth);
     };
 
-    // Trzy warstwy, w tej kolejności: ziemia pod wszystkim, na niej trawa i droga
-    // jako nakładki o własnym kształcie, na końcu ślady. Kolejność jest cała
-    // różnica między terenem a szachownicą — nakładka rysowana pod podłożem albo
-    // rysowana zamiast niego wraca do kwadratów.
-    for (let y = 0; y < this.world.base.length; y++) {
-      const row = this.world.base[y];
-      for (let x = 0; x < row.length; x++) {
-        ground.batchDrawFrame('tiles', this.tileIndex[row[x]], x * TILE, y * TILE);
-      }
-    }
+    const pusta = (w, h) => Array.from({ length: h }, () => new Array(w).fill(PUSTY));
+
+    // 1. Ziemia pod wszystkim.
+    warstwa(this.world.base.map((row) => row.map((k) => this.tileIndex[k])), -100);
+
+    // 2-4. Nakładki. Siatka przesunięta o pół kafla, po jednej warstwie na
+    // materiał — bo w jednym miejscu mogą leżeć na sobie trawa, droga i skała.
+    const nakladki = { grass: pusta(W + 1, H + 1), path: pusta(W + 1, H + 1), rock: pusta(W + 1, H + 1) };
+    const scianki = pusta(W, H);
     for (const cell of this.world.overlay) {
-      ground.batchDrawFrame('tiles', this.tileIndex[cell.key], cell.x, cell.y);
+      const rodzaj = cell.key.startsWith('ov_grass') ? 'grass'
+        : cell.key.startsWith('ov_path') ? 'path'
+          : cell.key.startsWith('ov_rock') ? 'rock' : null;
+      if (rodzaj) {
+        const cx = Math.round((cell.x + 8) / TILE);
+        const cy = Math.round((cell.y + 8) / TILE);
+        if (nakladki[rodzaj][cy]) nakladki[rodzaj][cy][cx] = this.tileIndex[cell.key];
+        continue;
+      }
+      // Czoła skały i osypisko stoją w całych kaflach, nie na przesuniętej siatce.
+      const tx = Math.round(cell.x / TILE);
+      const ty = Math.round(cell.y / TILE);
+      if (scianki[ty]) scianki[ty][tx] = this.tileIndex[cell.key];
     }
-    // Mur ucina nakładkę, nie odwrotnie.
-    //
-    // Komórka nakładki jest przesunięta o pół kafla i ma **własny obły kształt**,
-    // który celowo wychodzi poza pole źródłowe — na styku dwóch rodzajów ziemi
-    // o to właśnie chodzi. Na styku ziemi ze ścianą to samo wygląda jak trawa
-    // wchodząca na mur: zgłoszone z gry jako *na ścianę po prawej wchodzi trawa*,
-    // i było tak dookoła całego budynku, tylko z prawej najlepiej widoczne.
-    //
-    // Dlatego po nakładkach wracamy kaflami, które **nie są podłożem** — murami,
-    // ściankami, oknami i deskami podłogi. Wycinanie kształtu nakładki przy murze
-    // dałoby to samo, ale kosztem osobnego wariantu na każdy układ sąsiedztwa;
-    // tu wystarczy kolejność rysowania. `base` trzyma podłoże jako `dirt_*`,
-    // więc rozpoznanie jest jednoznaczne i nie ma listy nazw do rozjechania.
-    for (let y = 0; y < this.world.base.length; y++) {
-      const row = this.world.base[y];
-      for (let x = 0; x < row.length; x++) {
-        if (row[x].startsWith('dirt_')) continue;
-        ground.batchDrawFrame('tiles', this.tileIndex[row[x]], x * TILE, y * TILE);
+    warstwa(nakladki.grass, -99, -8, -8);
+    warstwa(nakladki.path, -98, -8, -8);
+    warstwa(nakladki.rock, -97, -8, -8);
+    warstwa(scianki, -96);
+
+    // 5. Mur ucina nakładkę, nie odwrotnie: kafle, które **nie są podłożem**,
+    // wracają na wierzch. Bez tego trawa wchodziła na ściany budynku.
+    const mury = pusta(W, H);
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const k = this.world.base[y][x];
+        if (!k.startsWith('dirt_')) mury[y][x] = this.tileIndex[k];
       }
     }
+    warstwa(mury, -95);
+
+    // 6. Ślady. Jest ich kilkaset i leżą w dowolnych punktach, więc zostają
+    // osobnymi obrazkami — warstwa kafli wymagałaby przyciągnięcia ich do siatki.
     for (const decal of this.world.decals) {
-      ground.batchDrawFrame('tiles', this.tileIndex[decal.key], decal.x, decal.y);
+      this.add.image(decal.x, decal.y, 'tiles', this.tileIndex[decal.key])
+        .setOrigin(0, 0)
+        .setDepth(-94);
     }
-    ground.endDraw();
   }
 
   /**

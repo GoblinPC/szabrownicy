@@ -970,6 +970,39 @@ zbieranie ręką → siekiera przy warsztacie → drzewa i głazy → skrzynia j
 → karczmarz skupuje nadmiar → większa skrzynia za złoto → miedź na zachodzie
 → lepsze narzędzia. Do tego głód, pieczenie mięsa i trwały stan konta.
 
+### Etap 1b — generator mapy, zanim świat urośnie
+
+Ustalone 2026-08-01 po nieudanej próbie powiększenia mapy do 384×288.
+Uwaga użytkownika wprost: *najpierw powinieneś ustalić konkretny generator
+mapy i zasady, dopiero wtedy zacząć powiększanie*. Słusznie — bez tego
+powiększenie jest mnożeniem tego samego szumu przez siedem.
+
+**Co poszło źle technicznie:** podłoże było wypalane w tekstury i przy dużej
+mapie dziewięć kawałków 2048×2048 to 144 MB, których karta nie alokuje —
+tekstury wracały puste i cały świat był czarny. Naprawione: podłoże rysują
+teraz **warstwy kafli przycinane do kadru**, więc rozmiar mapy nie ma już
+związku z pamięcią. Ten sufit zniknął i nie wróci.
+
+**Czego brakuje, żeby duży świat miał sens** — i to jest robota do zrobienia
+przed samym powiększeniem:
+
+1. **Zasada odległości.** Dziś biom bierze się z tego, po której stronie
+   miasta leży punkt. To działa przy trzech obszarach i rozsypie się przy
+   trzydziestu. Potrzebna jest **odległość od miasta jako główna oś**:
+   im dalej, tym groźniejsze zwierzęta, lepsze surowce i rzadsze ślady
+   człowieka.
+2. **Regiony zamiast kierunków.** Zamiast „na zachód są skały" — siatka
+   obszarów z własnym podłożem, roślinnością i mieszkańcami, dobierana
+   z odległości i szumu. Granice mają być **widoczne z daleka**, bo to po nich
+   gracz się orientuje.
+3. **Punkty orientacyjne rozstawione regułą**, nie ręcznie: jeden na obszar,
+   widoczny z dystansu.
+4. **Przechodniość mierzona po powiększeniu.** `npm run sprawdz` liczy dziś
+   osiągalność od punktu odrodzenia — przy dużej mapie to jest jedyny sposób,
+   żeby wyłapać odcięte kawałki świata.
+
+Dopiero z tym powiększenie ma co powielać.
+
 ### Etap 2 — jaskinia i pierwsze prawdziwe zagrożenie
 
 **Następny w kolejce.** Miedź leży dziś na powierzchni i to jest zaślepka.
