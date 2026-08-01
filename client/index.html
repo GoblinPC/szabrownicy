@@ -177,7 +177,7 @@
     z-index: 11;
   }
   #bag-wrap { display: flex; gap: 12px; align-items: flex-start; }
-  #bag-panel, #craft-panel, #bag-sack {
+  #bag-panel, #craft-panel, #bag-sack, #bag-shop {
     padding: 14px 16px 10px;
     background: rgba(20, 16, 15, .96);
     border: 1px solid #453b37;
@@ -243,6 +243,20 @@
   /* Worek po zabitym. Kupa rzeczy, nie druga siatka — kratki układają się same,
      bo w worku nie ma kształtów ani obracania. */
   #bag-sack { min-width: 180px; max-width: 260px; }
+  #bag-shop { min-width: 230px; }
+  #shop-coins { font-size: 12px; color: #b87333; margin-bottom: 8px; letter-spacing: 1px; }
+  .shop-row {
+    padding: 6px 8px;
+    border: 1px solid #453b37;
+    border-radius: 3px;
+    background: rgba(69, 59, 55, .35);
+    font-size: 11px;
+    color: #e8dcc0;
+    cursor: pointer;
+  }
+  .shop-row:hover { border-color: #f2700f; }
+  .shop-row--no { opacity: .5; cursor: default; }
+  .shop-row--no:hover { border-color: #453b37; }
   #sack-grid {
     display: flex;
     flex-wrap: wrap;

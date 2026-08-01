@@ -17,7 +17,7 @@ import {
 } from '../../client/src/world/movement.js';
 import { buildNodes, NODE_KINDS, NODE_ARC, NODE_REACH_BONUS, GATHER_RANGE } from '../../client/src/world/nodes.js';
 import {
-  makeBag, addItem, fits, ITEMS, RECIPES, canCraft, craft,
+  makeBag, addItem, fits, ITEMS, PRICES, RECIPES, canCraft, craft,
 } from '../../client/src/world/items.js';
 
 export const TICK_HZ = 20;
@@ -101,7 +101,17 @@ const STARVE_DPS = 1.0;
 
 // Ile mieści skrzynia gracza. Czterdzieści to pięć plecaków — dość, żeby
 // gromadzenie miało sens, i za mało, żeby przestać wybierać, co warto trzymać.
+// Skrzynia startowa i jej rozbudowa. **To jest cel widoczny z góry**: rośnie,
+// widać ile, i za każdym razem kosztuje więcej — więc każdy kolejny stopień
+// wymaga dłuższej gry, a nie tej samej wyprawy powtórzonej raz jeszcze.
 const CHEST_SLOTS = 40;
+const CHEST_STEP = 20;
+const CHEST_MAX = 120;
+/** Koszt kolejnego powiększenia, liczony z obecnego rozmiaru. */
+function chestUpgradeCost(slots) {
+  const stopien = (slots - CHEST_SLOTS) / CHEST_STEP;
+  return 120 + stopien * 140;
+}
 
 // Gdzie się rzemieślniczy, liczy `atCraftStation()` w `world/forge.js` — po
 // **pozycji warsztatu wyszukanej w liście obiektów**. Wpisana tu wcześniej
@@ -706,6 +716,8 @@ export class Game {
       food: Math.round(player.food),
       hp: Math.round(player.hp),
       chest: player.chest.map((it) => ({ i: it.id, k: it.kind })),
+      chestSlots: player.chestSlots ?? CHEST_SLOTS,
+      coins: player.coins ?? 0,
     };
   }
 
@@ -722,7 +734,7 @@ export class Game {
    */
   chestPut(player, itemId) {
     if (this.stationOf(player) !== 'chest') return false;
-    if (player.chest.length >= CHEST_SLOTS) return false;
+    if (player.chest.length >= (player.chestSlots ?? CHEST_SLOTS)) return false;
     const i = player.bag.items.findIndex((it) => it.id === itemId);
     if (i < 0) return false;
     const [item] = player.bag.items.splice(i, 1);
@@ -751,8 +763,60 @@ export class Game {
     if (this.stationOf(player) !== 'chest') return null;
     return {
       s: player.chestSeq,
-      max: CHEST_SLOTS,
+      max: player.chestSlots ?? CHEST_SLOTS,
       it: player.chest.map((item) => [item.id, item.kind]),
+    };
+  }
+
+  /**
+   * Sprzedaż karczmarzowi.
+   *
+   * Skupuje **tylko surowce i jedzenie** — to, co i tak leży w lesie. Narzędzi
+   * i zbroi nie bierze i to jest celowe: inaczej najkrótszą drogą do złota
+   * byłoby produkowanie siekier w kółko, a karczma zamieniłaby się w skup złomu.
+   */
+  sellItem(player, itemId) {
+    if (this.stationOf(player) !== 'counter') return false;
+    const i = player.bag.items.findIndex((it) => it.id === itemId);
+    if (i < 0) return false;
+    const cena = PRICES[player.bag.items[i].kind];
+    if (!cena) return false;
+    player.bag.items.splice(i, 1);
+    player.coins += cena;
+    player.bagSeq++;
+    player.coinSeq = (player.coinSeq ?? 0) + 1;
+    return true;
+  }
+
+  /**
+   * Powiększenie skrzyni za złoto.
+   *
+   * **Jedyny sposób wydania pieniędzy** i dlatego jedyny powód, żeby je mieć.
+   * Rośnie o dwadzieścia miejsc za każdym razem, a kosztuje coraz więcej —
+   * więc każdy kolejny stopień to dłuższa gra, nie ta sama wyprawa powtórzona.
+   */
+  upgradeChest(player) {
+    if (this.stationOf(player) !== 'counter') return false;
+    const teraz = player.chestSlots ?? CHEST_SLOTS;
+    if (teraz >= CHEST_MAX) return false;
+    const koszt = chestUpgradeCost(teraz);
+    if (player.coins < koszt) return false;
+    player.coins -= koszt;
+    player.chestSlots = teraz + CHEST_STEP;
+    player.chestSeq++;
+    player.coinSeq = (player.coinSeq ?? 0) + 1;
+    return true;
+  }
+
+  /** Co widzi gracz stojący przy ladzie. */
+  shopSnapshot(player) {
+    if (this.stationOf(player) !== 'counter') return null;
+    const teraz = player.chestSlots ?? CHEST_SLOTS;
+    return {
+      coins: player.coins,
+      slots: teraz,
+      max: CHEST_MAX,
+      cost: teraz >= CHEST_MAX ? null : chestUpgradeCost(teraz),
     };
   }
 
@@ -1561,7 +1625,14 @@ export class Game {
       // układanka w plecaku ma znaczenie, bo miejsca jest mało i trzeba wybierać.
       // W skrzyni miejsca jest dużo i układanie byłoby samą pracą, bez decyzji.
       chest: [],
+      chestSlots: CHEST_SLOTS,
       chestSeq: 0,
+      // Złoto trzymamy **osobno od plecaka**, jako liczbę.
+      //
+      // Moneta jest przedmiotem i zajmuje kratkę, ale sakiewka to nie to samo
+      // co worek na kłody: pieniądze przelicza się, a nie układa. W plecaku
+      // leżą monety wypłacone „na rękę"; ta liczba to stan konta u karczmarza.
+      coins: 0,
       // Głód. Pełny na start, bo pierwsze minuty mają iść na rozejrzenie się,
       // a nie na natychmiastowe szukanie żarcia.
       food: FOOD_MAX,
@@ -1601,10 +1672,14 @@ export class Game {
       }
       if (Number.isFinite(state.food)) player.food = Math.max(0, Math.min(FOOD_MAX, state.food));
       if (Number.isFinite(state.hp)) player.hp = Math.max(1, Math.min(player.maxHp, state.hp));
+      if (Number.isFinite(state.chestSlots)) {
+        player.chestSlots = Math.max(CHEST_SLOTS, Math.min(CHEST_MAX, state.chestSlots));
+      }
+      if (Number.isFinite(state.coins)) player.coins = Math.max(0, state.coins);
       if (Array.isArray(state.chest)) {
         player.chest = state.chest
           .filter((it) => ITEMS[it.k])
-          .slice(0, CHEST_SLOTS)
+          .slice(0, player.chestSlots ?? CHEST_SLOTS)
           .map((it) => ({ id: it.i, kind: it.k }));
         player.chestNextId = 1 + Math.max(0, ...player.chest.map((it) => it.id));
       }

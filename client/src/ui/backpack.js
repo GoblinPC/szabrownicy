@@ -24,7 +24,7 @@ const CELL = 48;
 const ICON_PX = 16;
 
 
-export function createBackpack({ onMove, onDrop, onEat, onTake, slotAt, onSlot, onGear, onUngear, onChestPut, onChestTake }) {
+export function createBackpack({ onMove, onDrop, onEat, onTake, slotAt, onSlot, onGear, onUngear, onChestPut, onChestTake, onSell, onUpgrade }) {
   const box = document.createElement('div');
   box.id = 'backpack';
   box.innerHTML = `
@@ -39,6 +39,12 @@ export function createBackpack({ onMove, onDrop, onEat, onTake, slotAt, onSlot, 
         </div>
         <div id="bag-hint">przeciągnij &nbsp;·&nbsp; <b>PPM</b> obróć &nbsp;·&nbsp; <b>2×LPM</b> zjedz &nbsp;·&nbsp; wyrzuć poza siatkę</div>
       </div>
+      <div id="bag-shop" style="display:none">
+        <div id="bag-title">karczmarz</div>
+        <div id="shop-coins"></div>
+        <div id="shop-upgrade"></div>
+        <div id="bag-hint">wyciągnij rzecz z plecaka, żeby sprzedać</div>
+      </div>
       <div id="bag-sack" style="display:none">
         <div id="bag-title">worek</div>
         <div id="sack-grid"></div>
@@ -50,12 +56,14 @@ export function createBackpack({ onMove, onDrop, onEat, onTake, slotAt, onSlot, 
   const grid = box.querySelector('#bag-grid');
   const panel = box.querySelector('#bag-panel');
   const gearBox = box.querySelector('#bag-gear');
+  const shopBox = box.querySelector('#bag-shop');
   const sackBox = box.querySelector('#bag-sack');
   const sackGrid = box.querySelector('#sack-grid');
 
   // Zawartość worka, przy którym stoi gracz. `null` znaczy „nie ma przy czym stać".
   let sack = null;
   let chest = null;
+  let shop = null;
   // Noszony ekwipunek — co siedzi w gnieździe.
   let gear = { s: -1, b: null };
 
@@ -165,6 +173,36 @@ export function createBackpack({ onMove, onDrop, onEat, onTake, slotAt, onSlot, 
     if (!open) return;
     if (JSON.stringify(chest ?? '') === był) return;
     renderSack();
+  }
+
+  /**
+   * Panel karczmarza.
+   *
+   * Pokazuje **stan sakiewki i jedną rzecz do kupienia** — większą skrzynię.
+   * Lista towarów przyjdzie później; dziś liczy się to, żeby złoto miało
+   * widoczny cel, bo pieniądze bez tego, na co je wydać, nie są celem.
+   */
+  function applyShop(state) {
+    const był = shop ? JSON.stringify(shop) : '';
+    shop = state ?? null;
+    if (!open) return;
+    if (JSON.stringify(shop ?? '') === był) return;
+    renderShop();
+  }
+
+  function renderShop() {
+    shopBox.style.display = shop ? 'block' : 'none';
+    if (!shop) return;
+    shopBox.querySelector('#shop-coins').textContent = `monety: ${shop.coins}`;
+    const guzik = shopBox.querySelector('#shop-upgrade');
+    if (shop.cost === null) {
+      guzik.className = 'shop-row shop-row--no';
+      guzik.textContent = `skrzynia ${shop.slots} — większej nie ma`;
+      return;
+    }
+    const stac = shop.coins >= shop.cost;
+    guzik.className = `shop-row${stac ? '' : ' shop-row--no'}`;
+    guzik.textContent = `powiększ skrzynię do ${shop.slots + 20} — ${shop.cost} monet`;
   }
 
   function applySack(state) {
@@ -359,6 +397,11 @@ export function createBackpack({ onMove, onDrop, onEat, onTake, slotAt, onSlot, 
   const DBL_MS = 400;
 
   box.addEventListener('pointerdown', (event) => {
+    if (event.target.closest('#shop-upgrade') && shop?.cost !== null) {
+      event.preventDefault();
+      onUpgrade?.();
+      return;
+    }
     // Przełożenie z worka. Prośba idzie zawsze — o tym, czy rzecz jeszcze tam
     // leży i czy zmieści się w siatce, rozstrzyga serwer.
     const sackCell = event.target.closest('.sack-cell');
@@ -444,6 +487,7 @@ export function createBackpack({ onMove, onDrop, onEat, onTake, slotAt, onSlot, 
     applyGear,
     applySack,
     applyChest,
+    applyShop,
     /** Otwarcie bez przełączania — przy worku `E` ma otwierać, a nie zamykać. */
     openNow: () => setOpen(true),
     toggle: () => setOpen(!open),

@@ -67,6 +67,10 @@ export const ITEMS = {
   // Zajmują 1×3, czyli tyle co trzy kamienie — noszenie siekiery **i** kilofa to
   // sześć kratek z czterdziestu. To ma być decyzja: idziesz po drewno czy po
   // kamień, a nie „biorę wszystko na wszelki wypadek".
+  // Moneta. Jedna kratka, bo pieniądze mają **zajmować miejsce** jak wszystko
+  // inne — inaczej złoto jest jedyną rzeczą bez kosztu noszenia i bogaty gracz
+  // przestaje cokolwiek wybierać.
+  coin: { w: 1, h: 1, icon: 'icon_coin', name: 'moneta', stack: 50 },
   axe: { w: 1, h: 3, icon: 'icon_axe', name: 'siekiera', tool: 'axe' },
   pick: { w: 1, h: 3, icon: 'icon_pick', name: 'kilof', tool: 'pick' },
 };
@@ -89,6 +93,26 @@ export const ITEMS = {
  * przy stole się struga i kuje, na stojaku wyprawia skóry. Gdyby wszystko szło
  * przy jednym stole, drugie stanowisko byłoby dekoracją — a stoi tam i widać je.
  */
+/**
+ * Ceny u karczmarza — **ile daje za sztukę**.
+ *
+ * Kupuje tylko to, co i tak leży w lesie: surowce i mięso. Narzędzi i zbroi
+ * nie skupuje i to jest celowe — inaczej najprostszą droga do złota byłoby
+ * produkowanie siekier w kółko, a karczma zamieniłaby się w skup złomu.
+ *
+ * Stawki są **niskie**. Złoto ma pochodzić z tego, że przynosisz dużo, a nie
+ * z tego, że przyniosłeś coś drogiego; inaczej jedna udana wyprawa kończy
+ * postęp i nie ma po co wychodzić drugi raz.
+ */
+export const PRICES = {
+  wood: 2,
+  stone: 2,
+  hide: 5,
+  meat: 3,
+  meat_cooked: 7,
+  leather: 12,
+};
+
 export const RECIPES = [
   { out: 'axe', cost: { wood: 2, stone: 2 }, station: 'workbench' },
   { out: 'pick', cost: { wood: 2, stone: 3 }, station: 'workbench' },

@@ -63,7 +63,7 @@ export function craftStation(world, key = 'workbench') {
  * bo po niej klient wybiera listę wyrobów, a serwer sprawdza, czy dany wyrób
  * wolno wykonać tutaj.
  */
-export const STATIONS = ['workbench', 'tanrack', 'cookpot', 'chest'];
+export const STATIONS = ['workbench', 'tanrack', 'cookpot', 'chest', 'counter'];
 
 export function stationAt(world, x, y) {
   for (const key of STATIONS) if (atCraftStation(world, x, y, key)) return key;
@@ -681,6 +681,9 @@ function buildProps() {
   // a zostające po bokach szpary mają po kilka pikseli i stopa się w nie nie mieści.
   add('shelf', 556, 84, { w: 26, h: 8 });           // półki za ladą
   add('shelf', 616, 84, { w: 26, h: 8 });
+  // Karczmarz **za ladą**, po swojej stronie. Bez niego lada jest meblem,
+  // a gracz nie szuka panelu handlu przy pustym blacie.
+  add('keeper', 576, 118);
   add('counter', 552, 128, { w: 44, h: 10 });
   add('counter', 597, 128, { w: 44, h: 10 });
   add('counter', 642, 128, { w: 44, h: 10 });

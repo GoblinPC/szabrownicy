@@ -278,6 +278,8 @@ export class ForgeScene extends Phaser.Scene {
     // świat — więc nie ma osobnego kompletu obrazków do rozjechania.
     this.backpack = createBackpack({
       onChestPut: (id) => this.net.chestPut(id),
+      onSell: (id) => this.net.sell(id),
+      onUpgrade: () => this.net.upgradeChest(),
       onChestTake: (id) => this.net.chestTake(id),
       onMove: (id, x, y, rot) => this.net.bagMove(id, x, y, rot),
       onDrop: (id) => this.net.bagDrop(id),
@@ -1136,6 +1138,7 @@ export class ForgeScene extends Phaser.Scene {
     this.backpack.applyGear(this.net.gear);
     this.backpack.applySack(this.net.sackNear);
     this.backpack.applyChest(this.net.chest);
+    this.backpack.applyShop(this.net.shop);
     this.hotbar.apply(this.net.hot, this.net.bag);
     this.craft.setStation(this.net.station);
     this.craft.apply(this.net.bag);

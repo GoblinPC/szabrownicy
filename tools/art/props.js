@@ -915,6 +915,37 @@ function stairs(name) {
  * kłódka i wieko wypukłe zamiast płaskiego: skrzynia z zamkiem czyta się jako
  * czyjaś własność, a nie jako zapas w kącie.
  */
+/**
+ * Karczmarz — stoi za ladą.
+ *
+ * Na razie **nieruchomy rysunek, nie NPC**: nie chodzi, nie mówi i nie ma
+ * własnego stanu. I tak wystarcza, bo cała jego rola to powiedzieć „tu się
+ * handluje" — pusta lada nie mówi tego wcale, a gracz nie szuka panelu handlu
+ * przy meblu, przy którym nikt nie stoi.
+ */
+function keeper(name) {
+  const rng = rngFor(name);
+  const t = new Canvas(16, 22);
+  const skora = c('goblin', 2);
+
+  t.rect(3, 10, 10, 10, c('wood', 2));
+  t.rect(4, 13, 8, 7, c('parchment'));            // fartuch
+  t.hline(3, 12, 10, c('wood', 3));
+  t.speckle(rng, c('wood', 1), 0.12, { x: 3, y: 10, w: 10, h: 3 });
+
+  t.rect(1, 12, 2, 5, skora);                     // ręce oparte o ladę
+  t.rect(13, 12, 2, 5, skora);
+
+  t.rect(4, 2, 8, 8, skora);
+  t.rect(3, 5, 1, 3, skora);                      // ucho
+  t.hline(4, 11, 2, c('goblin', 3));
+  t.px(6, 5, c('soot', 0));
+  t.px(10, 5, c('soot', 0));
+  t.rect(5, 8, 6, 3, c('stone', 3));              // siwa broda odróżnia go od gracza
+  t.px(8, 8, c('stone', 4));
+  return finish(t.outline(c('soot', 0)));
+}
+
 function playerChest(name) {
   const rng = rngFor(name);
   const t = new Canvas(24, 20);
@@ -1285,6 +1316,29 @@ function itemMeatCooked() {
   t.ellipse(5, 3, 3, 2, c('wood', 2));
   t.px(4, 2, c('wood', 3));
   t.rect(7, 1, 2, 3, c('parchment'));
+  return finish(t);
+}
+
+/** Moneta: 1x1. Krążek z mosiądzu z wybitym znakiem. */
+function iconCoin() {
+  const t = new Canvas(CELL, CELL);
+  t.ellipse(8, 8, 6, 6, c('wood', 0));
+  t.ellipse(8, 8, 5, 5, c('copper'));
+  t.ellipse(7, 7, 3, 3, c('stone', 4));
+  t.ellipse(8, 8, 2, 2, c('copper'));
+  // Wybity znak: prosty krzyżyk, czytelny nawet w kratce.
+  t.hline(6, 10, 8, c('wood', 0));
+  t.vline(8, 6, 10, c('wood', 0));
+  t.px(6, 5, c('bone'));
+  return finish(t);
+}
+
+/** Moneta leżąca na ziemi. */
+function itemCoin() {
+  const t = new Canvas(8, 6);
+  t.ellipse(4, 3, 3, 2, c('wood', 0));
+  t.ellipse(4, 3, 2, 1, c('copper'));
+  t.px(3, 2, c('bone'));
   return finish(t);
 }
 
@@ -1843,6 +1897,7 @@ export function buildProps() {
   add('stairs', stairs('stairs'));
   add('tanrack', tanRack('tanrack'));
   add('chest', playerChest('chest'));
+  add('keeper', keeper('keeper'));
   add('coal', coalPile('coal'));
 
   // Małe zasoby: po dwa warianty, żeby las nie powtarzał jednego rysunku.
@@ -1865,6 +1920,8 @@ export function buildProps() {
   add('icon_stone', iconStone());
   add('icon_spear', iconSpear());
   add('icon_meat', iconMeat());
+  add('icon_coin', iconCoin());
+  add('item_coin', itemCoin());
   add('icon_meat_cooked', iconMeatCooked());
   add('item_meat_cooked', itemMeatCooked());
   add('fence', fence());

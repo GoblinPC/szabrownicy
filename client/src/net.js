@@ -179,6 +179,15 @@ export class Net {
     this.send({ t: 'bag', a: 'chesttake', i: itemId });
   }
 
+  /** Sprzedaż i rozbudowa skrzyni — o obu rozstrzyga serwer. */
+  sell(itemId) {
+    this.send({ t: 'bag', a: 'sell', i: itemId });
+  }
+
+  upgradeChest() {
+    this.send({ t: 'bag', a: 'upgrade' });
+  }
+
   /**
    * Podniesienie z ziemi.
    *
@@ -451,6 +460,7 @@ export class Net {
     this.gear = message.gr ?? this.gear ?? { s: 0, b: null };
     this.sacks = message.sk ?? [];
     this.chest = message.ch ?? null;
+    this.shop = message.sh ?? null;
     this.sackNear = message.sc ?? null;
     // Cios odbity od zasobu, do którego brakuje narzędzia. Znacznik, nie flaga,
     // bo dwa odbicia mogą wypaść między migawkami.

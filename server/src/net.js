@@ -431,6 +431,15 @@ export function attachGame(sockets, dataDir, variantCount = 6, { guests = false 
           game.chestPut(session.player, message.i);
           return;
         }
+        if (message.a === 'sell') {
+          if (!Number.isInteger(message.i)) return;
+          game.sellItem(session.player, message.i);
+          return;
+        }
+        if (message.a === 'upgrade') {
+          game.upgradeChest(session.player);
+          return;
+        }
         if (message.a === 'chesttake') {
           if (!Number.isInteger(message.i)) return;
           game.chestTake(session.player, message.i);
@@ -614,6 +623,7 @@ export function attachGame(sockets, dataDir, variantCount = 6, { guests = false 
         // Cudza zawartość nie ma prawa być u nikogo w pamięci — przy grze,
         // w której się łupi, przerobiony klient pokazywałby, kogo warto zabić.
         ch: game.chestSnapshot(me),
+        sh: game.shopSnapshot(me),
         sc: game.sackContents(me),
         // Plecak leci **tylko do właściciela**. Przy grze, w której łupi się
         // innych, cudza zawartość nie ma prawa być u nikogo w pamięci — inaczej
