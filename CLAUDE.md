@@ -953,6 +953,62 @@ powstanie cokolwiek, po czym się chodzi.
 Uzgodnione wcześniej i wciąż obowiązujące: cykliczne wipe'y, pionowy plasterek
 zamiast szerokiego frontu.
 
+## Ścieżka rozwoju
+
+Spisana 2026-08-01. Zasada porządkująca, z której wynika kolejność:
+
+> **Najpierw to, co daje powód do następnego kroku.**
+> System, który nie zmienia decyzji gracza, można dołożyć zawsze; system, bez
+> którego następny nie ma sensu, blokuje wszystko za sobą.
+
+Dlatego bank wszedł przed lepszymi narzędziami, a nie odwrotnie: siekiera
+z miedzi bez skrzyni to zabawka, którą się gubi przy pierwszej śmierci.
+
+### Etap 1 — pętla, która się domyka (**zrobione**)
+
+zbieranie ręką → siekiera przy warsztacie → drzewa i głazy → skrzynia jako bank
+→ karczmarz skupuje nadmiar → większa skrzynia za złoto → miedź na zachodzie
+→ lepsze narzędzia. Do tego głód, pieczenie mięsa i trwały stan konta.
+
+### Etap 2 — jaskinia i pierwsze prawdziwe zagrożenie
+
+**Następny w kolejce.** Miedź leży dziś na powierzchni i to jest zaślepka.
+
+1. **Jaskinia na zachodzie** — wnętrze ładowane przy wejściu, tak samo jak pokój
+   w karczmie. Ciemna, oświetlona tylko tym, co gracz przyniesie.
+2. **Nietoperze** — pierwszy przeciwnik, który **lata**, czyli nie da się go
+   zablokować terenem. `MOB_KINDS` jest tabelą danych, więc sam mob to wpis
+   i klatki; robota siedzi w zachowaniu (lot, nurkowanie, wycofanie).
+3. **Miedź przenosi się do jaskini.** Wtedy „idę po miedź" znaczy „wchodzę
+   do ciemnej dziury z czymś, co gryzie", a nie „idę kawałek dalej".
+4. **Pochodnia jako przedmiot** — zajmuje rękę. Nosisz światło albo broń.
+
+### Etap 3 — pokój gracza
+
+Skrzynia stoi dziś w warsztacie, wspólnym dla wszystkich. Pokój daje jej
+miejsce, które jest **czyjeś**: łóżko (odpoczynek), ogródek, i powód, żeby
+kupować rozbudowę u karczmarza. Wnętrze instancjonowane — każdemu ładuje się
+jego własne.
+
+### Etap 4 — żelazo i drugi biom
+
+Mokradła na wschodzie stoją puste. Żelazo dalej niż miedź, zbroja i broń z niego,
+zioła na mikstury. Dopiero tu ma sens **skala trudności przez odległość**:
+im dalej od bramy, tym więcej do stracenia w drodze powrotnej.
+
+### Etap 5 — PvP z prawdziwą stawką
+
+System czaszek (PK jak w Tibii), worki po trupie graczy, cykliczne wipe'y.
+Wchodzi na końcu, bo bez etapów 2–4 nie ma czego łupić.
+
+### Czego świadomie nie robimy
+
+- **Minimapy i znaczników zadań** — prowadzi kontrast i droga.
+- **Samoleczenia** — leczą mikstury, łóżko i pieczeń, wszystko kosztuje.
+- **Stosów w plecaku** — miejsce jest zasobem, nie licznikiem sztuk.
+- **Osobnej bazy danych** — stan gracza jest własnością konta, a kont są
+  dziesiątki. Wróci, gdy dojdzie handel między graczami.
+
 ## Wdrożenie
 
 Ten sam VPS, na którym stoją Goblin i Nibylandia. Sprawdzone połączeniem 2026-07-29.
