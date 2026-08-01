@@ -123,8 +123,18 @@ const OFF_Y = CITY_OY * TILE;
 // Podłoże wypala się w kawałki po 128 kafli (`drawGround`), więc rozmiar mapy
 // nie ma już sufitu — wcześniej jedna tekstura na całą mapę zatrzymałaby to
 // na 256 kaflach.
-export const MAP_W = 384;
-export const MAP_H = 288;
+// **Wrócone ze 384×288 do 160×120.**
+//
+// Powiększenie mapy siedmiokrotnie nie rozbiło się o sam rozmiar tekstury —
+// kawałki po 128 kafli mieszczą się z zapasem — tylko o **łączną pamięć**:
+// dziewięć kawałków 2048×2048 to 144 MB, których karta nie alokuje. Tekstury
+// wracały puste, więc całe podłoże było czarne. Zgłoszone z gry natychmiast.
+//
+// Duża mapa wymaga **przestania wypalać podłoże w ogóle** i rysowania go
+// warstwą kafli, którą Phaser przycina do kadru. To osobna robota, nie
+// parametr — opisana w CLAUDE.md przy planie rozwoju.
+export const MAP_W = 160;
+export const MAP_H = 120;
 export const WORLD_W = MAP_W * TILE;
 export const WORLD_H = MAP_H * TILE;
 
@@ -519,12 +529,12 @@ function buildDecals(tiles) {
         // gęstość dobrana na plac (0,55) dałaby na wielkiej mapie ponad siedem
         // tysięcy sprite'ów. W dziczy trawa jest tłem, po którym się biegnie;
         // na placu jest tym, po czym się chodzi i widać, jak się ugina.
-        // Gęstość w dziczy zeszła z 0,1 na 0,03 razem z powiększeniem mapy.
-        // Przy siedmiokrotnie większym świecie ta sama gęstość dawała **dziesięć
-        // tysięcy żywych obiektów sceny** — każdy z własnym sprite'em i sprężyną.
-        // Poza kadrem nic ich nie liczy, ale samo ich istnienie kosztuje pamięć
-        // i czas budowy. W mieście zostaje gęsto, bo tam się chodzi najwięcej.
-        if (rng.chance(wCity ? 0.5 : 0.03)) {
+        // Gęstość wróciła do 0,1 razem z rozmiarem mapy. Przy 384×288 obniżyłem
+        // ją do 0,03, bo ta sama wartość dawała tam dziesięć tysięcy żywych
+        // obiektów sceny; przy 160×120 to znów jakieś dwa tysiące i trawy jest
+        // tyle, ile ma być. **Ta liczba idzie w parze z rozmiarem mapy** — przy
+        // kolejnym powiększeniu trzeba ją zejść razem z nim.
+        if (rng.chance(wCity ? 0.5 : 0.1)) {
           tufts.push({ key: `decal_tuft_${rng.int(3)}`, x: px, y: py });
         }
       }
