@@ -12,7 +12,7 @@
 //   34-35  skalna granica
 
 import { makeRng, seedFrom } from '../util/rng.js';
-import { field, scatter, REGIONS, inClearing, Zajętość } from './terrain.js';
+import { field, scatter, REGIONS, inClearing, Zajętość, ringAt } from './terrain.js';
 import { nodeKindOf } from './nodes.js';
 
 /**
@@ -25,7 +25,6 @@ import { nodeKindOf } from './nodes.js';
  * Trzymana w tym pliku, a nie po stronie serwera, bo korzystają z niego obie
  * strony i pozycja celu musi być u nich identyczna.
  */
-export const TRAINING_DUMMY = { x: 520 + 56 * 16, y: 400 + 8 * 16 };
 
 /**
  * Zasięg pracy przy stanowisku rzemieślniczym.
@@ -108,8 +107,17 @@ export const TILE = 16;
 // przesunięcia zamiast dwustu.
 const CITY_W = 48;
 const CITY_H = 36;
-export const CITY_OX = 56;
-export const CITY_OY = 8;
+// **Miasto stoi na środku mapy**, nie w rogu.
+//
+// Przy mapie 160×120 siedziało na (56, 8) i to wystarczało. Po powiększeniu
+// świata do 384×288 róg oznaczałby, że zachodni obszar ma 53 kafle, a wschodni
+// dwieście osiemdziesiąt — czyli pierścienie trudności istniałyby tylko po
+// jednej stronie, a miedź, która leży na najdalszym z nich, nie miałaby gdzie
+// się pojawić. Środek daje każdemu kierunkowi tyle samo drogi.
+export const CITY_OX = Math.round((384 - 48) / 2);
+export const CITY_OY = Math.round((288 - 36) / 2);
+export const TRAINING_DUMMY = { x: 520 + CITY_OX * 16, y: 400 + CITY_OY * 16 };
+
 const OFF_X = CITY_OX * TILE;
 const OFF_Y = CITY_OY * TILE;
 
@@ -123,18 +131,21 @@ const OFF_Y = CITY_OY * TILE;
 // Podłoże wypala się w kawałki po 128 kafli (`drawGround`), więc rozmiar mapy
 // nie ma już sufitu — wcześniej jedna tekstura na całą mapę zatrzymałaby to
 // na 256 kaflach.
-// **Wrócone ze 384×288 do 160×120.**
+// **Świat ma być duży i nieznany.**
 //
-// Powiększenie mapy siedmiokrotnie nie rozbiło się o sam rozmiar tekstury —
-// kawałki po 128 kafli mieszczą się z zapasem — tylko o **łączną pamięć**:
-// dziewięć kawałków 2048×2048 to 144 MB, których karta nie alokuje. Tekstury
-// wracały puste, więc całe podłoże było czarne. Zgłoszone z gry natychmiast.
+// 384×288 to siedem razy większa powierzchnia niż pierwotne 160×120: od bramy
+// do najdalszego krańca idzie się kilka minut i przez większość drogi nie widać
+// miasta. Dopiero przy takiej skali **odległość jest kosztem**, a pierścienie
+// trudności (`ringAt`) mają czym się różnić — przy małej mapie najdalszy
+// pierścień w ogóle nie istniał i miedź nie miała gdzie się pojawić.
 //
-// Duża mapa wymaga **przestania wypalać podłoże w ogóle** i rysowania go
-// warstwą kafli, którą Phaser przycina do kadru. To osobna robota, nie
-// parametr — opisana w CLAUDE.md przy planie rozwoju.
-export const MAP_W = 160;
-export const MAP_H = 120;
+// Poprzednia próba powiększenia skończyła się czarnym światem, ale przyczyną
+// nie był rozmiar mapy, tylko **wypalanie podłoża w tekstury**: dziewięć
+// kawałków 2048×2048 to 144 MB, których karta nie alokuje. Podłoże rysują
+// dziś warstwy kafli przycinane do kadru, więc rozmiar mapy nie ma już żadnego
+// związku z pamięcią karty.
+export const MAP_W = 384;
+export const MAP_H = 288;
 export const WORLD_W = MAP_W * TILE;
 export const WORLD_H = MAP_H * TILE;
 
@@ -298,7 +309,7 @@ export const INTERIOR_PX = {
  *
  * Przechodniość sprawdzona `isWalkable`, nie policzona z siatki na oko.
  */
-export const SPAWN = { x: 384 + 56 * 16, y: 288 + 8 * 16 };
+export const SPAWN = { x: 384 + CITY_OX * 16, y: 288 + CITY_OY * 16 };
 
 /**
  * Drzewa na placu, w pikselach (podstawa pnia).
@@ -534,7 +545,7 @@ function buildDecals(tiles) {
         // obiektów sceny; przy 160×120 to znów jakieś dwa tysiące i trawy jest
         // tyle, ile ma być. **Ta liczba idzie w parze z rozmiarem mapy** — przy
         // kolejnym powiększeniu trzeba ją zejść razem z nim.
-        if (rng.chance(wCity ? 0.5 : 0.1)) {
+        if (rng.chance(wCity ? 0.5 : 0.025)) {
           tufts.push({ key: `decal_tuft_${rng.int(3)}`, x: px, y: py });
         }
       }
@@ -1194,6 +1205,19 @@ function buildWildProps(tiles) {
   }
   for (const p of out) if (p.key === 'gatepost') słup(p.x, p.y);
 
+  // Prostokąt miasta w kaflach — od jego **krawędzi** liczy się odległość,
+  // bo droga do narożnika i do bramy jest ta sama, a odległość od środka nie.
+  const miasto = { x0: CITY_OX, y0: CITY_OY, x1: CITY_OX + CITY_W, y1: CITY_OY + CITY_H };
+
+  /**
+   * Gęstość w punkcie: baza obszaru pomnożona przez pierścień.
+   *
+   * **To jest cała reguła trudności.** Im dalej od muru, tym gęściej — a gęściej
+   * znaczy tu więcej drzew do przeciskania się, więcej skał zasłaniających widok
+   * i mniej miejsca na ucieczkę. Nie trzeba do tego ani jednej liczby na ekranie.
+   */
+  const gest = (baza, x, y) => baza * ringAt(x / TILE, y / TILE, miasto).gestosc;
+
   for (const region of REGIONS) {
     // Prostokąt obszaru: wszystko poza miastem po danej stronie.
     const box = region.dir === 'south'
@@ -1209,12 +1233,16 @@ function buildWildProps(tiles) {
     // odstępem, żeby jedna wyprawa nie zamykała tematu miedzi na zawsze.
     if (region.key === 'skalisko') {
       const OD_MIASTA = 12 * TILE;
-      const zloza = scatter(rng, box, 26, 4000, (x, y) => {
+      // Odstęp 110 px i mało prób: miedź ma być **znaleziskiem**, nie polem.
+      // Przy odstępie 26 wychodziło ich siedemset pięćdziesiąt i rubież
+      // wyglądała jak kopalnia odkrywkowa.
+      const zloza = scatter(rng, box, 110, 1800, (x, y) => {
         if (!wolne(x, y, 16)) return false;
-        // **Na zachód od muru i to wyraźnie.** Sama odległość w linii prostej
-        // nie wystarczała: złoże stojące daleko na północ od miasta spełniało
-        // ją, leżąc tuż przy murze. Miedź ma być za drogą, nie obok bramy.
-        if (x > (CITY_OX - 3) * TILE - OD_MIASTA) return false;
+        // **Miedź leży wyłącznie na rubieży**, czyli w najdalszym pierścieniu.
+        // Wcześniej pilnowała tego ręcznie wpisana odległość od muru; reguła
+        // pierścienia mówi to samo, ale jednym pojęciem używanym przez cały
+        // generator — więc przy powiększaniu świata nie trzeba jej przeliczać.
+        if (ringAt(x / TILE, y / TILE, miasto).nagroda < 2) return false;
         return field(x / TILE, y / TILE, 4.1) < region.rock;
       }, zajętość);
       for (const p2 of zloza) {
@@ -1234,14 +1262,14 @@ function buildWildProps(tiles) {
     const drzewa = scatter(rng, box, 26, 2400, (x, y) =>
       wolne(x, y, 12)
       && !inClearing(x / TILE, y / TILE)
-      && field(x / TILE, y / TILE, 1.3) < region.tree, zajętość);
+      && field(x / TILE, y / TILE, 1.3) < gest(region.tree, x, y), zajętość);
     for (const p of drzewa) {
       out.push({ key: 'tree', x: Math.round(p.x), y: Math.round(p.y), body: { w: 8, h: 8 } });
     }
 
     // Głazy: rzadsze i większy promień, żeby nie robiły alei.
     const glazy = scatter(rng, box, 30, 1400, (x, y) =>
-      wolne(x, y, 14) && field(x / TILE, y / TILE, 4.1) < region.rock, zajętość);
+      wolne(x, y, 14) && field(x / TILE, y / TILE, 4.1) < gest(region.rock, x, y), zajętość);
     for (const p of glazy) {
       out.push({ key: 'boulder', x: Math.round(p.x), y: Math.round(p.y), body: { w: 14, h: 7 } });
     }
@@ -1274,7 +1302,7 @@ function buildWildProps(tiles) {
     // niczego jest łysiną; polana z krzakami i kwiatami jest miejscem.
     // Nie zastawiają drogi ciałem — przez krzak da się przejść.
     const krzaki = scatter(rng, box, 11, 3000, (x, y) =>
-      wolne(x, y, 6) && field(x / TILE, y / TILE, 6.2) < region.bush, zajętość);
+      wolne(x, y, 6) && field(x / TILE, y / TILE, 6.2) < gest(region.bush, x, y), zajętość);
     for (const p of krzaki) {
       const kind = rng.chance(0.75) ? `bush${rng.int(3)}` : `flowers${rng.int(2)}`;
       out.push({ key: kind, x: Math.round(p.x), y: Math.round(p.y) });

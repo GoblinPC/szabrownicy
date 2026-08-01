@@ -17,6 +17,37 @@ import { makeRng, seedFrom } from '../util/rng.js';
  * Trzy obszary za bramami. Każdy ma **własny punkt orientacyjny i własny
  * surowiec** — dwa obozy bandytów obok siebie to jeden obóz widziany dwa razy.
  */
+/**
+ * **Odległość od miasta jest główną osią świata.**
+ *
+ * Poprzedni generator brał obszar wyłącznie z kierunku („na zachód są skały").
+ * Działa to przy trzech obszarach i rozsypuje się przy większej mapie: dwadzieścia
+ * kafli za bramą i sto kafli za bramą to ten sam las, więc odległość niczego nie
+ * kosztuje i nie ma po co iść dalej.
+ *
+ * Świat dzieli się teraz na **pierścienie**. Kierunek dalej decyduje o tym, co
+ * rośnie i co leży, ale pierścień decyduje o **stawce**: im dalej od muru, tym
+ * gęstszy teren, rzadsze ślady człowieka i lepszy surowiec. To jest jedyny
+ * wskaźnik trudności, jakiego ta gra potrzebuje, i działa bez liczby na ekranie.
+ */
+export const RINGS = [
+  { key: 'obrzeza', do: 30, gestosc: 0.8, nagroda: 0 },
+  { key: 'pustkowie', do: 70, gestosc: 1.0, nagroda: 1 },
+  { key: 'rubiez', do: Infinity, gestosc: 1.25, nagroda: 2 },
+];
+
+/**
+ * Pierścień, w którym leży punkt — liczony w **kaflach od krawędzi miasta**,
+ * nie od jego środka. Miasto jest prostokątem, więc odległość od środka byłaby
+ * przy narożnikach półtora raza większa niż przy bramach, choć droga jest ta sama.
+ */
+export function ringAt(x, y, city) {
+  const dx = Math.max(city.x0 - x, 0, x - city.x1);
+  const dy = Math.max(city.y0 - y, 0, y - city.y1);
+  const d = Math.hypot(dx, dy);
+  return RINGS.find((r) => d <= r.do) ?? RINGS[RINGS.length - 1];
+}
+
 export const REGIONS = [
   { key: 'las', dir: 'south', ground: 'grass', tree: 0.62, rock: 0.06, bush: 0.5 },
   { key: 'skalisko', dir: 'west', ground: 'dirt', tree: 0.12, rock: 0.7, bush: 0.2 },
