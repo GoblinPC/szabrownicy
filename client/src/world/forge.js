@@ -63,7 +63,7 @@ export function craftStation(world, key = 'workbench') {
  * bo po niej klient wybiera listę wyrobów, a serwer sprawdza, czy dany wyrób
  * wolno wykonać tutaj.
  */
-export const STATIONS = ['workbench', 'tanrack'];
+export const STATIONS = ['workbench', 'tanrack', 'cookpot'];
 
 export function stationAt(world, x, y) {
   for (const key of STATIONS) if (atCraftStation(world, x, y, key)) return key;

@@ -1216,6 +1216,34 @@ function iconMeat() {
   return finish(t);
 }
 
+/** Pieczeń: 1x1. Ta sama sylwetka co surowe, ale przypieczona — brąz zamiast czerwieni. */
+function iconMeatCooked() {
+  const rng = rngFor('icon_meat_cooked');
+  const t = new Canvas(CELL, CELL);
+  t.ellipse(8, 9, 6, 5, c('wood', 0));
+  t.ellipse(8, 8, 5, 4, c('wood', 2));
+  t.ellipse(7, 7, 3, 2, c('wood', 3));
+  // Kość zostaje — to po niej poznaje się, że to dalej mięso, a nie bochenek.
+  t.rect(11, 3, 2, 5, c('parchment'));
+  t.ellipse(12, 3, 2, 2, c('parchment'));
+  t.px(12, 3, c('bone'));
+  // Przypieczenia: ciemne plamki i dwa jasne błyski tłuszczu.
+  t.speckle(rng, c('soot', 2), 0.12, { x: 4, y: 6, w: 9, h: 7 });
+  t.px(6, 8, c('ember', 3));
+  t.px(9, 10, c('ember', 3));
+  return finish(t);
+}
+
+/** Pieczeń leżąca na ziemi. */
+function itemMeatCooked() {
+  const t = new Canvas(10, 7);
+  t.ellipse(5, 4, 4, 3, c('wood', 1));
+  t.ellipse(5, 3, 3, 2, c('wood', 2));
+  t.px(4, 2, c('wood', 3));
+  t.rect(7, 1, 2, 3, c('parchment'));
+  return finish(t);
+}
+
 /** Mięso leżące na ziemi. */
 function itemMeat() {
   const t = new Canvas(10, 7);
@@ -1792,6 +1820,8 @@ export function buildProps() {
   add('icon_stone', iconStone());
   add('icon_spear', iconSpear());
   add('icon_meat', iconMeat());
+  add('icon_meat_cooked', iconMeatCooked());
+  add('item_meat_cooked', itemMeatCooked());
   add('fence', fence());
   add('campfire', campfire());
   add('gate', gateArch());

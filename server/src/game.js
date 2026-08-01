@@ -574,6 +574,10 @@ export class Game {
     if (!spec?.food) return false;
     player.bag.items.splice(i, 1);
     player.food = Math.min(FOOD_MAX, player.food + spec.food);
+    // **Leczy tylko to, co ma `heal`** — czyli dziś sama pieczeń. Życie nie
+    // regeneruje się samo, więc każdy punkt musi skądś pochodzić; surowe mięso
+    // zaspokaja głód i nic poza tym.
+    if (spec.heal) player.hp = Math.min(player.maxHp, player.hp + spec.heal);
     player.bagSeq++;
     player.foodSeq = (player.foodSeq ?? 0) + 1;
     return true;
@@ -680,6 +684,24 @@ export class Game {
   /** Przy którym stanowisku stoi gracz — albo `null`. */
   stationOf(player) {
     return stationAt(this.world, player.x, player.y);
+  }
+
+  /**
+   * Stan gracza do zapisania na koncie.
+   *
+   * Życie zapisujemy takie, jakie jest — także niskie. Odrodzenie po restarcie
+   * z pełnym paskiem byłoby darmowym leczeniem, a życie w tej grze ma kosztować.
+   */
+  exportState(player) {
+    return {
+      bag: {
+        items: player.bag.items.map((it) => ({
+          i: it.id, k: it.kind, x: it.x, y: it.y, r: it.rot,
+        })),
+      },
+      food: Math.round(player.food),
+      hp: Math.round(player.hp),
+    };
   }
 
   /** Opis plecaka dla właściciela. Nikt inny go nie dostaje. */
@@ -1446,7 +1468,7 @@ export class Game {
     return this.players.size >= MAX_PLAYERS;
   }
 
-  add(id, { name, variant, admin = false }) {
+  add(id, { name, variant, admin = false, state = null }) {
     const player = {
       id,
       name,
@@ -1511,6 +1533,20 @@ export class Game {
     };
     this.players.set(id, player);
     return player;
+    // Przywrócenie stanu z konta. **Po zbudowaniu gracza, nie zamiast niego** —
+    // brakujące pola mają zostać domyślne, a nie zniknąć, bo zapis może pochodzić
+    // ze starszej wersji gry.
+    if (state) {
+      if (state.bag?.items) {
+        player.bag.items = state.bag.items
+          .filter((it) => ITEMS[it.k])
+          .map((it) => ({ id: it.i, kind: it.k, x: it.x, y: it.y, rot: it.r ? 1 : 0 }));
+        player.bag.nextId = Math.max(1, ...player.bag.items.map((it) => it.id + 1));
+      }
+      if (Number.isFinite(state.food)) player.food = Math.max(0, Math.min(FOOD_MAX, state.food));
+      if (Number.isFinite(state.hp)) player.hp = Math.max(1, Math.min(player.maxHp, state.hp));
+    }
+
   }
 
   remove(id) {

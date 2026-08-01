@@ -25,7 +25,16 @@ export const ITEMS = {
   stone: { w: 1, h: 1, icon: 'icon_stone', name: 'kamień' },
   // Mięso zajmuje jedną kratkę i to jest celowo tanio: głód ma być rozwiązywalny,
   // ale **musisz je najpierw upolować**. Trudność siedzi w zdobyciu, nie w noszeniu.
-  meat: { w: 1, h: 1, icon: 'icon_meat', name: 'mięso', food: 42 },
+  // Surowe mięso jest **słabe i tyle**. Zaspokoi głód na chwilę, ale prawdziwą
+  // wartość ma dopiero po upieczeniu — to jest cały powód, dla którego warto
+  // wracać do ognia zamiast jeść nad trupem dzika.
+  meat: { w: 1, h: 1, icon: 'icon_meat', name: 'surowe mięso', food: 20 },
+  // Pieczone: ponad dwa razy tyle głodu i **jedyne jedzenie, które leczy**.
+  // Życie nie regeneruje się samo, więc pieczeń jest tu realnym zasobem
+  // bojowym, a nie ozdobą — i dlatego kosztuje drogę do ognia.
+  meat_cooked: {
+    w: 1, h: 1, icon: 'icon_meat_cooked', name: 'pieczeń', food: 48, heal: 18,
+  },
   // Dzida zajmuje pół plecaka i to jest jej koszt. Nosisz broń albo nosisz łup.
   // `weapon` znaczy „tym się bije", `tool` — „tym się pracuje". Rozdzielone,
   // bo pasek narzędzi pyta o jedno i drugie osobno: dzidą nie zetniesz drzewa,
@@ -84,6 +93,9 @@ export const RECIPES = [
   { out: 'axe', cost: { wood: 2, stone: 2 }, station: 'workbench' },
   { out: 'pick', cost: { wood: 2, stone: 3 }, station: 'workbench' },
   { out: 'spear', cost: { wood: 3, stone: 1 }, station: 'workbench' },
+  // Pieczenie przy garnku. Jeden do jednego, bo to nie jest wytwarzanie —
+  // to jest obróbka tego, co już się upolowało.
+  { out: 'meat_cooked', cost: { meat: 1 }, station: 'cookpot' },
   // Wyprawianie: dwie surowe skóry na jedną wyprawioną. Stratne celowo — skóra
   // schnie i się kraje, a zbroja ma kosztować kilka polowań, nie jedno.
   { out: 'leather', cost: { hide: 2 }, station: 'tanrack' },

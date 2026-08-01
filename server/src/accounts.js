@@ -215,6 +215,31 @@ export class Accounts {
     this.dirty = true;
   }
 
+  /**
+   * Stan gracza, który ma **przeżyć restart serwera**: plecak, głód, życie.
+   *
+   * Trafia do tego samego pliku co konta i tym samym zapisem — przez plik
+   * tymczasowy i `rename`, więc przerwany zapis nie zostawia po sobie połowy
+   * kont. Osobna baza byłaby tu wyłącznie kosztem: stan gracza jest własnością
+   * konta, a kont jest kilkadziesiąt, nie milion.
+   *
+   * Zapisujemy **surowe dane, nie żywe obiekty**: plecak leci jako lista wpisów
+   * `{i, k, x, y, r}`, bo to jedyny format, który da się odczytać po zmianie
+   * kodu. Gdyby lądował tu obiekt gry, każde pole dołożone do plecaka
+   * unieważniałoby zapisy wszystkich graczy.
+   */
+  setState(name, state) {
+    const account = this.byKey.get(Accounts.keyOf(name));
+    if (!account) return;
+    account.state = state;
+    this.dirty = true;
+  }
+
+  /** Zapamiętany stan albo `null` dla nowego konta. */
+  stateOf(name) {
+    return this.byKey.get(Accounts.keyOf(name))?.state ?? null;
+  }
+
   get size() {
     return this.byKey.size;
   }

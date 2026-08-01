@@ -234,7 +234,14 @@ export function attachGame(sockets, dataDir, variantCount = 6, { guests = false 
     const variant = (((account.variant ?? 0) % variantCount) + variantCount) % variantCount;
 
     const id = nextId++;
-    const player = game.add(id, { name: account.name, variant, admin: Boolean(account.admin) });
+    // Stan z konta: plecak, głód i życie przeżywają restart serwera. Goście go
+    // nie dostają i nie powinni — konto gościa nie trafia nawet do pliku.
+    const player = game.add(id, {
+      name: account.name,
+      variant,
+      admin: Boolean(account.admin),
+      state: accounts.stateOf(account.name),
+    });
     session.player = player;
     session.joining = false;
     clearTimeout(session.joinTimer);
@@ -444,6 +451,11 @@ export function attachGame(sockets, dataDir, variantCount = 6, { guests = false 
       clearTimeout(session.joinTimer);
       sessions.delete(socket);
       if (session.player) {
+        // Zapis **przed** usunięciem gracza ze świata — po `remove()` nie ma już
+        // czego zapisywać. Goście pomijani, bo nie mają konta.
+        if (!session.guest) {
+          accounts.setState(session.player.name, game.exportState(session.player));
+        }
         game.remove(session.player.id);
         broadcast({ t: 'bye', id: session.player.id });
         broadcast({ t: 'system', m: `${session.player.name} wychodzi` });
@@ -471,6 +483,19 @@ export function attachGame(sockets, dataDir, variantCount = 6, { guests = false 
   // a od tego zależy, ile czasu symulacji serwer przyznaje graczom.
   let lastTickAt = Date.now();
   let worstGap = 0;
+
+  // Zapis okresowy — **bo serwer nie zawsze kończy się grzecznie**.
+  //
+  // Sam zapis przy rozłączeniu wystarcza, dopóki wszyscy wychodzą normalnie;
+  // przy ubiciu procesu albo restarcie usługi ginie wszystko od ostatniego
+  // wyjścia. Co pół minuty jest tanio (kilkadziesiąt kont w jednym pliku)
+  // i ogranicza stratę do pół minuty gry.
+  setInterval(() => {
+    for (const session of sessions.values()) {
+      if (!session.player || session.guest) continue;
+      accounts.setState(session.player.name, game.exportState(session.player));
+    }
+  }, 30_000);
 
   setInterval(() => {
     const gap = Date.now() - lastTickAt;
