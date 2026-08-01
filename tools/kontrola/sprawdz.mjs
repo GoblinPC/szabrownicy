@@ -177,6 +177,28 @@ test('numeracja zasobów zgodna po obu stronach',
     : [],
   `${nodes.length} zasobów`);
 
+// --- Dach przykrywa cale wnetrze ---------------------------------------------
+//
+// Dach konczyl sie dwa kafle przed budynkiem i zostawial odkryty caly ostatni
+// rzad podlogi — 34 kafle, przez ktore z placu bylo widac wnetrze karczmy.
+// Wygladalo to jak waska szpara pod okapem, wiec przez caly czas nikt tego nie
+// wzial za blad. Liczba mowi to od razu.
+
+const kryteDachem = new Set(
+  w.roof.map((t) => `${Math.floor((t.x - OX) / TILE)},${Math.floor((t.y - OY) / TILE)}`)
+);
+const odkryte = [];
+for (let ty = 0; ty < 36; ty++) {
+  for (let tx = 0; tx < 48; tx++) {
+    const k = w.tiles[OY / TILE + ty]?.[OX / TILE + tx] ?? '';
+    if (!k.startsWith('floor_')) continue;
+    // Tylko wnetrze budynku: prog za brama lezy na placu i ma byc odkryty.
+    if (ty < 2 || ty > 18 || tx < 5 || tx > 42) continue;
+    if (!kryteDachem.has(`${tx},${ty}`)) odkryte.push(`kafel ${tx},${ty} (${k})`);
+  }
+}
+test('dach przykrywa cale wnetrze', odkryte, `${w.roof.length} kafli dachu`);
+
 // --- Okna --------------------------------------------------------------------
 
 test('okno wypada w kaflu ściany',

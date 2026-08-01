@@ -882,7 +882,17 @@ export const ROOF = {
   x0: BUILDING.x0,
   x1: BUILDING.x1,
   y0: BUILDING.y0,
-  y1: BUILDING.y1 - 2,
+  // **Minus jeden, nie minus dwa.**
+  //
+  // Dach ma kończyć się na ostatnim rzędzie podłogi, a zaczynać się od korony
+  // muru. Poprzednia wartość zostawiała odkryty **cały ostatni rząd wnętrza** —
+  // pas na 34 kafle, przez który z placu było widać podłogę karczmy. Wyglądało
+  // to jak wąska szpara pod okapem, więc nikt tego nie brał za błąd.
+  //
+  // Rząd `BUILDING.y1` zostaje odkryty celowo: to południowa ściana z bramą
+  // i oknami, czyli **fasada**. Przykryta dachem przestałaby istnieć, a to po
+  // niej z placu poznaje się, że to budynek, a nie plama gontu.
+  y1: BUILDING.y1 - 1,
 };
 
 /** Prostokąt samego rysunku dachu — używany wyłącznie do jego narysowania. */
