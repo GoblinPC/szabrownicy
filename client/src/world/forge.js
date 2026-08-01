@@ -56,6 +56,18 @@ export function craftStation(world, key = 'workbench') {
 }
 
 /**
+ * Wszystkie obiekty danego stanowiska.
+ *
+ * **Stanowisko może stać w kilku egzemplarzach.** Lada karczmarza to trzy
+ * segmenty obok siebie i przy trzecim handel po prostu nie działał, bo zasięg
+ * liczył się wyłącznie względem pierwszego znalezionego. Wyszło to z wypisania
+ * `stationOf()` dla każdej z trzech lad po kolei.
+ */
+export function craftStations(world, key) {
+  return world.props.filter((p) => p.key === key);
+}
+
+/**
  * Przy którym stanowisku stoi gracz — albo `null`.
  *
  * Stanowisk jest więcej niż jedno i **każde robi co innego**: przy stole się
@@ -72,8 +84,10 @@ export function stationAt(world, x, y) {
 
 /** Czy punkt leży w zasięgu stanowiska. Oś Y ściśnięta jak wszędzie w rzucie 3/4. */
 export function atCraftStation(world, x, y, key = 'workbench') {
-  const bench = craftStation(world, key);
-  if (!bench) return false;
+  return craftStations(world, key).some((bench) => atOneStation(x, y, bench));
+}
+
+function atOneStation(x, y, bench) {
   const dx = x - bench.x;
   // Warsztat obsługuje się **od frontu**, więc punkt odniesienia leży pół kroku
   // niżej niż zaczepienie rysunku — inaczej strefa kończyła się graczowi na

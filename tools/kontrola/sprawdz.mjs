@@ -14,6 +14,7 @@
 // żeby dało się je poprawić bez przeliczania.
 
 import {
+  STATIONS, stationAt,
   buildWorld, isWalkable, SPAWN, CITY_OX, CITY_OY, CITY_PX, WINDOWS, TILE,
   craftStation, atCraftStation, CRAFT_RANGE,
 } from '../../client/src/world/forge.js';
@@ -198,6 +199,21 @@ for (let ty = 0; ty < 36; ty++) {
   }
 }
 test('dach przykrywa cale wnetrze', odkryte, `${w.roof.length} kafli dachu`);
+
+// --- Stanowiska ---------------------------------------------------------------
+//
+// Stanowisko moze stac w kilku egzemplarzach: lada karczmarza to trzy segmenty
+// obok siebie. Przy trzecim handel po prostu nie dzialal, bo zasieg liczyl sie
+// wzgledem pierwszego znalezionego obiektu. Na obrazku nie bylo tego widac -
+// trzy identyczne lady, jedna martwa.
+
+test('kazdy egzemplarz stanowiska dziala',
+  STATIONS.flatMap((key) => w.props
+    .filter((p) => p.key === key)
+    .flatMap((p) => (stationAt(w, p.x, p.y + 12) === key
+      ? []
+      : [`${key} @${lok(p)} nie jest rozpoznawane jako stanowisko`]))),
+  `${STATIONS.length} rodzajow`);
 
 // --- Okna --------------------------------------------------------------------
 

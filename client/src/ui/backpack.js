@@ -357,6 +357,26 @@ export function createBackpack({ onMove, onDrop, onEat, onTake, slotAt, onSlot, 
 
   function endDrag(event) {
     if (!drag) return;
+
+    const posprzataj = () => {
+      drag.el.classList.remove('bag-item--drag', 'bag-item--bad');
+      drag = null;
+      render();
+    };
+
+    // Upuszczenie **na panel** skrzyni albo karczmarza jest tym, czego gracz
+    // próbuje najpierw: widzi pojemnik i ciągnie do niego. Pierwsza wersja
+    // wymagała wyciągnięcia poza całe okno i nikt na to nie wpadł — zgłoszone
+    // z gry: *do skrzyni nie da się nic odłożyć*.
+    const naPanelu = (el) => {
+      if (!el || el.style.display === 'none') return false;
+      const r = el.getBoundingClientRect();
+      return event.clientX >= r.left && event.clientX <= r.right
+        && event.clientY >= r.top && event.clientY <= r.bottom;
+    };
+    if (shop && naPanelu(shopBox)) { onSell?.(drag.id); posprzataj(); return; }
+    if (chest && !sack && naPanelu(sackBox)) { onChestPut?.(drag.id); posprzataj(); return; }
+
     // „Poza panelem" liczymy od **całego okna**, a nie od samej siatki: między
     // ostatnią kratką a krawędzią panelu jest ramka z napisami i puszczenie
     // kłody na niej nie może znaczyć „wyrzuć na ziemię".
@@ -475,6 +495,11 @@ export function createBackpack({ onMove, onDrop, onEat, onTake, slotAt, onSlot, 
       render();
       renderGear();
       renderSack();
+      // **Także sklep.** `applyShop()` wychodzi wcześniej, gdy panel jest
+      // zamknięty, więc przy otwarciu trzeba narysować to, co już przyszło
+      // z serwera. Bez tego panel karczmarza był pusty aż do pierwszej zmiany
+      // stanu, czyli w praktyce zawsze.
+      renderShop();
     } else {
       drag = null;
       box.remove();
